@@ -78,6 +78,7 @@ test('rejects malformed jsonl configuration', () => {
     [{ glob: '*.jsonl', variant: 'generic', generic: { idFrom: 42 } }, 'jsonl.generic.idFrom'],
     [{ glob: '*.jsonl', variant: 'generic', generic: { idFrom: 'filename', cwdPath: 42 } }, 'jsonl.generic.cwdPath'],
     [{ glob: '*.jsonl', variant: 'generic', generic: { idFrom: 'filename', userRoles: ['user', 42] } }, 'jsonl.generic.userRoles'],
+    [{ glob: '*.jsonl', variant: 'generic', generic: { idFrom: 'filename', assistantRoles: ['assistant', 42] } }, 'jsonl.generic.assistantRoles'],
   ] as const
 
   for (const [jsonl, field] of cases) {

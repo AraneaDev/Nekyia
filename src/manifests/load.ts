@@ -28,6 +28,7 @@ export interface JsonlSpec {
     rolePath?: string
     textPath?: string
     userRoles?: string[]
+    assistantRoles?: string[]
   }
 }
 
@@ -169,6 +170,12 @@ function validateJsonl(value: unknown): JsonlSpec {
     )) {
       throw new Error('jsonl.generic.userRoles must be an array of strings')
     }
+    if (supplied.assistantRoles !== undefined && (
+      !Array.isArray(supplied.assistantRoles)
+      || !supplied.assistantRoles.every((role) => typeof role === 'string')
+    )) {
+      throw new Error('jsonl.generic.assistantRoles must be an array of strings')
+    }
     generic = {
       idFrom,
       ...(cwdPath === undefined ? {} : { cwdPath }),
@@ -176,6 +183,9 @@ function validateJsonl(value: unknown): JsonlSpec {
       ...(rolePath === undefined ? {} : { rolePath }),
       ...(textPath === undefined ? {} : { textPath }),
       ...(supplied.userRoles === undefined ? {} : { userRoles: supplied.userRoles }),
+      ...(supplied.assistantRoles === undefined
+        ? {}
+        : { assistantRoles: supplied.assistantRoles }),
     }
   }
   return { glob, variant: jsonl.variant, ...(generic === undefined ? {} : { generic }) }
