@@ -38,7 +38,7 @@ export interface SqliteSpec {
   sessions: string
   /** Optional SQL returning transcript rows; ?1 is the native session id. */
   text?: string
-  textShape?: 'plain' | 'opencode-message-json'
+  textShape?: 'plain' | 'opencode-message-json' | 'opencode-part'
   cwdShape?: 'plain' | 'file-uri-array'
   timeUnit?: 'ms' | 's' | 'iso'
 }
@@ -200,8 +200,9 @@ function validateSqlite(value: unknown): SqliteSpec {
     sqlite.textShape !== undefined
     && sqlite.textShape !== 'plain'
     && sqlite.textShape !== 'opencode-message-json'
+    && sqlite.textShape !== 'opencode-part'
   ) {
-    throw new Error('sqlite.textShape must be "plain" or "opencode-message-json"')
+    throw new Error('sqlite.textShape must be "plain", "opencode-message-json", or "opencode-part"')
   }
   if (
     sqlite.cwdShape !== undefined

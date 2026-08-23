@@ -8,8 +8,8 @@
   "sqlite": {
     "file": "opencode.db",
     "sessions": "SELECT id AS id, directory AS cwd, title AS title, parent_id AS parent_id, time_created AS started_at, time_updated AS ended_at FROM session",
-    "text": "SELECT data AS data FROM message WHERE session_id = ?1 ORDER BY time_created",
-    "textShape": "opencode-message-json",
+    "text": "SELECT m.data AS message_data, p.data AS part_data FROM part p JOIN message m ON m.id = p.message_id WHERE p.session_id = ?1 ORDER BY p.time_created",
+    "textShape": "opencode-part",
     "timeUnit": "ms"
   },
   "brief": {
