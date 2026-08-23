@@ -1,0 +1,12 @@
+{
+  "name": "nekyia",
+  "version": "0.1.0",
+  "description": "Search every agent CLI session on your machine and resume the right one",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "nekyia": "./src/cli.ts", "nek": "./src/cli.ts" },
+  "files": ["src", "README.md", "LICENSE"],
+  "engines": { "bun": ">=1.1.0" },
+  "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
+  "devDependencies": { "@types/bun": "latest", "typescript": "^5.5.0" }
+}
