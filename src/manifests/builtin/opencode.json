@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "id": "opencode",
+  "name": "opencode",
+  "roots": ["~/.local/share/opencode"],
+  "format": "sqlite-store",
+  "tier": "search",
+  "sqlite": {
+    "file": "opencode.db",
+    "sessions": "SELECT id AS id, directory AS cwd, title AS title, parent_id AS parent_id, time_created AS started_at, time_updated AS ended_at FROM session",
+    "text": "SELECT data AS data FROM message WHERE session_id = ?1 ORDER BY time_created",
+    "textShape": "opencode-message-json",
+    "timeUnit": "ms"
+  },
+  "brief": {
+    "cmd": "opencode",
+    "args": ["{prompt}"],
+    "cwd": "{cwd}"
+  }
+}

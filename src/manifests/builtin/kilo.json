@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "id": "kilo",
+  "name": "Kilo Code",
+  "roots": ["~/.local/share/kilo"],
+  "format": "sqlite-store",
+  "tier": "search",
+  "sqlite": {
+    "file": "kilo.db",
+    "sessions": "SELECT id AS id, directory AS cwd, title AS title, parent_id AS parent_id, time_created AS started_at, time_updated AS ended_at FROM session",
+    "text": "SELECT data AS data FROM message WHERE session_id = ?1 ORDER BY time_created",
+    "textShape": "opencode-message-json",
+    "timeUnit": "ms"
+  },
+  "brief": {
+    "cmd": "kilo",
+    "args": ["{prompt}"],
+    "cwd": "{cwd}"
+  }
+}

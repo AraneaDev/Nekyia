@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "id": "agy",
+  "name": "Antigravity CLI",
+  "roots": ["~/.gemini/antigravity-cli"],
+  "format": "sqlite-store",
+  "tier": "resume",
+  "sqlite": {
+    "file": "conversation_summaries.db",
+    "sessions": "SELECT conversation_id AS id, title AS title, preview AS preview, step_count AS turns, last_modified_time AS ended_at, workspace_uris AS cwd_uris FROM conversation_summaries",
+    "cwdShape": "file-uri-array",
+    "timeUnit": "iso"
+  },
+  "sidecar": {
+    "file": "history.jsonl",
+    "idField": "conversationId",
+    "textField": "display",
+    "tsField": "timestamp",
+    "tsUnit": "ms",
+    "cwdField": "workspace"
+  },
+  "resume": {
+    "cmd": "agy",
+    "args": ["--conversation", "{id}"],
+    "cwd": "{cwd}"
+  },
+  "brief": {
+    "cmd": "agy",
+    "args": ["{prompt}"],
+    "cwd": "{cwd}"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "claude",
+  "name": "Claude Code",
+  "roots": ["~/.claude"],
+  "format": "jsonl-transcript",
+  "tier": "resume",
+  "jsonl": {
+    "glob": "projects/*/*.jsonl",
+    "variant": "claude"
+  },
+  "resume": {
+    "cmd": "claude",
+    "args": ["--resume", "{id}"],
+    "cwd": "{cwd}"
+  },
+  "brief": {
+    "cmd": "claude",
+    "args": ["{prompt}"],
+    "cwd": "{cwd}"
+  }
+}

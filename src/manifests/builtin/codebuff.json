@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "id": "codebuff",
+  "name": "Codebuff",
+  "roots": ["~/.config/manicode"],
+  "format": "json-dir",
+  "tier": "search",
+  "jsonDir": {
+    "glob": "projects/*/chats/*",
+    "variant": "codebuff"
+  },
+  "brief": {
+    "cmd": "codebuff",
+    "args": ["--cwd", "{cwd}", "{prompt}"],
+    "cwd": "{cwd}"
+  }
+}

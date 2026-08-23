@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "codex",
+  "name": "Codex",
+  "roots": ["~/.codex"],
+  "format": "jsonl-transcript",
+  "tier": "resume",
+  "jsonl": {
+    "glob": "sessions/**/rollout-*.jsonl",
+    "variant": "codex"
+  },
+  "sidecar": {
+    "file": "history.jsonl",
+    "idField": "session_id",
+    "textField": "text",
+    "tsField": "ts",
+    "tsUnit": "s"
+  },
+  "resume": {
+    "cmd": "codex",
+    "args": ["resume", "{id}"],
+    "cwd": "{cwd}"
+  },
+  "brief": {
+    "cmd": "codex",
+    "args": ["{prompt}"],
+    "cwd": "{cwd}"
+  }
+}
