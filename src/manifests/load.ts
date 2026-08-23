@@ -41,6 +41,8 @@ export interface SqliteSpec {
   textShape?: 'plain' | 'opencode-message-json' | 'opencode-part'
   cwdShape?: 'plain' | 'file-uri-array'
   timeUnit?: 'ms' | 's' | 'iso'
+  /** Present when the client migrated from a JSON tree and did not backfill. */
+  legacy?: { path: string }
 }
 
 export interface JsonDirSpec {
@@ -196,6 +198,11 @@ function validateSqlite(value: unknown): SqliteSpec {
   const file = expectString(sqlite.file, 'sqlite.file')
   const sessions = expectString(sqlite.sessions, 'sqlite.sessions')
   const text = expectOptionalString(sqlite.text, 'sqlite.text')
+  let legacy: SqliteSpec['legacy']
+  if (sqlite.legacy !== undefined) {
+    const supplied = expectRecord(sqlite.legacy, 'sqlite.legacy')
+    legacy = { path: expectString(supplied.path, 'sqlite.legacy.path') }
+  }
   if (
     sqlite.textShape !== undefined
     && sqlite.textShape !== 'plain'
@@ -226,6 +233,7 @@ function validateSqlite(value: unknown): SqliteSpec {
     ...(sqlite.textShape === undefined ? {} : { textShape: sqlite.textShape }),
     ...(sqlite.cwdShape === undefined ? {} : { cwdShape: sqlite.cwdShape }),
     ...(sqlite.timeUnit === undefined ? {} : { timeUnit: sqlite.timeUnit }),
+    ...(legacy === undefined ? {} : { legacy }),
   }
 }
 
