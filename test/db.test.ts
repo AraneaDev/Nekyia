@@ -53,6 +53,17 @@ test('markMissing flags sessions without deleting them', () => {
   expect(db.getRef('claude:abc')?.missing).toBe(true); db.close()
 })
 
+test('getMissingUids returns missing sessions and upsertRef clears them', () => {
+  const db = IndexDb.open(':memory:')
+  const item = ref()
+  db.upsertRef(item)
+  db.markMissing([item.uid])
+  expect(db.getMissingUids()).toEqual(new Set([item.uid]))
+  db.upsertRef(item)
+  expect(db.getMissingUids()).toEqual(new Set())
+  db.close()
+})
+
 test('upsertDoc rolls back every facet when replacement fails', () => {
   const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r); db.upsertDoc(doc(r))
   db.raw().exec(`CREATE TRIGGER fail_replacement BEFORE INSERT ON session_text

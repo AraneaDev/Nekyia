@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, realpathSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Config } from '../config'
@@ -73,6 +74,21 @@ function enrichRef(ref: SessionRef, entry: SidecarEntry | undefined): void {
   if (entry.lastTs) ref.endedAt = Math.max(ref.endedAt, entry.lastTs)
 }
 
+function sidecarPath(root: string, manifest: Manifest): string | null {
+  const file = manifest.sidecar?.file
+  if (!file || isAbsolute(file) || file.split(/[\\/]+/).includes('..')) return null
+  const path = resolve(root, file)
+  return containsPath(root, path) ? path : null
+}
+
+function includeSidecarEntry(ref: SessionRef, path: string, entry: SidecarEntry): void {
+  if (!ref.sourcePaths.includes(path)) ref.sourcePaths.push(path)
+  const digest = createHash('sha256')
+    .update(JSON.stringify([entry.prompts, entry.firstTs, entry.lastTs, entry.cwd]))
+    .digest('hex')
+  ref.fingerprint = JSON.stringify([ref.fingerprint, digest])
+}
+
 export function buildAdapter(manifest: Manifest): Adapter {
   const roots = manifest.roots.map(expandRoot)
   const format = FORMAT_MODULES[manifest.format]
@@ -145,7 +161,12 @@ export function buildAdapter(manifest: Manifest): Adapter {
 
         try {
           const sidecar = sidecarFor(root)
-          for (const item of local) enrichRef(item.ref, sidecar.get(item.ref.nativeId))
+          const path = sidecarPath(root, manifest)
+          for (const item of local) {
+            const entry = sidecar.get(item.ref.nativeId)
+            enrichRef(item.ref, entry)
+            if (entry && path) includeSidecarEntry(item.ref, path, entry)
+          }
         } catch (error) {
           diagnostics.push({
             client: clientId, level: 'error', path: root,

@@ -236,6 +236,13 @@ export class IndexDb {
     return new Map(rows.map((row) => [row.uid, row.fingerprint]))
   }
 
+  getMissingUids(): Set<string> {
+    const rows = this.db.query('SELECT uid FROM session WHERE missing = 1').all() as Array<{
+      uid: string
+    }>
+    return new Set(rows.map((row) => row.uid))
+  }
+
   allUids(): string[] {
     const rows = this.db.query('SELECT uid FROM session ORDER BY uid').all() as Array<{ uid: string }>
     return rows.map((row) => row.uid)
