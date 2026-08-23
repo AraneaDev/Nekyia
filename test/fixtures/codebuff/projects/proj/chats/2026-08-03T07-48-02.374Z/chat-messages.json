@@ -1,0 +1,1 @@
+[{"id":"u1","variant":"user","content":"install this MCP globally","timestamp":"09:48 AM"},{"id":"a1","variant":"ai","content":"","blocks":[{"type":"text","content":"Checking package.json first."}],"timestamp":"09:48 AM"},{"id":"a2","variant":"ai","content":"Installed globally.","timestamp":"09:50 AM"}]

@@ -7,6 +7,6 @@
   "bin": { "nekyia": "./src/cli.ts", "nek": "./src/cli.ts" },
   "files": ["src", "README.md", "LICENSE"],
   "engines": { "bun": ">=1.1.0" },
-  "scripts": { "test": "bun test", "typecheck": "tsc --noEmit" },
+  "scripts": { "test": "bun run scripts/make-fixtures.ts && bun test", "typecheck": "tsc --noEmit" },
   "devDependencies": { "@types/bun": "latest", "typescript": "^5.5.0" }
 }
