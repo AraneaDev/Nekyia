@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Box, Text, useApp, useInput } from 'ink'
+import { Box, measureElement, Text, useApp, useInput, type DOMElement } from 'ink'
 import type { Config } from '../config'
 import type { Adapter } from '../core/adapter'
 import { buildBrief } from '../core/brief'
@@ -13,6 +13,16 @@ import { createHostClipboard, type ClipboardLike } from './clipboard'
 
 const CLIENTS = [undefined, 'claude', 'codex', 'opencode', 'kilo', 'codebuff', 'agy'] as const
 const SEARCH_COLUMNS = 512
+/** First-paint estimate of non-list chrome; layout measurement corrects it immediately. */
+const CHROME_SEED = 12
+
+/**
+ * Content lines the preview may claim. Derived from the terminal alone, never
+ * from its own content, so sizing cannot feed back into itself.
+ */
+export function previewLines(rows: number): number {
+  return Math.max(2, Math.min(12, Math.floor(rows / 2) - 2))
+}
 const COPY_PROMPT_CHARS = 65_536
 const COPY_PROMPT_BYTES = 16_384
 const COPY_COMMAND_BYTES = 8_192
@@ -94,10 +104,41 @@ function deleteLastGrapheme(text: string): string {
   return text.slice(0, last)
 }
 
-function safeHeight(rows: unknown): number {
-  return typeof rows === 'number' && Number.isFinite(rows)
-    ? Math.max(5, Math.floor(rows) - 12)
-    : 12
+/** Terminal rows, tracked live so a resize relays out instead of leaving a stale frame. */
+export function terminalRows(rows: unknown, fallback = 24): number {
+  return typeof rows === 'number' && Number.isFinite(rows) && rows > 0
+    ? Math.max(1, Math.floor(rows))
+    : fallback
+}
+
+function useTerminalRows(injected?: number): number {
+  const [rows, setRows] = useState(() => terminalRows(injected ?? process.stdout.rows))
+  useEffect(() => {
+    if (injected !== undefined) {
+      setRows(terminalRows(injected))
+      return
+    }
+    const update = () => setRows(terminalRows(process.stdout.rows))
+    update()
+    process.stdout.on('resize', update)
+    return () => { process.stdout.off('resize', update) }
+  }, [injected])
+  return rows
+}
+
+/**
+ * Measured height of a flex child, so the list windows against real space.
+ * The seed only decides the first paint before layout is measurable; the root
+ * box clips, so an over-long seed can never push the frame past the terminal.
+ */
+function useMeasuredHeight(ref: React.RefObject<DOMElement | null>, seed: number): number {
+  const [height, setHeight] = useState(seed)
+  useEffect(() => {
+    if (!ref.current) return
+    const measured = measureElement(ref.current).height
+    setHeight((previous) => (previous === measured ? previous : measured))
+  })
+  return height
 }
 
 /**
@@ -115,13 +156,18 @@ export interface AppProps {
   clipboard?: ClipboardLike | null
   /** Injectable factory keeps host clipboard selection testable without side effects. */
   clipboardFactory?: () => ClipboardLike | null
+  /** Injectable terminal height; the live terminal is used when omitted. */
+  rows?: number
 }
 
 export function App({
   db, cfg, adapters, cwd, now, onExec, clipboard,
-  clipboardFactory = createHostClipboard,
+  clipboardFactory = createHostClipboard, rows,
 }: AppProps) {
   const { exit } = useApp()
+  const terminalHeight = useTerminalRows(rows)
+  const listRef = useRef<DOMElement | null>(null)
+  const listHeight = useMeasuredHeight(listRef, Math.max(1, terminalHeight - CHROME_SEED))
   const sessions = useSessions(db, cfg, cwd)
   const [confirm, setConfirm] = useState<Confirmation | null>(null)
   const [note, setNote] = useState('')
@@ -288,26 +334,36 @@ export function App({
   const shownSearch = boundedDisplayText(sessions.text, SEARCH_COLUMNS)
   const shownClient = sessions.client ? boundedDisplayText(sessions.client, 32) : ''
   const shownNote = boundedDisplayText(note, 120)
+  // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,
+  // decides who yields space. The list takes the slack the preview leaves; both
+  // clip rather than pushing the frame past the last row and scrolling the top away.
   return (
-    <Box flexDirection="column">
-      <Box>
+    <Box flexDirection="column" height={terminalHeight} overflow="hidden">
+      <Box flexShrink={0}>
         <Text color="cyan">{'> '}</Text>
         <Text>{shownSearch}</Text>
         <Text dimColor>{shownSearch ? '' : 'type to search'}</Text>
       </Box>
-      <Box marginTop={1}>
-        <List rows={sessions.rows} selected={sessions.selected} height={safeHeight(process.stdout.rows)} now={now} />
+      <Box
+        ref={listRef}
+        marginTop={1}
+        flexGrow={1}
+        flexShrink={1}
+        minHeight={1}
+        overflow="hidden"
+      >
+        <List rows={sessions.rows} selected={sessions.selected} height={listHeight} now={now} />
       </Box>
-      <Box marginTop={1} borderStyle="single" borderColor="gray" flexDirection="column">
-        <Preview row={selectedRow} db={db} now={now} />
+      <Box marginTop={1} borderStyle="single" borderColor="gray" flexDirection="column" flexShrink={0}>
+        <Preview row={selectedRow} db={db} now={now} maxLines={previewLines(terminalHeight)} />
       </Box>
-      <Box>
+      <Box flexShrink={0}>
         <Text dimColor>
           {sessions.rows.length} sessions - {sessions.scope === 'cwd' ? 'this directory' : 'everywhere'}
           {shownClient ? ` - ${shownClient}` : ''}{shownNote ? ` - ${shownNote}` : ''}
         </Text>
       </Box>
-      <Box><Text dimColor>enter run - ctrl+p prompt - ctrl+y command - ctrl+f client - tab scope - esc quit</Text></Box>
+      <Box flexShrink={0}><Text dimColor>enter run - ctrl+p prompt - ctrl+y command - ctrl+f client - tab scope - esc quit</Text></Box>
     </Box>
   )
 }
