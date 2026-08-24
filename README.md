@@ -14,7 +14,7 @@
 
 </div>
 
-![The Nekyia picker: sessions from several agent CLIs on the left, the selected session's directory, branch and touched files on the right](docs/media/picker.svg)
+![The Nekyia picker: a list of sessions from several agent CLIs, and beneath it the selected session's directory, branch, prompts and touched files](docs/media/picker.svg)
 
 > **Nekyia** (Νέκυια) is the rite in the _Odyssey_ through which Odysseus calls up
 > the dead and asks them what they know. This tool does something less dramatic
@@ -98,11 +98,50 @@ In the picker, `tab` widens to every directory, and pressing it again narrows to
 project of the row under the cursor, so you can start anywhere and end up in one
 project. The count beside the search line always names what is being searched.
 
-### 3. Resume or hand over
+Typing filters as you go, and the matching span is lit in every title, so the list
+answers each keystroke rather than only shortening.
+
+![Searching: the query is lit inside each matching title, and the row under the cursor is marked in the gutter](docs/media/search.svg)
+
+Narrowing to one project names it, so you always know what is being searched:
+
+![The picker narrowed to a single project, named beside the session count](docs/media/scoped.svg)
+
+A query that matches nothing says what to try rather than leaving an empty screen:
+
+![A search that matched nothing, reading "Nothing came up. Try fewer words."](docs/media/empty.svg)
+
+### 3. Read the history before you commit to it
+
+`ctrl+o` opens the session under the cursor and gives it the screen: what you asked,
+what came back, and which files moved. Arrow keys scroll a line, the page keys scroll
+a screen, and `esc` closes it again.
+
+![Reading a session's history: the pane fills the screen with the prompts and replies, scrolled past the header](docs/media/inspect.svg)
+
+### 4. Resume or hand over
 
 Press Enter in the picker, or run `nekyia last`. A resume-tier row launches the
 verified exact-session command. A search-tier row asks for confirmation, builds a
 deterministic handover, and starts a new client session with that context.
+
+## Keys in the picker
+
+| Key | What it does |
+| --- | --- |
+| type | Filter as you go; the match is lit in each title |
+| `up` / `down` | Move the cursor, or scroll the history while it is open |
+| `enter` | Resume the session, or start a briefed one for a search-tier client |
+| `ctrl+o` | Open the session's history, and close it again |
+| `tab` | Widen to everywhere, or narrow to the project under the cursor |
+| `ctrl+f` | Cycle the client filter |
+| `ctrl+p` / `ctrl+y` | Copy the opening prompt, or the command that would run |
+| `esc` | Close the history if it is open, otherwise quit |
+
+The picker lays itself out against the terminal it is drawn in, so a narrow window
+gets the same interface rather than a broken one:
+
+![The picker on an eighty column terminal, with the same layout at a smaller size](docs/media/narrow.svg)
 
 ## Commands
 

@@ -458,9 +458,16 @@ export function App({
       ['up/down', 'scroll'], ['pgup/pgdn', 'page'],
       ['enter', enterLabel], ['ctrl+o', 'close'], ['esc', 'close'],
     ]
+    // Keys that act on a session are not offered when there is no session to
+    // act on; a hint that does nothing is worse than one that is missing.
     : [
-      ['enter', enterLabel], ['ctrl+o', 'history'], ['ctrl+p', 'prompt'],
-      ['ctrl+y', 'command'], ['ctrl+f', 'client'], ['tab', 'scope'], ['esc', 'quit'],
+      ...(selectedRow
+        ? [
+          ['enter', enterLabel], ['ctrl+o', 'history'],
+          ['ctrl+p', 'prompt'], ['ctrl+y', 'command'],
+        ] as [string, string][]
+        : []),
+      ['ctrl+f', 'client'], ['tab', 'scope'], ['esc', 'quit'],
     ]
 
   // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,
