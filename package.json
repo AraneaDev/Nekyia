@@ -1,6 +1,6 @@
 {
   "name": "nekyia",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Search every agent CLI session on your machine and resume the right one",
   "license": "MIT",
   "type": "module",
@@ -8,7 +8,11 @@
     "nekyia": "./src/cli.ts",
     "nek": "./src/cli.ts"
   },
-  "files": ["src", "README.md", "LICENSE"],
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "bun": ">=1.1.0"
   },
