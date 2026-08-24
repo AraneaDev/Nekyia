@@ -2,7 +2,6 @@ import { Database } from 'bun:sqlite'
 import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Config } from '../config'
-import type { Manifest } from '../manifests/load'
 import type { Diagnostic, SessionDoc, SessionRef } from '../types'
 import { makeUid } from '../types'
 import type { FormatModule } from './jsonl-transcript'
@@ -40,6 +39,12 @@ function parseSqlTimeNullable(
   return Number.isFinite(timestamp) ? timestamp : null
 }
 
+/**
+ * Reads a timestamp in the unit a manifest declares, returning 0 for anything it cannot trust.
+ *
+ * Zero means unknown rather than 1970: callers rank on it, so a bogus value
+ * must sort as undated instead of impossibly old.
+ */
 export function parseSqlTime(
   value: unknown,
   unit: 'ms' | 's' | 'iso' = 'ms',
@@ -47,6 +52,7 @@ export function parseSqlTime(
   return parseSqlTimeNullable(value, unit) ?? 0
 }
 
+/** Reads a working directory, unwrapping the file-URI array shape some clients store instead of a plain path. */
 export function parseCwd(
   value: unknown,
   shape: 'plain' | 'file-uri-array' = 'plain',
@@ -255,6 +261,7 @@ function projectedInput(value: unknown): unknown | null {
   }
 }
 
+/** Reads SQLite-backed stores, projecting them onto Nekyia's model through the manifest's own SQL. */
 export const sqliteStore: FormatModule = {
   async discover(manifest, root) {
     const spec = manifest.sqlite!

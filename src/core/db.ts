@@ -3,10 +3,12 @@ import { lstatSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { SessionDoc, SessionRef } from '../types'
 
+/** A session as the index holds it: the discovered reference plus whether its source has since disappeared. */
 export interface StoredRef extends SessionRef {
   missing: boolean
 }
 
+/** One full-text match: the session it belongs to and its weighted relevance. */
 export interface FtsHit {
   uid: string
   score: number
@@ -39,6 +41,7 @@ interface TextRow {
   prose: string
 }
 
+/** Maps a raw index row onto the shared session shape, keeping snake_case confined to this module. */
 export function rowToRef(row: SessionRow): StoredRef {
   return {
     uid: row.uid,
@@ -59,6 +62,12 @@ export function rowToRef(row: SessionRow): StoredRef {
   }
 }
 
+/**
+ * Owns the SQLite index: schema, migrations, and every read and write.
+ *
+ * Metadata and search facets are committed together per session, so a
+ * half-hydrated session is never visible to a query.
+ */
 export class IndexDb {
   private constructor(private readonly db: Database) {}
 

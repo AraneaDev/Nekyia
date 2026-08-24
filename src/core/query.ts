@@ -1,6 +1,7 @@
 import type { Config } from '../config'
 import { IndexDb, rowToRef, type StoredRef } from './db'
 
+/** Everything a search can be narrowed or sorted by. Omitted fields mean no constraint. */
 export interface QueryOpts {
   text?: string
   cwd?: string
@@ -14,6 +15,7 @@ export interface QueryOpts {
   now?: number
 }
 
+/** A search result: the stored session, its blended score, and how much of its fork chain folded into it. */
 export interface Row extends StoredRef {
   score: number
   /** How many older sessions in this fork chain were folded into this row. */
@@ -22,6 +24,12 @@ export interface Row extends StoredRef {
 
 const DAY = 86_400_000
 
+/**
+ * Weights a session by age on a half-life curve, so an old exact match can still lose to a recent near one.
+ *
+ * Returns 1 for anything it cannot date, leaving relevance to decide rather
+ * than inventing a penalty from a missing timestamp.
+ */
 export function recencyDecay(endedAt: number, now: number, halfLifeDays: number): number {
   if (!Number.isFinite(endedAt) || endedAt === 0
     || !Number.isFinite(now) || !Number.isFinite(halfLifeDays) || halfLifeDays <= 0) {
@@ -201,6 +209,7 @@ function collapseChains(rows: Row[], allRows: StoredRef[], components: Component
   })
 }
 
+/** Runs a search, blending weighted text relevance with recency and collapsing each fork chain to its newest session. */
 export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
   const unsafeOpts = opts as Record<string, unknown>
   const text = typeof unsafeOpts.text === 'string' ? unsafeOpts.text.trim() : ''

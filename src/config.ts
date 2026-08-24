@@ -20,6 +20,7 @@ import {
 } from 'node:fs'
 import { Glob } from 'bun'
 
+/** User-tunable settings that survive between runs. */
 export interface Config {
   /** Directory glob exclusions applied at index time. */
   exclude: string[]
@@ -33,6 +34,7 @@ export interface Config {
   showSniffed: boolean
 }
 
+/** The settings used when no config file exists, or when the one on disk cannot be trusted. */
 export const DEFAULT_CONFIG: Config = {
   exclude: [],
   halfLifeDays: 14,
@@ -84,18 +86,22 @@ function readBoundedConfig(path: string): string {
   }
 }
 
+/** Nekyia's configuration directory, honouring XDG_CONFIG_HOME. */
 export function configDir(): string {
   return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'nekyia')
 }
 
+/** Nekyia's data directory, honouring XDG_DATA_HOME. */
 export function dataDir(): string {
   return join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'nekyia')
 }
 
+/** Where the SQLite index lives. */
 export function indexPath(): string {
   return join(dataDir(), 'index.db')
 }
 
+/** Where user-supplied client manifests are read from. */
 export function userManifestDir(): string {
   return join(configDir(), 'clients')
 }
@@ -198,6 +204,12 @@ function ensureSafeDirectory(directory: string): void {
   }
 }
 
+/**
+ * Reads the config file, falling back to defaults rather than failing.
+ *
+ * A missing, oversized or malformed config must never stop a search: the
+ * worst case is that the user's tuning is ignored for this run.
+ */
 export function loadConfig(): Config {
   try {
     const raw = readBoundedConfig(join(configDir(), 'config.json'))
@@ -207,6 +219,7 @@ export function loadConfig(): Config {
   }
 }
 
+/** Writes the config atomically, validating and sizing the payload before touching the filesystem. */
 export function saveConfig(config: Config): void {
   // Validate and allocate the bounded payload before touching the filesystem.
   const bytes = configBytes(config)
@@ -483,6 +496,7 @@ export async function updateConfig(
   }
 }
 
+/** Reports whether a directory is covered by a user exclusion, so it never reaches the index. */
 export function isExcluded(cwd: string | null, config: Config): boolean {
   if (!cwd) return false
   return config.exclude.some((pattern) => new Glob(pattern).match(cwd))

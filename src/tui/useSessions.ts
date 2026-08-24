@@ -10,6 +10,7 @@ import { query, type Row } from '../core/query'
  */
 export type Scope = string | null
 
+/** The picker's search state and the actions that change it, kept out of the component so it can be tested directly. */
 export interface SessionsState {
   rows: Row[]
   text: string

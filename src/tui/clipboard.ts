@@ -1,11 +1,14 @@
 const OSC52_MAX_BYTES = 65_536
 
+/** `sent` means the text went out over OSC 52 rather than a local helper, so the terminal decides whether it lands. */
 export type ClipboardWriteResult = void | 'sent'
 
+/** The one operation the picker needs from a clipboard, so tests can supply their own. */
 export interface ClipboardLike {
   writeText(text: string): ClipboardWriteResult | Promise<ClipboardWriteResult>
 }
 
+/** Everything clipboard selection depends on, injected so helper discovery can be tested without a terminal. */
 export interface ClipboardRuntime {
   platform: string
   env: Record<string, string | undefined>

@@ -3,6 +3,7 @@ import { indexPath, updateConfig, type Config } from '../config'
 import { IndexDb } from '../core/db'
 import { isSafeClientId, parseUid } from '../types'
 
+/** Narrows what prune removes. With neither field set, prune deletes nothing rather than everything. */
 export interface PruneOptions {
   missing?: boolean
   client?: string
@@ -49,6 +50,7 @@ function existingIndex(): string | null {
   }
 }
 
+/** Removes one session and every searchable facet derived from it. Returns false when the uid is unsafe or simply not indexed. */
 export function forgetIn(db: IndexDb, uid: string): boolean {
   if (!validUid(uid)) return false
   if (!db.getRef(uid)) return false
@@ -56,6 +58,12 @@ export function forgetIn(db: IndexDb, uid: string): boolean {
   return true
 }
 
+/**
+ * Bulk-removes indexed sessions by missing-source or client.
+ *
+ * An unfiltered call is treated as a mistake and removes nothing: wiping the
+ * whole index must be an explicit rebuild, never the default of a prune.
+ */
 export function pruneIn(db: IndexDb, opts: PruneOptions): number {
   if (opts.client !== undefined && !boundedClient(opts.client)) return 0
   let rows: Array<{ uid: string }>
@@ -78,6 +86,7 @@ export function pruneIn(db: IndexDb, opts: PruneOptions): number {
   return rows.length
 }
 
+/** Returns a copy of the config with one directory exclusion added, rejecting a glob that is malformed or unbounded. */
 export function addExclude(cfg: Config, glob: string): Config {
   if (!validGlob(glob)) throw new Error('exclusion glob is invalid or too long')
   const exclude = [...cfg.exclude]
@@ -85,6 +94,7 @@ export function addExclude(cfg: Config, glob: string): Config {
   return { ...cfg, exclude, hiddenClients: [...cfg.hiddenClients] }
 }
 
+/** Purges one session from the index, reporting plainly when the uid is unknown. */
 export async function runForget(uid?: string): Promise<number> {
   if (!uid) {
     console.error('usage: nekyia forget <uid>')
@@ -109,6 +119,7 @@ export async function runForget(uid?: string): Promise<number> {
   }
 }
 
+/** Removes indexed sessions whose sources are gone, or every session of one client. */
 export async function runPrune(opts: PruneOptions): Promise<number> {
   if (!opts.missing && !opts.client) {
     console.error('usage: nekyia prune --missing | --client <id>')
@@ -133,6 +144,7 @@ export async function runPrune(opts: PruneOptions): Promise<number> {
   }
 }
 
+/** Adds an index-time directory exclusion. Existing matches stay until the index is rebuilt, and the command says so. */
 export async function runExclude(glob?: string): Promise<number> {
   if (!glob) {
     console.error('usage: nekyia exclude <glob>')

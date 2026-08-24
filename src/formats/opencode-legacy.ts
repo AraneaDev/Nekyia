@@ -215,6 +215,7 @@ function fingerprintFor(base: string, paths: string[]): string {
   return JSON.stringify(metadata)
 }
 
+/** Discovers sessions left behind in opencode's pre-SQLite JSON tree, for installs that migrated without backfilling. */
 export async function discoverLegacy(
   manifest: Manifest,
   root: string,
@@ -327,6 +328,7 @@ function orderedJsonMetadata(base: string, directory: string): {
   return { rows }
 }
 
+/** Hydrates one session from the legacy JSON tree, matching what the SQLite reader would have produced. */
 export async function hydrateLegacy(
   manifest: Manifest,
   root: string,

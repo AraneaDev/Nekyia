@@ -22,6 +22,7 @@ const INJECTED_INPUT_PREFIXES = [
   '<image_generation_notes>',
 ] as const
 
+/** The contract every store reader implements: cheap discovery first, expensive hydration only for sessions that changed. */
 export interface FormatModule {
   discover(
     manifest: Manifest,
@@ -693,6 +694,7 @@ function hydrateGeneric(
   return 1
 }
 
+/** Reads line-per-record transcripts, either through a client-specific variant or a manifest-described generic shape. */
 export const jsonlTranscript: FormatModule = {
   async discover(manifest, root) {
     const refs: SessionRef[] = []

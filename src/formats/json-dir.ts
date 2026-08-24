@@ -9,7 +9,6 @@ import type { FileHandle } from 'node:fs/promises'
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
 import { Glob } from 'bun'
 import type { Config } from '../config'
-import type { Manifest } from '../manifests/load'
 import { makeUid } from '../types'
 import type { Diagnostic, SessionDoc, SessionRef } from '../types'
 import type { FormatModule } from './jsonl-transcript'
@@ -439,6 +438,7 @@ async function scanMessageArray(
   }
 }
 
+/** Reads stores that keep one directory of JSON documents per session. */
 export const jsonDir: FormatModule = {
   async discover(manifest, root) {
     const refs: SessionRef[] = []

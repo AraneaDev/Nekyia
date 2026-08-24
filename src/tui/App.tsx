@@ -71,6 +71,7 @@ export function fitKeys(keys: [string, string][], columns: number): [string, str
 /** Rows the list keeps while the detail view is being read, for context only. */
 export const INSPECT_LIST_ROWS = 4
 
+/** Splits the screen between the list and the session preview, scaled to terminal height. */
 export function previewLines(rows: number): number {
   // About a third of the screen, so a tall terminal shows the session rather
   // than a dozen lines under a very long list, while the list keeps the rest.
@@ -104,6 +105,7 @@ function sanitizePromptForClipboard(text: string): string {
   return new TextDecoder().decode(bytes.subarray(0, end))
 }
 
+/** Records how much text the copy guard inspected, so the bound can be asserted in tests. */
 export interface CommandCopyWork {
   scannedCodeUnits: number
 }
@@ -119,6 +121,14 @@ function commandUnitUnsafe(code: number): boolean {
     || code === 0xfeff
 }
 
+/**
+ * Renders a launch command safe to place on the clipboard, or null when it cannot be.
+ *
+ * The clipboard is a loaded gun: this text may be pasted straight into a
+ * shell. Every value is quoted, control and bidi characters are refused
+ * outright, and the work is bounded so a hostile transcript cannot stall the
+ * picker.
+ */
 export function safeCommandForClipboard(plan: ExecPlan, work?: CommandCopyWork): string | null {
   try {
     if (typeof plan.cmd !== 'string' || typeof plan.cwd !== 'string' || !Array.isArray(plan.args)) return null
@@ -221,6 +231,7 @@ export interface AppProps {
   columns?: number
 }
 
+/** The picker: search, scoping, client filtering, history inspection, and launch. */
 export function App({
   db, cfg, adapters, cwd, now, onExec, clipboard,
   clipboardFactory = createHostClipboard, rows, columns,

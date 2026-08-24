@@ -11,11 +11,13 @@ import type { ExecPlan } from '../types'
 import { runReindex } from './reindex'
 import { needsConsent } from './firstrun'
 
+/** The subset of Ink's render handle the picker lifecycle needs. */
 export interface PickerInstance {
   waitUntilExit(): Promise<unknown>
   unmount(): void
 }
 
+/** Injection points for the picker command, covering the terminal, index, and launch. */
 export interface PickDependencies {
   isTTY(): boolean
   indexExists(path: string): boolean
@@ -33,6 +35,7 @@ export interface PickDependencies {
   error(message: string): void
 }
 
+/** Mounts the picker on the alternate screen, so the session list never displaces the user's scrollback. */
 export function mountPicker(props: AppProps, renderer: typeof render = render): PickerInstance {
   return renderer(React.createElement(App, props), { alternateScreen: true })
 }

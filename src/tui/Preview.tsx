@@ -69,6 +69,7 @@ export function shareLines(room: number, wanted: number[]): number[] {
   return given
 }
 
+/** One line of the session preview, with the styling it should be drawn in. */
 export interface PreviewLine {
   text: string
   /** Hanging label, drawn only on a block's first line. */
@@ -166,6 +167,7 @@ export function buildPreviewLines(
 }
 
 
+/** Draws a scrollable window over the selected session's prompts, replies, and touched files. */
 export function Preview({ lines, offset = 0, maxLines = 12 }: {
   lines: PreviewLine[]
   /** First line to draw, so the caller can scroll a long history. */

@@ -31,8 +31,10 @@ const MAX_PATH_INPUT = 4096
 const MAX_ROOTS_PER_CLIENT = 64
 const MAX_ANSWER_BYTES = 256
 
+/** How much confidence a session count carries, so the consent screen never states a guess as fact. */
 export type EstimateKind = 'estimated' | 'at-least' | 'unknown'
 
+/** One client's share of the first-run plan: what would be read, and how many sessions that is likely to be. */
 export interface PlanRow {
   client: string
   roots: string[]
@@ -40,6 +42,7 @@ export interface PlanRow {
   estimate: EstimateKind
 }
 
+/** Injection points for the consent prompt, so the boundary can be tested without a terminal. */
 export interface ConsentOptions {
   yes?: boolean
   isTTY?: () => boolean
@@ -313,9 +316,13 @@ interface ConsentInput {
   isPaused(): boolean
   pause(): unknown
   // EventEmitter-compatible surface shared by process.stdin and test streams.
+  // `any` is load-bearing: listeners are called with concrete argument types
+  // (a chunk is `Buffer | string`), and `unknown[]` would reject them.
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   on(event: string, listener: (...args: any[]) => void): unknown
   once(event: string, listener: (...args: any[]) => void): unknown
   off(event: string, listener: (...args: any[]) => void): unknown
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
 /** Read one bounded line without closing or destroying stdin. */
@@ -376,6 +383,7 @@ function countLabel(row: PlanRow): string {
   return `about ${row.sessions}`
 }
 
+/** Shows exactly what would be inspected and waits for an explicit yes before any store is opened. */
 export async function askConsent(
   adapters: Adapter[],
   opts: ConsentOptions = {},

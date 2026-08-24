@@ -9,6 +9,7 @@ import { boundedDisplayText } from '../tui/List'
 import type { Diagnostic, ExecPlan } from '../types'
 import { needsConsent } from './firstrun'
 
+/** Injection points for the newest-session launch, so the command can be tested without spawning anything. */
 export interface LastDependencies {
   indexPath(): string
   indexExists(path: string): boolean

@@ -4,20 +4,29 @@ import { basename, join } from 'node:path'
 import { userManifestDir } from '../config'
 import { isSafeClientId, type ClientId, type Diagnostic, type Tier } from '../types'
 
+/** The transcript store shapes Nekyia can read. Adding a client is a manifest unless its store needs a shape not listed here. */
 export type FormatName = 'jsonl-transcript' | 'sqlite-store' | 'json-dir'
 
+/** Every format name, for validating a manifest without trusting its own claim. */
 export const FORMATS: readonly FormatName[] = [
   'jsonl-transcript',
   'sqlite-store',
   'json-dir',
 ]
 
+/** A launch template. Placeholders are substituted by renderArgs and may sit anywhere inside an argument. */
 export interface CommandSpec {
   cmd: string
   args: string[]
   cwd?: string
 }
 
+/**
+ * Locates and interprets a line-per-record transcript.
+ *
+ * `variant` selects a reader tuned to a known client; `generic` describes an
+ * unknown one field by field, so a new client needs no code.
+ */
 export interface JsonlSpec {
   glob: string
   variant: 'claude' | 'codex' | 'generic'
@@ -32,6 +41,12 @@ export interface JsonlSpec {
   }
 }
 
+/**
+ * Locates a SQLite store and the queries that project it onto Nekyia's model.
+ *
+ * The SQL is the adapter: aliasing columns to the field names Nekyia expects
+ * is what lets a new client ship as a manifest.
+ */
 export interface SqliteSpec {
   file: string
   /** SQL returning session metadata, with columns aliased to manifest field names. */
@@ -45,11 +60,18 @@ export interface SqliteSpec {
   legacy?: { path: string }
 }
 
+/** Locates a directory tree holding one JSON document per session. */
 export interface JsonDirSpec {
   glob: string
   variant: 'codebuff'
 }
 
+/**
+ * Describes a flat prompt log kept beside the transcripts.
+ *
+ * Some clients record the opening prompt only here, so a session that is
+ * otherwise unsearchable still gets a title.
+ */
 export interface SidecarSpec {
   file: string
   idField: string
@@ -91,8 +113,10 @@ interface JsonDirManifest extends ManifestCommon {
   jsonDir: JsonDirSpec
 }
 
+/** A validated client definition. The union keeps each format's block required and the other two impossible. */
 export type Manifest = JsonlManifest | SqliteManifest | JsonDirManifest
 
+/** Every manifest Nekyia will use this run, with what went wrong and where each one came from. */
 export interface LoadedManifests {
   manifests: Manifest[]
   diagnostics: Diagnostic[]
@@ -104,6 +128,7 @@ const MAX_MANIFEST_BYTES = 1024 * 1024
 const MAX_MANIFEST_FILES = 256
 const MAX_MANIFEST_DIRECTORY_ENTRIES = 1024
 
+/** Where a manifest was read from, so a user override can be told apart from a built-in. */
 export interface ManifestSource {
   kind: 'built-in' | 'user'
   path: string
@@ -257,11 +282,13 @@ function validateJsonDir(value: unknown): JsonDirSpec {
   return { glob, variant: jsonDir.variant }
 }
 
+/** Expands a leading `~`, and only when it means the current user's home. `~other` is left alone rather than guessed at. */
 export function expandRoot(path: string): string {
   if (path === '~') return homedir()
   return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
 }
 
+/** Substitutes `{id}`, `{cwd}` and `{prompt}` anywhere inside each argument. An unknown placeholder is left verbatim rather than blanked. */
 export function renderArgs(
   args: string[],
   values: Record<string, string>,
@@ -271,6 +298,12 @@ export function renderArgs(
   )))
 }
 
+/**
+ * Turns untrusted JSON into a Manifest, throwing on the first field that does not hold.
+ *
+ * Manifests are user-editable and name executables to run, so every field is
+ * checked here rather than trusted at the point of use.
+ */
 export function validateManifest(value: unknown): Manifest {
   if (!isRecord(value) || value.schema !== 1) {
     throw new Error('unsupported manifest schema')
@@ -384,6 +417,12 @@ function readManifest(path: string): Manifest {
   }
 }
 
+/**
+ * Loads the built-in manifests, then lets user manifests override them by id.
+ *
+ * Enumeration is bounded in both file count and directory entries, so a
+ * large or hostile config directory degrades to a diagnostic, not a hang.
+ */
 export function loadManifests(): LoadedManifests {
   const manifests = new Map<ClientId, Manifest>()
   const sources = new Map<ClientId, ManifestSource>()

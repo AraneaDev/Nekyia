@@ -7,3 +7,5 @@ coverage/
 *.log
 .DS_Store
 test/fixtures/**/*.db
+.momus/
+.chaos-mcp/

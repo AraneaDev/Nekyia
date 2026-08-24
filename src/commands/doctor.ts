@@ -25,6 +25,7 @@ import {
 } from '../manifests/load'
 import type { Diagnostic } from '../types'
 
+/** Selects what doctor reports and in what shape. */
 export interface DoctorOptions {
   emitManifest?: string
   json?: boolean
@@ -249,6 +250,12 @@ function writeManifestExclusive(path: string, draft: Manifest): void {
   }
 }
 
+/**
+ * Reports what Nekyia can see: clients, roots, parse failures, caps, and stores it cannot read.
+ *
+ * Every value is bounded and stripped of control characters before printing,
+ * because it comes from transcripts Nekyia does not control.
+ */
 export async function runDoctor(opts: DoctorOptions = {}): Promise<number> {
   if (opts.emitManifest && opts.json) {
     console.error('error: --json cannot be combined with --emit-manifest')
