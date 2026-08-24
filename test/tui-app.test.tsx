@@ -6,10 +6,7 @@ import { mountPicker, runPick, type PickDependencies } from '../src/commands/pic
 import { buildAdapter, type Adapter } from '../src/core/adapter'
 import { IndexDb } from '../src/core/db'
 import { validateManifest } from '../src/manifests/load'
-import {
-  App, listPaneColumns, previewLines, safeCommandForClipboard, SIDE_BY_SIDE_MIN_COLUMNS,
-  type CommandCopyWork,
-} from '../src/tui/App'
+import { App, previewLines, safeCommandForClipboard, type CommandCopyWork } from '../src/tui/App'
 import { createHostClipboard, type ClipboardRuntime } from '../src/tui/clipboard'
 import type { ExecPlan, SessionRef } from '../src/types'
 
@@ -79,39 +76,23 @@ test('the picker never renders taller than the terminal', async () => {
   }
 })
 
-test('a wide terminal puts the preview beside the list and fills the width', async () => {
-  const db = IndexDb.open(':memory:')
-  for (let i = 0; i < 30; i++) {
-    seed(db, {
-      uid: `claude:${i}`,
-      nativeId: String(i),
-      title: `session ${i} ${'x'.repeat(200)}`,
-    })
-  }
-  const view = render(
-    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} columns={150} />,
-  )
-  await tick()
-  const lines = view.lastFrame()!.split('\n')
-
-  // The rule column shares a line with list rows only when they sit side by side.
-  const beside = lines.filter((line) => /^[▌ ]\s*claude/.test(line) && line.includes('│'))
-  expect(beside.length).toBeGreaterThan(0)
-  expect(lines.length).toBeLessThanOrEqual(30)
-  view.unmount()
-})
-
-test('a narrow terminal stacks the preview under the list', async () => {
+test('the preview sits under the list at every width', async () => {
   const db = IndexDb.open(':memory:')
   for (let i = 0; i < 30; i++) seed(db, { uid: `claude:${i}`, nativeId: String(i) })
-  const view = render(
-    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} columns={80} />,
-  )
-  await tick()
-  const lines = view.lastFrame()!.split('\n')
-  expect(lines.filter((line) => /^[▌ ]\s*claude/.test(line) && line.includes('│')).length).toBe(0)
-  expect(lines.length).toBeLessThanOrEqual(24)
-  view.unmount()
+
+  for (const columns of [80, 132, 220]) {
+    const view = render(
+      <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} columns={columns} />,
+    )
+    await tick()
+    const lines = view.lastFrame()!.split('\n')
+    // A row sharing its line with a vertical rule would mean a split pane.
+    expect(lines.filter((line) => /^[▌ ]\s*claude/.test(line) && line.includes('│')).length).toBe(0)
+    // The rule that separates list from preview runs across the frame.
+    expect(lines.some((line) => /^─+$/u.test(line.trim()) && line.trim().length > 20)).toBe(true)
+    expect(lines.length).toBeLessThanOrEqual(30)
+    view.unmount()
+  }
 })
 
 test('a resize relays out instead of leaving the previous frame behind', async () => {
@@ -655,18 +636,6 @@ test('runPick closes the database and never checks a plan when Ink exit fails', 
   })
   expect(code).toBe(1)
   expect(events).toEqual(['wait', 'unmount', 'close', 'error:picker failed: Ink failed  [2J'])
-})
-
-test('pane widths track the terminal instead of a fixed title column', () => {
-  // The list keeps a readable minimum, always leaves room for the preview, and
-  // grows with the terminal rather than stopping at the old 92 column row.
-  expect(listPaneColumns(150)).toBe(83)
-  expect(listPaneColumns(200)).toBe(110)
-  expect(listPaneColumns(SIDE_BY_SIDE_MIN_COLUMNS)).toBe(55)
-  for (const columns of [100, 120, 150, 200, 400]) {
-    expect(listPaneColumns(columns)).toBeLessThanOrEqual(columns - 40)
-    expect(listPaneColumns(columns)).toBeGreaterThanOrEqual(40)
-  }
 })
 
 test('the preview budget never outgrows the terminal', () => {

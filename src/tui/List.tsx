@@ -225,9 +225,9 @@ function DefaultListRow({ row, active, now, columns, query }: ListRowProps) {
       <Text color={projectColor(project.trim())} dimColor={!projectColor(project.trim())}>
         {padColumns(project, 14)}
       </Text>{' '}
-      <Text bold={active} dimColor={!active}>{before}</Text>
+      <Text bold={active}>{before}</Text>
       {hit ? <Text color="black" backgroundColor="yellow">{hit}</Text> : null}
-      <Text bold={active} dimColor={!active}>{after}</Text>
+      <Text bold={active}>{after}</Text>
       {row.collapsed ? <Text dimColor>{`  +${row.collapsed}`}</Text> : null}
     </Text>
   )
