@@ -14,6 +14,8 @@
 
 </div>
 
+![The Nekyia picker: sessions from several agent CLIs on the left, the selected session's directory, branch and touched files on the right](docs/media/picker.svg)
+
 > **Nekyia** (Νέκυια) is the rite in the _Odyssey_ through which Odysseus calls up
 > the dead and asks them what they know. This tool does something less dramatic
 > with old agent sessions: it brings the useful context back when you need it.
