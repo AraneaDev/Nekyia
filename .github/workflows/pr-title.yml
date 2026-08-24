@@ -1,0 +1,51 @@
+name: PR Title
+
+# pull_request_target, not pull_request: the workflow definition is taken from
+# the base branch, so a pull request cannot weaken or delete this check in the
+# same change it is meant to police. That trigger runs in a trusted context, so
+# this job MUST stay payload-only -- never add a checkout of the pull request's
+# code here, and never run anything from its tree. `permissions: {}` withholds
+# the token so the trusted context grants nothing even if that rule is broken.
+#
+# The consequence to know: the version of this file that runs is the one on
+# main, so an edit to the check itself is only exercised after it merges.
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  conventional-title:
+    runs-on: ubuntu-latest
+    steps:
+      # A squash merge of a multi-commit branch takes the PR title as the commit
+      # subject, so the title -- not the branch's own commits -- is what
+      # release-please parses on main.
+      #
+      # This is not hypothetical here. Pull request #11 was squashed under the
+      # title "Lint and document the codebase, and stop two diagnostics from
+      # misleading", which parses as nothing, so release-please skipped the whole
+      # change: no version bump and no changelog. `main` is protected against
+      # force-pushes, so it could not be corrected afterwards. This check exists
+      # to refuse that title before it becomes a commit.
+      #
+      # The title is read from the event payload rather than a ${{ }} expression:
+      # interpolating it into the script would let a PR title inject shell
+      # commands into this runner, which under pull_request_target is a trusted
+      # one.
+      - name: Check the title is a Conventional Commit
+        run: |
+          title=$(jq -r '.pull_request.title' "$GITHUB_EVENT_PATH")
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?: .+'
+          if printf '%s' "$title" | grep -qE "$pattern"; then
+            printf 'Title is a Conventional Commit: %s\n' "$title"
+            exit 0
+          fi
+          printf 'Pull request title is not a Conventional Commit:\n\n  %s\n\n' "$title" >&2
+          printf 'Use "<type>(<optional scope>): <description>", for example:\n' >&2
+          printf '  fix(sqlite-store): tell an absent store apart from an unsafe path\n' >&2
+          printf '  feat(picker): say how old the index is when it has gone stale\n\n' >&2
+          printf 'Types: build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test.\n' >&2
+          printf 'Only feat and fix (or a "!" / BREAKING CHANGE) cut a release.\n' >&2
+          exit 1
