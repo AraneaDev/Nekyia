@@ -546,6 +546,7 @@ test('runPick tears Ink and the database down before checking and running the pl
     needsConsent: () => false,
     indexExists: () => true,
     indexPath: () => '/index.db',
+    indexedAt: () => undefined,
     loadConfig: () => DEFAULT_CONFIG,
     buildAdapters: () => ({ adapters, diagnostics: [] }),
     openDb: () => db,
@@ -894,4 +895,44 @@ test('scrolling stops at the end of the history instead of running past it', asy
   // A history shorter than the pane cannot be scrolled off the top.
   expect(view.lastFrame()!).toContain('a short session')
   view.unmount()
+})
+
+test('the picker says how old the index is when it has gone stale', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:stale', nativeId: 'stale' })
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    indexedAt={NOW - 7 * 3_600_000} {...opts}
+  />)
+  await tick()
+  // Searching a stale index silently is the failure worth avoiding: the user
+  // concludes the session cannot be found, rather than that it is not indexed yet.
+  expect(view.lastFrame()).toContain('index 7h old')
+  view.unmount()
+  db.close()
+})
+
+test('a fresh index is not mentioned at all', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:fresh', nativeId: 'fresh' })
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    indexedAt={NOW - 60_000} {...opts}
+  />)
+  await tick()
+  expect(view.lastFrame()).not.toMatch(/index \S+ old/)
+  view.unmount()
+  db.close()
+})
+
+test('an unknown index age is left unstated rather than guessed at', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:unknown', nativeId: 'unknown' })
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts}
+  />)
+  await tick()
+  expect(view.lastFrame()).not.toMatch(/index \S+ old/)
+  view.unmount()
+  db.close()
 })
