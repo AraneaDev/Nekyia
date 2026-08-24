@@ -5,10 +5,12 @@ import { join } from 'node:path'
 const root = join(import.meta.dir, '..')
 const read = (path: string) => readFileSync(join(root, path), 'utf8')
 
-test('the initial package and release manifest agree on 0.0.1', () => {
+test('the package and release manifest agree on one semver version', () => {
   const pkg = JSON.parse(read('package.json')) as { version: string }
   const manifest = JSON.parse(read('.release-please-manifest.json')) as Record<string, string>
-  expect(pkg.version).toBe('0.0.1')
+  // Release Please rewrites both files together, so pin the invariant rather
+  // than the number: a well formed version that the manifest still agrees with.
+  expect(pkg.version).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
   expect(manifest['.']).toBe(pkg.version)
 })
 
