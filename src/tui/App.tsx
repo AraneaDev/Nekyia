@@ -20,6 +20,23 @@ const CHROME_SEED = 12
  * Content lines the preview may claim. Derived from the terminal alone, never
  * from its own content, so sizing cannot feed back into itself.
  */
+/**
+ * An empty screen is the one place with nothing useful to displace, so it says
+ * what to do next rather than reporting that a query matched nothing.
+ */
+function EmptyState({ searching, narrowed }: { searching: boolean; narrowed: boolean }) {
+  return (
+    <Box flexDirection="column" flexShrink={0}>
+      <Text>{searching ? 'Nothing came up.' : 'No sessions indexed yet.'}</Text>
+      <Text dimColor wrap="truncate-end">
+        {searching
+          ? <>Try fewer words{narrowed ? <>, or press <Text color="cyan">tab</Text> to search every directory</> : null}.</>
+          : <>Run <Text color="cyan">nekyia index</Text> to read the histories your agent CLIs already keep.</>}
+      </Text>
+    </Box>
+  )
+}
+
 function SparseHint() {
   return (
     <Box marginTop={1} flexDirection="column" flexShrink={0}>
@@ -366,9 +383,11 @@ export function App({
   // The first key names what enter does to the row under the cursor, so the
   // hint matches the outcome instead of always promising a resume.
   const enterLabel = selectedRow && selectedRow.tier !== 'resume' ? 'brief' : 'resume'
-  // A directory with nothing in it is the first thing a new user sees, so it
-  // points at the key that widens the search rather than sitting blank.
-  const sparse = sessions.scope === 'cwd' && sessions.rows.length <= 1
+  const narrowed = sessions.scope === 'cwd'
+  const empty = sessions.rows.length === 0
+  // A directory with almost nothing in it is the first thing a new user sees,
+  // so it points at the key that widens the search rather than sitting blank.
+  const sparse = !empty && narrowed && sessions.rows.length <= 1
   const keys: [string, string][] = [
     ['↵', enterLabel], ['^p', 'prompt'], ['^y', 'command'],
     ['^f', 'client'], ['⇥', 'scope'], ['esc', 'quit'],
@@ -388,21 +407,32 @@ export function App({
         <Text>{shownSearch}</Text>
         <Text dimColor>{shownSearch ? '' : 'type to search'}</Text>
       </Box>
-      <Box ref={listRef} marginTop={1} flexGrow={1} flexShrink={1} minHeight={1} overflow="hidden">
-        <List
-          rows={sessions.rows} selected={sessions.selected}
-          height={listHeight} now={now} columns={terminalWidth} query={sessions.text}
-        />
+      <Box
+        ref={listRef} marginTop={1} flexGrow={1} flexShrink={1} minHeight={1}
+        flexDirection="column" overflow="hidden"
+      >
+        {empty
+          ? <EmptyState searching={Boolean(sessions.text.trim())} narrowed={narrowed} />
+          : (
+            <List
+              rows={sessions.rows} selected={sessions.selected}
+              height={listHeight} now={now} columns={terminalWidth} query={sessions.text}
+            />
+          )}
       </Box>
-      <Box flexShrink={0} marginTop={1}>
-        <Text dimColor>{'─'.repeat(Math.max(1, terminalWidth))}</Text>
-      </Box>
-      <Box flexShrink={0} flexDirection="column">
-        <Preview
-          row={selectedRow} db={db} now={now}
-          maxLines={previewLines(terminalHeight)} columns={terminalWidth}
-        />
-      </Box>
+      {selectedRow ? (
+        <>
+          <Box flexShrink={0} marginTop={1}>
+            <Text dimColor>{'─'.repeat(Math.max(1, terminalWidth))}</Text>
+          </Box>
+          <Box flexShrink={0} flexDirection="column">
+            <Preview
+              row={selectedRow} db={db} now={now}
+              maxLines={previewLines(terminalHeight)} columns={terminalWidth}
+            />
+          </Box>
+        </>
+      ) : null}
       {sparse ? <SparseHint /> : null}
       <Box flexShrink={0} marginTop={1}>
         <Text wrap="truncate-end">

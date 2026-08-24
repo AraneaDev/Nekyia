@@ -17,6 +17,7 @@ usage:
   nekyia forget <uid>           remove one session from the index
   nekyia prune --missing        remove sessions whose source is gone
   nekyia exclude <glob>         never index a directory again
+  nekyia --version              print the version and where this came from
 
 options:
   --client <id>     only this client
@@ -60,10 +61,40 @@ function present(values: Record<string, unknown>, keys: string[]): boolean {
   return keys.some((key) => values[key] !== undefined)
 }
 
+/**
+ * A terminal that understands OSC 8 shows a link; every other one, and any
+ * redirected output, gets the address written out so nothing is lost.
+ */
+function link(text: string, url: string): string {
+  return process.stdout.isTTY
+    ? `\u001b]8;;${url}\u0007${text}\u001b]8;;\u0007`
+    : `${text} · ${url}`
+}
+
+export function versionText(version: string, hyperlink = link): string {
+  return [
+    `nekyia ${version}`,
+    'Find the session. Pick up the thread.',
+    '',
+    'In the Odyssey, Odysseus digs the trench and the dead crowd forward;',
+    'he holds them back until the one shade he needs may speak.',
+    '',
+    `Built by ${hyperlink('Aranea Development', 'https://aranea-development.nl')}`,
+    `Source at ${hyperlink('AraneaDev/Nekyia', 'https://github.com/AraneaDev/Nekyia')}`,
+  ].join('\n')
+}
+
 async function dispatch(argv: string[]): Promise<number> {
   const subcommand = argv[0]
   if (subcommand === '--help' || subcommand === '-h') {
     console.log(USAGE)
+    return 0
+  }
+  if (subcommand === '--version' || subcommand === '-v' || subcommand === 'version') {
+    const pkg = await import('../package.json', { with: { type: 'json' } })
+      .then((module) => module.default as { version?: string })
+      .catch(() => ({ version: undefined }))
+    console.log(versionText(typeof pkg.version === 'string' ? pkg.version : 'unknown'))
     return 0
   }
   if (!subcommand) {

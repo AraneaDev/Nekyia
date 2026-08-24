@@ -734,3 +734,33 @@ test('a long reply cannot crowd out what was asked or which files moved', () => 
   // Never more than a block actually has.
   expect(shareLines(100, [2, 3])).toEqual([2, 3])
 })
+
+test('a search that matches nothing says what to do about it', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db)
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  view.stdin.write('zzqqx')
+  await tick()
+  const frame = view.lastFrame()!
+  expect(frame).toContain('Nothing came up')
+  expect(frame).toContain('Try fewer words')
+  // The rule and the empty preview are noise once there is nothing to preview.
+  expect(frame).not.toContain('nothing selected')
+  expect(frame.split('\n').some((line) => /^─+$/u.test(line.trim()))).toBe(false)
+  view.unmount()
+})
+
+test('an index with nothing in it points at the command that fills it', async () => {
+  const db = IndexDb.open(':memory:')
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  const frame = view.lastFrame()!
+  expect(frame).toContain('No sessions indexed yet')
+  expect(frame).toContain('nekyia index')
+  view.unmount()
+})
