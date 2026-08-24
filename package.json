@@ -4,9 +4,26 @@
   "description": "Search every agent CLI session on your machine and resume the right one",
   "license": "MIT",
   "type": "module",
-  "bin": { "nekyia": "./src/cli.ts", "nek": "./src/cli.ts" },
+  "bin": {
+    "nekyia": "./src/cli.ts",
+    "nek": "./src/cli.ts"
+  },
   "files": ["src", "README.md", "LICENSE"],
-  "engines": { "bun": ">=1.1.0" },
-  "scripts": { "test": "bun run scripts/make-fixtures.ts && bun test", "typecheck": "tsc --noEmit" },
-  "devDependencies": { "@types/bun": "latest", "typescript": "^5.5.0" }
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "scripts": {
+    "test": "bun run scripts/make-fixtures.ts && bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.18",
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "ink": "^7.1.1",
+    "react": "^19.2.8"
+  }
 }
