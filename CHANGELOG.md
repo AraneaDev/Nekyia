@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.0.5](https://github.com/AraneaDev/Nekyia/compare/v0.0.4...v0.0.5) (2026-08-24)
+
+
+### Features
+
+* give the picker a visual hierarchy ([ba3d3ad](https://github.com/AraneaDev/Nekyia/commit/ba3d3adf5c925b3209e8157e392806a3f88975ce))
+* let colour carry meaning in the picker ([98b37b2](https://github.com/AraneaDev/Nekyia/commit/98b37b28e9c482ea3c251a81cf4baec8bcaffa6d))
+* let tab narrow to the project you are looking at ([ff8fe65](https://github.com/AraneaDev/Nekyia/commit/ff8fe65763d2eaa0fa06e4e3e1303a3d79ca93e3))
+* open a session's history and read through it ([b09481e](https://github.com/AraneaDev/Nekyia/commit/b09481ef55b2fd98cb617829f885473d030239fc))
+* say what to do when nothing came up, and where this came from ([d00cc5f](https://github.com/AraneaDev/Nekyia/commit/d00cc5fc3f5f337bacd1e5c85ddcfb1febd42939))
+* show the session, not just its name, in the detail view ([1aa057b](https://github.com/AraneaDev/Nekyia/commit/1aa057b3276edb6f2cce028d2280750d672de9ac))
+* show where you are in the list, and name the keys again ([ee8d9b5](https://github.com/AraneaDev/Nekyia/commit/ee8d9b5d681d9e4a2c85eafa602c173352a6b00d))
+
+
+### Fixes
+
+* index what was asked, not what the harness wrote around it ([60f16cf](https://github.com/AraneaDev/Nekyia/commit/60f16cf68bdff55398a4f90d6819bc062b15731c))
+* keep the picker inside the terminal it is drawn in ([217803d](https://github.com/AraneaDev/Nekyia/commit/217803d1933ea28962c55ca2a4e52f0c5a5cbd9f))
+* lay the picker out against the terminal width too ([32a6e12](https://github.com/AraneaDev/Nekyia/commit/32a6e12d2011d2b3f7a860f6496df4a4ee9a4815))
+* put the preview under the list, as the design has it ([b5987ed](https://github.com/AraneaDev/Nekyia/commit/b5987ed78730d7f702c44cea77954689aa924bf2))
+
+
+### Documentation
+
+* capture every interface state, from the running picker ([e5aefe8](https://github.com/AraneaDev/Nekyia/commit/e5aefe84c0d29c03727fd46de6a74dee8458485a))
+* show the picker at the top of the README ([a96022e](https://github.com/AraneaDev/Nekyia/commit/a96022ebe74d1534a8f707a9c1f461fef984d115))
+
 ## [0.0.4](https://github.com/AraneaDev/Nekyia/compare/v0.0.3...v0.0.4) (2026-08-24)
 
 
