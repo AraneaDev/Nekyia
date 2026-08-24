@@ -8,4 +8,6 @@ coverage/
 .DS_Store
 test/fixtures/**/*.db
 .momus/
-.chaos-mcp/
+# Suppressions record WHY a mutant is unkillable and belong in review, so only
+# the derived replay state is ignored.
+.chaos-mcp/v3-replay.json
