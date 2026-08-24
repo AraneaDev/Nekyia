@@ -545,3 +545,62 @@ test('a store escaping the manifest root is still refused, and says so', async (
   expect(diagnostics[0]!.level).toBe('warn')
   expect(diagnostics[0]!.message).toContain('outside the manifest root')
 })
+
+test('copilot hydrate reports the files the session touched', async () => {
+  const { refs } = await sqliteStore.discover(copilot, join(FIX, 'copilot'))
+  const ref = refs.find((candidate) => candidate.nativeId === 'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca')!
+  const doc = await sqliteStore.hydrate(copilot, join(FIX, 'copilot'), ref, DEFAULT_CONFIG)
+
+  // Without this the session can never match `search --file`, because a plain
+  // text shape carries no tool inputs to recover paths from.
+  expect(doc.files).toEqual(['/root/proj/src/listener.ts', '/root/proj/src/teardown.ts'])
+})
+
+test('a files query is bounded, and says so when it runs over', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-many-files-'))
+  tempDirs.push(root)
+  const db = new Database(join(root, 'store.db'), { create: true })
+  db.exec('CREATE TABLE f(session_id TEXT, path TEXT)')
+  const insert = db.prepare('INSERT INTO f VALUES (?1, ?2)')
+  db.exec('BEGIN')
+  for (let i = 0; i < 1100; i++) insert.run('one', `/root/proj/file-${i}.ts`)
+  db.exec('COMMIT')
+  db.close()
+
+  const manifest = validateManifest({
+    schema: 1, id: 'many', name: 'many', roots: [root],
+    format: 'sqlite-store', tier: 'search',
+    sqlite: {
+      file: 'store.db', sessions: "SELECT 'one' AS id",
+      files: 'SELECT path AS path FROM f WHERE session_id = ?1',
+    },
+  })
+  const { refs } = await sqliteStore.discover(manifest, root)
+  const doc = await sqliteStore.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
+
+  expect(doc.files).toHaveLength(1024)
+  expect(doc.truncated).toBe(true)
+})
+
+test('a manifest with only a files query still hydrates', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-files-only-'))
+  tempDirs.push(root)
+  const db = new Database(join(root, 'store.db'), { create: true })
+  db.exec('CREATE TABLE f(session_id TEXT, path TEXT)')
+  db.prepare('INSERT INTO f VALUES (?1, ?2)').run('one', '/root/proj/only.ts')
+  db.close()
+
+  const manifest = validateManifest({
+    schema: 1, id: 'files-only', name: 'files only', roots: [root],
+    format: 'sqlite-store', tier: 'search',
+    sqlite: {
+      file: 'store.db', sessions: "SELECT 'one' AS id",
+      files: 'SELECT path AS path FROM f WHERE session_id = ?1',
+    },
+  })
+  const { refs } = await sqliteStore.discover(manifest, root)
+  const doc = await sqliteStore.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
+
+  expect(doc.files).toEqual(['/root/proj/only.ts'])
+  expect(doc.prompts).toEqual([])
+})

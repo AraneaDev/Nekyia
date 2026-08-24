@@ -53,6 +53,15 @@ export interface SqliteSpec {
   sessions: string
   /** Optional SQL returning transcript rows; ?1 is the native session id. */
   text?: string
+  /**
+   * Optional SQL returning a `path` column of files the session touched; ?1 is
+   * the native session id.
+   *
+   * Clients that record this themselves are more precise than recovering paths
+   * from tool inputs, and it is the only source for a store whose transcript
+   * carries no tool calls at all.
+   */
+  files?: string
   textShape?: 'plain' | 'opencode-message-json' | 'opencode-part'
   cwdShape?: 'plain' | 'file-uri-array'
   timeUnit?: 'ms' | 's' | 'iso'
@@ -234,6 +243,7 @@ function validateSqlite(value: unknown): SqliteSpec {
   const file = expectString(sqlite.file, 'sqlite.file')
   const sessions = expectString(sqlite.sessions, 'sqlite.sessions')
   const text = expectOptionalString(sqlite.text, 'sqlite.text')
+  const files = expectOptionalString(sqlite.files, 'sqlite.files')
   let legacy: SqliteSpec['legacy']
   if (sqlite.legacy !== undefined) {
     const supplied = expectRecord(sqlite.legacy, 'sqlite.legacy')
@@ -266,6 +276,7 @@ function validateSqlite(value: unknown): SqliteSpec {
     file,
     sessions,
     ...(text === undefined ? {} : { text }),
+    ...(files === undefined ? {} : { files }),
     ...(sqlite.textShape === undefined ? {} : { textShape: sqlite.textShape }),
     ...(sqlite.cwdShape === undefined ? {} : { cwdShape: sqlite.cwdShape }),
     ...(sqlite.timeUnit === undefined ? {} : { timeUnit: sqlite.timeUnit }),

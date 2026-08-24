@@ -191,6 +191,14 @@ copilot.exec(`
     timestamp TEXT,
     UNIQUE(session_id, turn_index)
   );
+  CREATE TABLE session_files(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    file_path TEXT NOT NULL,
+    tool_name TEXT,
+    turn_index INTEGER,
+    UNIQUE(session_id, file_path)
+  );
 `)
 const insertCopilotSession = copilot.prepare(
   'INSERT INTO sessions VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)',
@@ -241,6 +249,17 @@ insertCopilotTurn.run(
   'Renamed it to loadSidecar.',
   '2026-08-24T18:14:21.400Z',
 )
+const insertCopilotFile = copilot.prepare(
+  'INSERT INTO session_files(session_id, file_path, tool_name, turn_index) VALUES (?1, ?2, ?3, ?4)',
+)
+insertCopilotFile.run(
+  'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca', '/root/proj/src/listener.ts', 'edit', 0,
+)
+insertCopilotFile.run(
+  'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca', '/root/proj/src/teardown.ts', 'create', 1,
+)
+// A blank path: the store is the client's, so it is not assumed to be clean.
+insertCopilotFile.run('c51a6cd4-ff7c-40af-ac6b-7ef82da474ca', '   ', 'edit', 1)
 copilot.close()
 
 console.log('fixtures written')

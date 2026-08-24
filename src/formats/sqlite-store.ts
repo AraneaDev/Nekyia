@@ -9,6 +9,8 @@ import { collectPaths } from './paths'
 
 type SqlRow = Record<string, unknown>
 const MAX_PROJECTED_JSON_BYTES = 4 * 1024 * 1024
+/** Per-session ceiling on recorded paths, so one runaway session cannot bloat the index. */
+const MAX_SESSION_FILES = 1024
 
 function sensibleString(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim().length === 0 || value.includes('\0')) return null
@@ -284,6 +286,30 @@ function projectedInput(value: unknown): unknown | null {
   }
 }
 
+/**
+ * Reads the paths a client recorded for one session, bounded and sanitised.
+ *
+ * The store belongs to the client, so blank and unusable values are dropped
+ * rather than trusted, and passing the ceiling marks the document truncated
+ * instead of silently keeping a partial list.
+ */
+function collectRecordedFiles(
+  db: Database,
+  sql: string,
+  nativeId: string,
+  into: Set<string>,
+  onTruncated: () => void,
+): void {
+  for (const row of db.query(innerQuery(sql)).iterate(nativeId) as Iterable<SqlRow>) {
+    if (into.size >= MAX_SESSION_FILES) {
+      onTruncated()
+      return
+    }
+    const path = sensibleString(row.path)
+    if (path !== null) into.add(path)
+  }
+}
+
 /** Reads SQLite-backed stores, projecting them onto Nekyia's model through the manifest's own SQL. */
 export const sqliteStore: FormatModule = {
   async discover(manifest, root) {
@@ -372,7 +398,7 @@ export const sqliteStore: FormatModule = {
 
   async hydrate(manifest, root, ref, config: Config) {
     const spec = manifest.sqlite!
-    if (!spec.text) return emptyDoc(ref)
+    if (!spec.text && !spec.files) return emptyDoc(ref)
     const located = locateDatabase(root, spec.file)
     if (located.kind !== 'ok') return emptyDoc(ref)
     const dbPath = located.path
@@ -388,6 +414,8 @@ export const sqliteStore: FormatModule = {
     const db = new Database(dbPath, { readonly: true })
 
     try {
+      if (spec.files) collectRecordedFiles(db, spec.files, ref.nativeId, files, () => { truncated = true })
+      if (!spec.text) return { ref, prompts, prose, files: [...files], truncated }
       const isStructured = spec.textShape === 'opencode-part'
         || spec.textShape === 'opencode-message-json'
       const query = isStructured
