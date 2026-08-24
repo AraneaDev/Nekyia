@@ -7,6 +7,7 @@ import type { Manifest } from '../manifests/load'
 import { makeUid } from '../types'
 import type { Diagnostic, SessionDoc, SessionRef } from '../types'
 import { collectPaths } from './paths'
+import { userPromptText } from '../render'
 
 const HEAD_BYTES = 16 * 1024
 const MAX_ROW_CHARS = 4 * 1024 * 1024
@@ -215,7 +216,7 @@ function discoverClaude(
     if (title === null && row.toolUseResult === undefined) {
       const message = isObject(row.message) ? row.message : undefined
       if (message?.role === 'user') {
-        const text = textOf(message.content)
+        const text = userPromptText(textOf(message.content))
         if (text) title = firstLine(text)
       }
     }
@@ -614,8 +615,9 @@ function hydrateClaude(
   }
   const text = textOf(message.content)
   if (message.role === 'user') {
-    if (!text) return 0
-    prompts.push(text)
+    const asked = userPromptText(text)
+    if (!asked) return 0
+    prompts.push(asked)
   } else {
     if (!text) return 0
     if (!overCap) prose.push(text)
@@ -646,7 +648,7 @@ function hydrateCodex(
   }
   if (payload.type !== 'message') return 0
   if (payload.role === 'user') {
-    const text = codexInputText(payload.content)
+    const text = userPromptText(codexInputText(payload.content))
     if (!text) return 0
     prompts.push(text)
     return 1
@@ -673,7 +675,11 @@ function hydrateGeneric(
   const role = get(row, rolePath)
   const text = textOf(get(row, textPath))
   if (typeof role !== 'string' || !text) return 0
-  if (userRoles.has(role)) prompts.push(text)
+  if (userRoles.has(role)) {
+    const asked = userPromptText(text)
+    if (!asked) return 0
+    prompts.push(asked)
+  }
   else if (assistantRoles.has(role)) {
     if (!overCap) prose.push(text)
   } else return 0

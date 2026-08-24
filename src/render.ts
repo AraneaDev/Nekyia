@@ -37,3 +37,36 @@ export function formatRow(row: Row, now: number = Date.now()): string {
     (row.title ?? '(no title)') + suffix,
   ].join('  ')
 }
+
+/** Blocks the harness writes into the transcript as if the user had typed them. */
+const HARNESS_BLOCKS = [
+  /<local-command-caveat>[\s\S]*?<\/local-command-caveat>/gu,
+  /<local-command-stdout>[\s\S]*?<\/local-command-stdout>/gu,
+  /<system-reminder>[\s\S]*?<\/system-reminder>/gu,
+  /<command-message>[\s\S]*?<\/command-message>/gu,
+]
+const COMMAND_NAME = /<command-name>([\s\S]*?)<\/command-name>/u
+const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/u
+/** A skill's body is injected whole; it is instructions, not a request. */
+const INJECTED_SKILL = /^Base directory for this skill:/u
+
+/**
+ * Reduces one transcript message to what the user actually asked.
+ *
+ * Slash commands arrive wrapped in tags and keep their intent in the arguments,
+ * so they come back as the command and what was passed to it. Caveats, command
+ * output and injected skill bodies are written by the harness rather than typed,
+ * so they come back empty and the caller skips them.
+ */
+export function userPromptText(text: string): string {
+  if (typeof text !== 'string') return ''
+  const name = COMMAND_NAME.exec(text)?.[1]?.trim()
+  if (name) {
+    const args = COMMAND_ARGS.exec(text)?.[1]?.trim()
+    return args ? `${name} ${args}` : name
+  }
+  let rest = text
+  for (const block of HARNESS_BLOCKS) rest = rest.replace(block, ' ')
+  rest = rest.trim()
+  return INJECTED_SKILL.test(rest) ? '' : rest
+}

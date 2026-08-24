@@ -1,6 +1,7 @@
 import { closeSync, openSync, readSync, realpathSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { SidecarSpec } from '../manifests/load'
+import { userPromptText } from '../render'
 
 const READ_CHUNK_BYTES = 64 * 1024
 // Sidecars are prompt logs, so a multi-megabyte row is corrupt or unsafe to index.
@@ -156,7 +157,10 @@ export function readSidecar(root: string, spec: SidecarSpec): Map<string, Sideca
       lastTs: ts ?? 0,
       cwd: null,
     }
-    entry.prompts.push(text.trim())
+    // A harness wrapper is not a request, but it still happened, so its
+    // timestamp and directory keep counting towards the session's bounds.
+    const asked = userPromptText(text)
+    if (asked) entry.prompts.push(asked)
     if (ts !== null) {
       entry.firstTs = Math.min(entry.firstTs, ts)
       entry.lastTs = Math.max(entry.lastTs, ts)
