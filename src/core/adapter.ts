@@ -13,10 +13,17 @@ export interface Adapter {
   id: string
   manifest: Manifest
   detect(): boolean
-  discover(): Promise<{ refs: SessionRef[]; diagnostics: Diagnostic[] }>
+  discover(): Promise<AdapterDiscovery>
   hydrate(ref: SessionRef, cfg: Config): Promise<SessionDoc>
   /** Returns null when no plan is possible, for example a session with no cwd. */
   plan(ref: SessionRef, promptText?: string): ExecPlan | null
+}
+
+export interface AdapterDiscovery {
+  refs: SessionRef[]
+  diagnostics: Diagnostic[]
+  /** False when discovery could not establish a complete view of this client's sessions. */
+  authoritative: boolean
 }
 
 function errorMessage(error: unknown): string {
@@ -113,11 +120,13 @@ export function buildAdapter(manifest: Manifest): Adapter {
     async discover() {
       const diagnostics: Diagnostic[] = []
       const selected = new Map<string, { ref: SessionRef; primary: boolean }>()
+      let authoritative = true
 
       for (const root of roots) {
         try {
           if (!existsSync(root)) continue
         } catch (error) {
+          authoritative = false
           diagnostics.push({
             client: clientId, level: 'error', path: root,
             message: `detect failed: ${errorMessage(error)}`,
@@ -129,8 +138,10 @@ export function buildAdapter(manifest: Manifest): Adapter {
         try {
           const result = await format.discover(manifest, root)
           diagnostics.push(...result.diagnostics)
+          if (result.diagnostics.some((item) => item.level !== 'ok')) authoritative = false
           local = result.refs.map((ref) => ({ ref: cloneRef(ref), primary: true }))
         } catch (error) {
+          authoritative = false
           diagnostics.push({
             client: clientId, level: 'error', path: root,
             message: `discover failed: ${errorMessage(error)}`,
@@ -141,6 +152,7 @@ export function buildAdapter(manifest: Manifest): Adapter {
         try {
           hasLegacy = !!manifest.sqlite?.legacy
         } catch (error) {
+          authoritative = false
           diagnostics.push({
             client: clientId, level: 'error', path: root,
             message: `legacy configuration failed: ${errorMessage(error)}`,
@@ -150,8 +162,10 @@ export function buildAdapter(manifest: Manifest): Adapter {
           try {
             const legacy = await discoverLegacy(manifest, root)
             diagnostics.push(...legacy.diagnostics)
+            if (legacy.diagnostics.some((item) => item.level !== 'ok')) authoritative = false
             local.push(...legacy.refs.map((ref) => ({ ref: cloneRef(ref), primary: false })))
           } catch (error) {
+            authoritative = false
             diagnostics.push({
               client: clientId, level: 'error', path: root,
               message: `legacy discover failed: ${errorMessage(error)}`,
@@ -168,6 +182,7 @@ export function buildAdapter(manifest: Manifest): Adapter {
             if (entry && path) includeSidecarEntry(item.ref, path, entry)
           }
         } catch (error) {
+          authoritative = false
           diagnostics.push({
             client: clientId, level: 'error', path: root,
             message: `sidecar failed: ${errorMessage(error)}`,
@@ -180,7 +195,7 @@ export function buildAdapter(manifest: Manifest): Adapter {
         }
       }
 
-      return { refs: [...selected.values()].map((item) => item.ref), diagnostics }
+      return { refs: [...selected.values()].map((item) => item.ref), diagnostics, authoritative }
     },
 
     async hydrate(ref, cfg) {

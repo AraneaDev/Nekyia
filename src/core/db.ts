@@ -1,5 +1,5 @@
 import Database from 'bun:sqlite'
-import { mkdirSync } from 'node:fs'
+import { lstatSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { SessionDoc, SessionRef } from '../types'
 
@@ -62,10 +62,34 @@ export function rowToRef(row: SessionRow): StoredRef {
 export class IndexDb {
   private constructor(private readonly db: Database) {}
 
-  static open(path: string): IndexDb {
-    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
+  private static validatePath(path: string, create: boolean): void {
+    if (path === ':memory:') return
+    const parent = dirname(path)
+    if (create) mkdirSync(parent, { recursive: true })
+    // This closes the ordinary final-component symlink case. A hostile actor
+    // with write access to the parent can still swap it after lstat and before
+    // SQLite opens the path; fully eliminating that TOCTOU needs fd-relative
+    // database opening, which bun:sqlite does not expose.
+    const parentInfo = lstatSync(parent)
+    if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink()) {
+      throw new Error('database parent is not a safe directory')
+    }
+    try {
+      const info = lstatSync(path)
+      if (!info.isFile() || info.isSymbolicLink()) {
+        throw new Error('database path is not a regular file')
+      }
+    } catch (error) {
+      const missing = typeof error === 'object' && error !== null
+        && 'code' in error && error.code === 'ENOENT'
+      if (!missing || !create) throw error
+    }
+  }
 
-    const db = new Database(path, { create: true })
+  static open(path: string, create = true): IndexDb {
+    IndexDb.validatePath(path, create)
+
+    const db = new Database(path, { readwrite: true, create })
     try {
       db.exec('PRAGMA journal_mode=WAL')
       db.exec('PRAGMA synchronous=NORMAL')
@@ -73,6 +97,90 @@ export class IndexDb {
       const index = new IndexDb(db)
       index.migrate()
       return index
+    } catch (error) {
+      db.close()
+      throw error
+    }
+  }
+
+  private static validateExistingSchema(db: Database): void {
+    const stored = db.query("SELECT value FROM meta WHERE key = 'schema_version'")
+      .get() as { value: string | null } | null
+    if (!stored || stored.value !== String(SCHEMA_VERSION)) {
+      throw new Error(`unsupported schema version: ${String(stored?.value ?? 'missing')}`)
+    }
+
+    const expected: Record<string, string[]> = {
+      meta: ['key', 'value'],
+      session: [
+        'uid', 'client', 'native_id', 'cwd', 'git_branch', 'title', 'started_at', 'ended_at',
+        'turns', 'parent_native_id', 'tier', 'origin', 'source_paths', 'fingerprint', 'missing',
+        'truncated', 'hydrated',
+      ],
+      session_text: ['rowid', 'uid', 'title', 'prompts', 'prose'],
+      session_fts: ['title', 'prompts', 'prose'],
+      session_file: ['uid', 'path'],
+    }
+    for (const [table, columns] of Object.entries(expected)) {
+      const object = db.query(
+        "SELECT type FROM sqlite_master WHERE name = ? AND type = 'table'",
+      ).get(table) as { type: string } | null
+      if (!object) throw new Error(`index schema table is missing: ${table}`)
+      // Table names are internal constants, never caller input.
+      const found = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+      if (found.map((row) => row.name).join('\0') !== columns.join('\0')) {
+        throw new Error(`index schema columns do not match: ${table}`)
+      }
+    }
+    const fts = db.query("SELECT sql FROM sqlite_master WHERE name = 'session_fts'")
+      .get() as { sql: string | null } | null
+    const ftsSql = fts?.sql?.replace(/\s+/g, ' ').toLowerCase() ?? ''
+    if (!ftsSql.startsWith('create virtual table session_fts using fts5(')
+      || !ftsSql.includes("content='session_text'")
+      || !ftsSql.includes("content_rowid='rowid'")) {
+      throw new Error('index search schema does not match')
+    }
+  }
+
+  /** Opens a validated existing Nekyia index for mutation without migration or PRAGMA writes. */
+  static openExistingWritable(path: string): IndexDb {
+    if (path === ':memory:') throw new Error('existing in-memory index is unsupported')
+    IndexDb.validatePath(path, false)
+    // A read-only preflight ensures foreign/newer files are never opened by a
+    // writable SQLite connection at all.
+    const inspection = new Database(path, { readonly: true, strict: true })
+    try {
+      IndexDb.validateExistingSchema(inspection)
+    } finally {
+      inspection.close()
+    }
+    IndexDb.validatePath(path, false)
+    const db = new Database(path, { readwrite: true, create: false, strict: true })
+    try {
+      IndexDb.validateExistingSchema(db)
+      return new IndexDb(db)
+    } catch (error) {
+      db.close()
+      throw error
+    }
+  }
+
+  /** Opens an existing index without creating, migrating, journalling, or writing it. */
+  static openReadonly(path: string): IndexDb {
+    if (path === ':memory:') throw new Error('readonly in-memory index is unsupported')
+    IndexDb.validatePath(path, false)
+    const db = new Database(path, { readonly: true, strict: true })
+    try {
+      const hasMeta = db.query(`
+        SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'meta'
+      `).get() !== null
+      if (!hasMeta) throw new Error('index schema metadata is missing')
+      const stored = db.query("SELECT value FROM meta WHERE key = 'schema_version'")
+        .get() as { value: string | null } | null
+      if (!stored || stored.value !== String(SCHEMA_VERSION)) {
+        throw new Error(`unsupported schema version: ${String(stored?.value ?? 'missing')}`)
+      }
+      return new IndexDb(db)
     } catch (error) {
       db.close()
       throw error
@@ -152,7 +260,7 @@ export class IndexDb {
     })()
   }
 
-  upsertRef(ref: SessionRef): void {
+  private writeRef(ref: SessionRef): void {
     this.db.query(`
       INSERT INTO session (
         uid, client, native_id, cwd, git_branch, title, started_at, ended_at,
@@ -189,37 +297,53 @@ export class IndexDb {
     )
   }
 
+  upsertRef(ref: SessionRef): void {
+    this.writeRef(ref)
+  }
+
+  private writeDoc(doc: SessionDoc): void {
+    const old = this.db.query(
+      'SELECT rowid, title, prompts, prose FROM session_text WHERE uid = ?',
+    ).get(doc.ref.uid) as TextRow | null
+
+    if (old) {
+      this.db.query(`
+        INSERT INTO session_fts(session_fts, rowid, title, prompts, prose)
+        VALUES ('delete', ?, ?, ?, ?)
+      `).run(old.rowid, old.title, old.prompts, old.prose)
+      this.db.query('DELETE FROM session_text WHERE uid = ?').run(doc.ref.uid)
+    }
+
+    const title = doc.ref.title ?? ''
+    const prompts = doc.prompts.join('\n')
+    const prose = doc.prose.join('\n')
+    const inserted = this.db.query(
+      'INSERT INTO session_text (uid, title, prompts, prose) VALUES (?, ?, ?, ?)',
+    ).run(doc.ref.uid, title, prompts, prose)
+
+    this.db.query(`
+      INSERT INTO session_fts(rowid, title, prompts, prose) VALUES (?, ?, ?, ?)
+    `).run(inserted.lastInsertRowid, title, prompts, prose)
+
+    this.db.query('DELETE FROM session_file WHERE uid = ?').run(doc.ref.uid)
+    const insertFile = this.db.query('INSERT INTO session_file (uid, path) VALUES (?, ?)')
+    for (const path of new Set(doc.files)) insertFile.run(doc.ref.uid, path)
+
+    this.db.query('UPDATE session SET hydrated = 1, truncated = ? WHERE uid = ?')
+      .run(doc.truncated ? 1 : 0, doc.ref.uid)
+  }
+
   upsertDoc(doc: SessionDoc): void {
     this.db.transaction((value: SessionDoc) => {
-      const old = this.db.query(
-        'SELECT rowid, title, prompts, prose FROM session_text WHERE uid = ?',
-      ).get(value.ref.uid) as TextRow | null
+      this.writeDoc(value)
+    })(doc)
+  }
 
-      if (old) {
-        this.db.query(`
-          INSERT INTO session_fts(session_fts, rowid, title, prompts, prose)
-          VALUES ('delete', ?, ?, ?, ?)
-        `).run(old.rowid, old.title, old.prompts, old.prose)
-        this.db.query('DELETE FROM session_text WHERE uid = ?').run(value.ref.uid)
-      }
-
-      const title = value.ref.title ?? ''
-      const prompts = value.prompts.join('\n')
-      const prose = value.prose.join('\n')
-      const inserted = this.db.query(
-        'INSERT INTO session_text (uid, title, prompts, prose) VALUES (?, ?, ?, ?)',
-      ).run(value.ref.uid, title, prompts, prose)
-
-      this.db.query(`
-        INSERT INTO session_fts(rowid, title, prompts, prose) VALUES (?, ?, ?, ?)
-      `).run(inserted.lastInsertRowid, title, prompts, prose)
-
-      this.db.query('DELETE FROM session_file WHERE uid = ?').run(value.ref.uid)
-      const insertFile = this.db.query('INSERT INTO session_file (uid, path) VALUES (?, ?)')
-      for (const path of new Set(value.files)) insertFile.run(value.ref.uid, path)
-
-      this.db.query('UPDATE session SET hydrated = 1, truncated = ? WHERE uid = ?')
-        .run(value.truncated ? 1 : 0, value.ref.uid)
+  /** Persists discovery metadata and hydrated facets as one retry-safe transaction. */
+  upsertHydrated(doc: SessionDoc): void {
+    this.db.transaction((value: SessionDoc) => {
+      this.writeRef(value.ref)
+      this.writeDoc(value)
     })(doc)
   }
 
@@ -267,20 +391,33 @@ export class IndexDb {
   }
 
   deleteSession(uid: string): void {
-    this.db.transaction((value: string) => {
-      const old = this.db.query(
+    this.deleteSessions([uid])
+  }
+
+  /** Deletes all indexed facets for a set of sessions in one transaction. */
+  deleteSessions(uids: string[]): void {
+    this.db.transaction((values: string[]) => {
+      const readText = this.db.query(
         'SELECT rowid, title, prompts, prose FROM session_text WHERE uid = ?',
-      ).get(value) as TextRow | null
-      if (old) {
-        this.db.query(`
-          INSERT INTO session_fts(session_fts, rowid, title, prompts, prose)
-          VALUES ('delete', ?, ?, ?, ?)
-        `).run(old.rowid, old.title, old.prompts, old.prose)
-        this.db.query('DELETE FROM session_text WHERE uid = ?').run(value)
+      )
+      const deleteFts = this.db.query(`
+        INSERT INTO session_fts(session_fts, rowid, title, prompts, prose)
+        VALUES ('delete', ?, ?, ?, ?)
+      `)
+      const deleteText = this.db.query('DELETE FROM session_text WHERE uid = ?')
+      const deleteFile = this.db.query('DELETE FROM session_file WHERE uid = ?')
+      const deleteRef = this.db.query('DELETE FROM session WHERE uid = ?')
+
+      for (const value of new Set(values)) {
+        const old = readText.get(value) as TextRow | null
+        if (old) {
+          deleteFts.run(old.rowid, old.title, old.prompts, old.prose)
+          deleteText.run(value)
+        }
+        deleteFile.run(value)
+        deleteRef.run(value)
       }
-      this.db.query('DELETE FROM session_file WHERE uid = ?').run(value)
-      this.db.query('DELETE FROM session WHERE uid = ?').run(value)
-    })(uid)
+    })(uids)
   }
 
   markMissing(uids: string[]): void {

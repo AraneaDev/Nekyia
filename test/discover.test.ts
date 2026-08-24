@@ -43,9 +43,14 @@ function fakeAdapter(
     detected?: boolean
     refs?: SessionRef[]
     diagnostics?: Diagnostic[]
+    authoritative?: boolean
     detectError?: unknown
     discoverError?: unknown
-    discover?: () => Promise<{ refs: SessionRef[]; diagnostics: Diagnostic[] }>
+    discover?: () => Promise<{
+      refs: SessionRef[]
+      diagnostics: Diagnostic[]
+      authoritative?: boolean
+    }>
   } = {},
 ): Adapter {
   return {
@@ -56,9 +61,16 @@ function fakeAdapter(
       return options.detected ?? true
     },
     async discover() {
-      if (options.discover) return options.discover()
+      if (options.discover) {
+        const result = await options.discover()
+        return { ...result, authoritative: result.authoritative ?? true }
+      }
       if (options.discoverError !== undefined) throw options.discoverError
-      return { refs: options.refs ?? [], diagnostics: options.diagnostics ?? [] }
+      return {
+        refs: options.refs ?? [],
+        diagnostics: options.diagnostics ?? [],
+        authoritative: options.authoritative ?? true,
+      }
     },
     async hydrate() { throw new Error('not used') },
     plan() { return null },
@@ -149,12 +161,36 @@ test('transient adapter failures protect their unseen sessions from missing', as
   const result = await scan(db, DEFAULT_CONFIG, [
     fakeAdapter('detect-broken', { detectError: new Error('detect boom') }),
     fakeAdapter('discover-broken', { discoverError: new Error('discover boom') }),
-    fakeAdapter('diagnostic-broken', { diagnostics: [{
-      client: 'diagnostic-broken', level: 'error', path: '/store', message: 'partial failure',
-    }] }),
+    fakeAdapter('diagnostic-broken', {
+      authoritative: false,
+      diagnostics: [{
+        client: 'diagnostic-broken', level: 'warn', path: '/store', message: 'partial failure',
+      }],
+    }),
   ])
 
   expect(result.missing).toEqual(['removed-manifest:gone'])
+  db.close()
+})
+
+test('excluded discovered refs become missing even when their client scan is partial', async () => {
+  const db = IndexDb.open(':memory:')
+  const excluded = ref('partial', 'excluded', { cwd: '/root/secret' })
+  db.upsertRef(excluded)
+  db.upsertRef(ref('partial', 'unseen'))
+
+  const result = await scan(db, { ...DEFAULT_CONFIG, exclude: ['/root/secret'] }, [
+    fakeAdapter('partial', {
+      refs: [excluded],
+      authoritative: false,
+      diagnostics: [{
+        client: 'partial', level: 'warn', path: '/partial/broken', message: 'one file failed',
+      }],
+    }),
+  ])
+
+  expect(result.refs).toEqual([])
+  expect(result.missing).toEqual(['partial:excluded'])
   db.close()
 })
 

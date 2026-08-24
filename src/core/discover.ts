@@ -1,6 +1,6 @@
 import { type Config, isExcluded } from '../config'
 import type { Diagnostic, SessionRef } from '../types'
-import type { Adapter } from './adapter'
+import type { Adapter, AdapterDiscovery } from './adapter'
 import type { IndexDb } from './db'
 
 export interface Scan {
@@ -10,10 +10,8 @@ export interface Scan {
   diagnostics: Diagnostic[]
 }
 
-interface Discovered {
+interface Discovered extends AdapterDiscovery {
   client: string
-  refs: SessionRef[]
-  diagnostics: Diagnostic[]
 }
 
 function errorMessage(error: unknown): string {
@@ -57,6 +55,7 @@ export async function scan(db: IndexDb, cfg: Config, adapters: Adapter[]): Promi
       return {
         client: adapter.id,
         refs: [],
+        authoritative: false,
         diagnostics: [{
           client: adapter.id,
           level: 'error',
@@ -68,13 +67,15 @@ export async function scan(db: IndexDb, cfg: Config, adapters: Adapter[]): Promi
   }))
 
   const refsByUid = new Map<string, SessionRef>()
+  const excludedUids = new Set<string>()
   for (const result of results) {
     diagnostics.push(...result.diagnostics)
-    if (result.diagnostics.some((diagnostic) => diagnostic.level === 'error')) {
-      protectedClients.add(result.client)
-    }
+    if (!result.authoritative) protectedClients.add(result.client)
     for (const ref of result.refs) {
-      if (isExcluded(ref.cwd, cfg)) continue
+      if (isExcluded(ref.cwd, cfg)) {
+        excludedUids.add(ref.uid)
+        continue
+      }
       const kept = refsByUid.get(ref.uid)
       if (kept) {
         const keptSource = kept.sourcePaths.join(', ') || 'no source path'
@@ -99,7 +100,8 @@ export async function scan(db: IndexDb, cfg: Config, adapters: Adapter[]): Promi
     .filter((uid) => {
       const separator = uid.indexOf(':')
       const client = separator > 0 ? uid.slice(0, separator) : ''
-      return !refsByUid.has(uid) && !protectedClients.has(client)
+      return !refsByUid.has(uid)
+        && (excludedUids.has(uid) || !protectedClients.has(client))
     })
     .sort()
 

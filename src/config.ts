@@ -1,6 +1,23 @@
-import { join } from 'node:path'
+import { join, parse as parsePath, resolve } from 'node:path'
 import { homedir } from 'node:os'
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmdirSync,
+  unlinkSync,
+  writeSync,
+} from 'node:fs'
 import { Glob } from 'bun'
 
 export interface Config {
@@ -22,6 +39,49 @@ export const DEFAULT_CONFIG: Config = {
   maxFileBytes: 25 * 1024 * 1024,
   hiddenClients: [],
   showSniffed: true,
+}
+
+const MAX_CONFIG_BYTES = 1024 * 1024
+const MAX_CONFIG_ITEMS = 256
+const MAX_CONFIG_STRING = 4096
+const CONFIG_FIELDS = new Set([
+  'exclude', 'halfLifeDays', 'maxFileBytes', 'hiddenClients', 'showSniffed',
+])
+const LOCK_ATTEMPTS = 50
+const LOCK_WAIT_MS = 10
+const LOCK_STALE_MS = 30_000
+const LOCK_OWNER_FILE = 'owner'
+
+interface ConfigLock {
+  directory: string
+  ownerPath: string
+  token: string
+  dev: number
+  ino: number
+}
+
+function errorCode(error: unknown): unknown {
+  return typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+}
+
+function readBoundedConfig(path: string): string {
+  let fd: number | undefined
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    const stat = fstatSync(fd)
+    if (!stat.isFile() || stat.size > MAX_CONFIG_BYTES) throw new Error('config is not a bounded regular file')
+    const bytes = Buffer.alloc(stat.size)
+    let offset = 0
+    while (offset < bytes.length) {
+      const count = readSync(fd, bytes, offset, bytes.length - offset, offset)
+      if (count === 0) break
+      offset += count
+    }
+    if (offset !== bytes.length) throw new Error('config changed while reading')
+    return bytes.toString('utf8')
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
 }
 
 export function configDir(): string {
@@ -56,34 +116,371 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+  return Array.isArray(value)
+    && value.length <= MAX_CONFIG_ITEMS
+    && value.every((item) => typeof item === 'string' && item.length <= MAX_CONFIG_STRING)
 }
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+function parseConfig(raw: string, strict: boolean): Config {
+  const parsed: unknown = JSON.parse(raw)
+  const config = freshDefaults()
+  if (!isPlainObject(parsed)) {
+    if (strict) throw new Error('config must be a JSON object')
+    return config
+  }
+  if (strict && Object.keys(parsed).some((key) => !CONFIG_FIELDS.has(key))) {
+    throw new Error('config contains unknown fields')
+  }
+
+  const assign = <T>(
+    key: keyof Config,
+    valid: (value: unknown) => value is T,
+    copy: (value: T) => Config[typeof key],
+  ) => {
+    if (parsed[key] === undefined) return
+    if (!valid(parsed[key])) {
+      if (strict) throw new Error(`config field is invalid: ${key}`)
+      return
+    }
+    ;(config as unknown as Record<string, unknown>)[key] = copy(parsed[key])
+  }
+  assign('exclude', isStringArray, (value) => [...value])
+  assign('halfLifeDays', isFiniteNumber, (value) => value)
+  assign('maxFileBytes', isFiniteNumber, (value) => value)
+  assign('hiddenClients', isStringArray, (value) => [...value])
+  assign('showSniffed', (value): value is boolean => typeof value === 'boolean', (value) => value)
+  return config
+}
+
+function configBytes(config: Config): Buffer {
+  if (!isStringArray(config.exclude)
+    || !isFiniteNumber(config.halfLifeDays)
+    || !isFiniteNumber(config.maxFileBytes)
+    || !isStringArray(config.hiddenClients)
+    || typeof config.showSniffed !== 'boolean') {
+    throw new Error('config exceeds limits or contains invalid values')
+  }
+  const bytes = Buffer.from(`${JSON.stringify(config, null, 2)}\n`)
+  if (bytes.length > MAX_CONFIG_BYTES) throw new Error('config exceeds the size limit')
+  return bytes
+}
+
+function ensureSafeDirectory(directory: string): void {
+  const absolute = resolve(directory)
+  const parsed = parsePath(absolute)
+  let cursor = parsed.root
+  for (const segment of absolute.slice(parsed.root.length).split('/').filter(Boolean)) {
+    cursor = join(cursor, segment)
+    try {
+      const info = lstatSync(cursor)
+      if (!info.isDirectory() || info.isSymbolicLink()) {
+        throw new Error('config path contains an unsafe directory')
+      }
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') throw error
+      const previousUmask = process.umask(0o077)
+      try {
+        try { mkdirSync(cursor, { mode: 0o700 }) } catch (mkdirError) {
+          if (errorCode(mkdirError) !== 'EEXIST') throw mkdirError
+        }
+      } finally {
+        process.umask(previousUmask)
+      }
+      const created = lstatSync(cursor)
+      if (!created.isDirectory() || created.isSymbolicLink()) {
+        throw new Error('config path contains an unsafe directory')
+      }
+    }
+  }
+}
+
 export function loadConfig(): Config {
   try {
-    const raw = readFileSync(join(configDir(), 'config.json'), 'utf8')
-    const parsed: unknown = JSON.parse(raw)
-    const config = freshDefaults()
-    if (!isPlainObject(parsed)) return config
-
-    if (isStringArray(parsed.exclude)) config.exclude = [...parsed.exclude]
-    if (isFiniteNumber(parsed.halfLifeDays)) config.halfLifeDays = parsed.halfLifeDays
-    if (isFiniteNumber(parsed.maxFileBytes)) config.maxFileBytes = parsed.maxFileBytes
-    if (isStringArray(parsed.hiddenClients)) config.hiddenClients = [...parsed.hiddenClients]
-    if (typeof parsed.showSniffed === 'boolean') config.showSniffed = parsed.showSniffed
-    return config
+    const raw = readBoundedConfig(join(configDir(), 'config.json'))
+    return parseConfig(raw, false)
   } catch {
     return freshDefaults()
   }
 }
 
 export function saveConfig(config: Config): void {
-  mkdirSync(configDir(), { recursive: true })
-  writeFileSync(join(configDir(), 'config.json'), `${JSON.stringify(config, null, 2)}\n`)
+  // Validate and allocate the bounded payload before touching the filesystem.
+  const bytes = configBytes(config)
+  const directory = resolve(configDir())
+  ensureSafeDirectory(directory)
+  const directoryInfo = lstatSync(directory)
+  if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()
+    || realpathSync(directory) !== directory) {
+    throw new Error('config directory is not a safe directory')
+  }
+
+  const target = join(directory, 'config.json')
+  try {
+    const targetInfo = lstatSync(target)
+    if (!targetInfo.isFile() || targetInfo.isSymbolicLink()) {
+      throw new Error('config path is not a regular file')
+    }
+  } catch (error) {
+    const missing = errorCode(error) === 'ENOENT'
+    if (!missing) throw error
+  }
+
+  const temporary = join(directory, `.config.${process.pid}.${randomUUID()}.tmp`)
+  let descriptor: number | undefined
+  try {
+    descriptor = openSync(
+      temporary,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    )
+    fchmodSync(descriptor, 0o600)
+    let offset = 0
+    while (offset < bytes.length) {
+      const written = writeSync(descriptor, bytes, offset, bytes.length - offset)
+      if (written <= 0) throw new Error('config write made no progress')
+      offset += written
+    }
+    fsyncSync(descriptor)
+    closeSync(descriptor)
+    descriptor = undefined
+    renameSync(temporary, target)
+    const parentDescriptor = openSync(
+      directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+    )
+    try { fsyncSync(parentDescriptor) } finally { closeSync(parentDescriptor) }
+  } catch (error) {
+    if (descriptor !== undefined) {
+      try { closeSync(descriptor) } catch {}
+    }
+    try { unlinkSync(temporary) } catch {}
+    throw error
+  }
+}
+
+function loadConfigForUpdate(): Config {
+  try {
+    return parseConfig(readBoundedConfig(join(configDir(), 'config.json')), true)
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return freshDefaults()
+    throw error
+  }
+}
+
+async function acquireRecoveryGuard(directory: string): Promise<string> {
+  const guard = join(directory, '.config.lock.recovery')
+  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
+    try {
+      mkdirSync(guard, { mode: 0o700 })
+      return guard
+    } catch (error) {
+      if (errorCode(error) !== 'EEXIST') throw error
+      if (attempt + 1 < LOCK_ATTEMPTS) await Bun.sleep(LOCK_WAIT_MS)
+    }
+  }
+  // Recovery guards are intentionally never broken: a crashed guard causes a
+  // bounded failure instead of risking deletion of a live owner's lock.
+  throw new Error('config recovery is busy')
+}
+
+function releaseRecoveryGuard(guard: string): void {
+  rmdirSync(guard)
+}
+
+function readLockOwner(path: string): { token: string; pid: number; mtimeMs: number } {
+  let fd: number | undefined
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    const info = fstatSync(fd)
+    if (!info.isFile() || info.size < 1 || info.size > 1_024) {
+      throw new Error('config lock owner is unsafe')
+    }
+    const bytes = Buffer.alloc(info.size)
+    let offset = 0
+    while (offset < bytes.length) {
+      const count = readSync(fd, bytes, offset, bytes.length - offset, offset)
+      if (count === 0) break
+      offset += count
+    }
+    if (offset !== bytes.length) throw new Error('config lock owner changed while reading')
+    const value: unknown = JSON.parse(bytes.toString('utf8'))
+    if (!isPlainObject(value)
+      || typeof value.token !== 'string'
+      || value.token.length !== 36
+      || typeof value.pid !== 'number'
+      || !Number.isSafeInteger(value.pid)
+      || value.pid < 1) {
+      throw new Error('config lock owner is invalid')
+    }
+    return { token: value.token, pid: value.pid, mtimeMs: info.mtimeMs }
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return errorCode(error) !== 'ESRCH'
+  }
+}
+
+function createConfigLock(path: string): ConfigLock {
+  mkdirSync(path, { mode: 0o700 })
+  const directoryInfo = lstatSync(path)
+  if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) {
+    throw new Error('config lock is unsafe')
+  }
+  const token = randomUUID()
+  const ownerPath = join(path, LOCK_OWNER_FILE)
+  let fd: number | undefined
+  try {
+    fd = openSync(
+      ownerPath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    )
+    fchmodSync(fd, 0o600)
+    const bytes = Buffer.from(JSON.stringify({ token, pid: process.pid }))
+    const written = writeSync(fd, bytes, 0, bytes.length)
+    if (written !== bytes.length) throw new Error('config lock write was incomplete')
+    fsyncSync(fd)
+    closeSync(fd)
+    fd = undefined
+    return {
+      directory: path,
+      ownerPath,
+      token,
+      dev: directoryInfo.dev,
+      ino: directoryInfo.ino,
+    }
+  } catch (error) {
+    if (fd !== undefined) try { closeSync(fd) } catch {}
+    try { unlinkSync(ownerPath) } catch {}
+    try { rmdirSync(path) } catch {}
+    throw error
+  }
+}
+
+function inspectConfigLock(path: string): {
+  dev: number
+  ino: number
+  stale: boolean
+} {
+  const directoryInfo = lstatSync(path)
+  if (!directoryInfo.isDirectory() || directoryInfo.isSymbolicLink()) {
+    throw new Error('config lock is unsafe')
+  }
+  const entries = readdirSync(path)
+  if (entries.length !== 1 || entries[0] !== LOCK_OWNER_FILE) {
+    // An incomplete crashed acquisition becomes recoverable only after the
+    // directory itself ages past the stale bound.
+    if (entries.length === 0) {
+      return {
+        dev: directoryInfo.dev,
+        ino: directoryInfo.ino,
+        stale: Date.now() - directoryInfo.mtimeMs > LOCK_STALE_MS,
+      }
+    }
+    throw new Error('config lock contains unexpected entries')
+  }
+  const owner = readLockOwner(join(path, LOCK_OWNER_FILE))
+  return {
+    dev: directoryInfo.dev,
+    ino: directoryInfo.ino,
+    stale: Date.now() - owner.mtimeMs > LOCK_STALE_MS && !processIsAlive(owner.pid),
+  }
+}
+
+function removeQuarantinedLock(path: string, dev: number, ino: number): void {
+  const info = lstatSync(path)
+  if (!info.isDirectory() || info.isSymbolicLink() || info.dev !== dev || info.ino !== ino) {
+    throw new Error('stale config lock ownership changed')
+  }
+  const entries = readdirSync(path)
+  if (entries.length === 1 && entries[0] === LOCK_OWNER_FILE) {
+    const ownerPath = join(path, LOCK_OWNER_FILE)
+    // readLockOwner verifies a bounded regular O_NOFOLLOW file before unlink.
+    readLockOwner(ownerPath)
+    unlinkSync(ownerPath)
+  } else if (entries.length !== 0) {
+    throw new Error('stale config lock contains unexpected entries')
+  }
+  rmdirSync(path)
+}
+
+async function acquireConfigLock(directory: string): Promise<ConfigLock> {
+  const path = join(directory, '.config.lock')
+  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
+    const guard = await acquireRecoveryGuard(directory)
+    let acquired: ConfigLock | null = null
+    let busy = false
+    try {
+      try {
+        const existing = inspectConfigLock(path)
+        if (!existing.stale) {
+          busy = true
+        } else {
+          const quarantine = join(directory, `.config.lock.stale.${randomUUID()}`)
+          renameSync(path, quarantine)
+          removeQuarantinedLock(quarantine, existing.dev, existing.ino)
+          acquired = createConfigLock(path)
+        }
+      } catch (error) {
+        if (errorCode(error) === 'ENOENT') acquired = createConfigLock(path)
+        else throw error
+      }
+    } finally {
+      releaseRecoveryGuard(guard)
+    }
+    if (acquired) return acquired
+    if (!busy) throw new Error('config lock acquisition failed')
+    if (attempt + 1 < LOCK_ATTEMPTS) await Bun.sleep(LOCK_WAIT_MS)
+  }
+  throw new Error('config is busy')
+}
+
+async function releaseConfigLock(lock: ConfigLock): Promise<void> {
+  const parent = resolve(join(lock.directory, '..'))
+  const guard = await acquireRecoveryGuard(parent)
+  try {
+    const directoryInfo = lstatSync(lock.directory)
+    if (!directoryInfo.isDirectory()
+      || directoryInfo.isSymbolicLink()
+      || directoryInfo.dev !== lock.dev
+      || directoryInfo.ino !== lock.ino) {
+      throw new Error('config lock ownership changed before release')
+    }
+    const owner = readLockOwner(lock.ownerPath)
+    if (owner.token !== lock.token) throw new Error('config lock token changed before release')
+    // Every cooperating acquisition/recovery/release holds the guard, so the
+    // verified directory cannot be replaced between verification and removal.
+    unlinkSync(lock.ownerPath)
+    rmdirSync(lock.directory)
+  } finally {
+    releaseRecoveryGuard(guard)
+  }
+}
+
+/** Serializes a strict, lossless config read-modify-write operation. */
+export async function updateConfig(
+  mutate: (current: Config) => Config | Promise<Config>,
+): Promise<Config> {
+  const directory = resolve(configDir())
+  ensureSafeDirectory(directory)
+  const lock = await acquireConfigLock(directory)
+  try {
+    const next = await mutate(loadConfigForUpdate())
+    saveConfig(next)
+    return next
+  } finally {
+    await releaseConfigLock(lock)
+  }
 }
 
 export function isExcluded(cwd: string | null, config: Config): boolean {

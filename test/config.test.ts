@@ -56,6 +56,12 @@ test('returns defaults and does not throw on malformed json', () => {
   expect(loadConfig()).toEqual(DEFAULT_CONFIG)
 })
 
+test('rejects an oversized config before parsing it', () => {
+  mkdirSync(configDir(), { recursive: true })
+  writeFileSync(join(configDir(), 'config.json'), `{"exclude":["${'x'.repeat(1024 * 1024)}"]}`)
+  expect(loadConfig()).toEqual(DEFAULT_CONFIG)
+})
+
 test('uses defaults for config fields with invalid types', () => {
   mkdirSync(configDir(), { recursive: true })
   writeFileSync(join(configDir(), 'config.json'), JSON.stringify({

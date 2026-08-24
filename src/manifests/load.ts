@@ -1,8 +1,8 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { closeSync, constants, fstatSync, openSync, opendirSync, readSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { userManifestDir } from '../config'
-import type { ClientId, Diagnostic, Tier } from '../types'
+import { isSafeClientId, type ClientId, type Diagnostic, type Tier } from '../types'
 
 export type FormatName = 'jsonl-transcript' | 'sqlite-store' | 'json-dir'
 
@@ -96,6 +96,17 @@ export type Manifest = JsonlManifest | SqliteManifest | JsonDirManifest
 export interface LoadedManifests {
   manifests: Manifest[]
   diagnostics: Diagnostic[]
+  /** Provenance of the winning manifest after user overrides are applied. */
+  sources: Map<ClientId, ManifestSource>
+}
+
+const MAX_MANIFEST_BYTES = 1024 * 1024
+const MAX_MANIFEST_FILES = 256
+const MAX_MANIFEST_DIRECTORY_ENTRIES = 1024
+
+export interface ManifestSource {
+  kind: 'built-in' | 'user'
+  path: string
 }
 
 const TIERS: readonly Tier[] = ['resume', 'search', 'detected']
@@ -264,8 +275,8 @@ export function validateManifest(value: unknown): Manifest {
   if (!isRecord(value) || value.schema !== 1) {
     throw new Error('unsupported manifest schema')
   }
-  if (typeof value.id !== 'string' || value.id.length === 0 || value.id.includes(':')) {
-    throw new Error('manifest id must be a non-empty string without colons')
+  if (!isSafeClientId(value.id)) {
+    throw new Error('manifest id must be bounded, control-safe, non-empty, and without colons')
   }
   if (typeof value.name !== 'string') throw new Error('manifest name must be a string')
   if (!Array.isArray(value.roots) || !value.roots.every((root) => typeof root === 'string')) {
@@ -313,26 +324,78 @@ export function validateManifest(value: unknown): Manifest {
   }
 }
 
-function manifestFiles(directory: string): string[] {
-  return readdirSync(directory)
-    .filter((name) => name.endsWith('.json'))
-    .sort()
-    .map((name) => join(directory, name))
+interface ManifestFiles {
+  files: string[]
+  manifestOverflow: boolean
+  entryOverflow: boolean
+}
+
+function manifestFiles(directory: string): ManifestFiles {
+  const names: string[] = []
+  let manifestOverflow = false
+  let entryOverflow = false
+  let entries = 0
+  const dir = opendirSync(directory)
+  try {
+    for (;;) {
+      const entry = dir.readSync()
+      if (!entry) break
+      if (entries >= MAX_MANIFEST_DIRECTORY_ENTRIES) {
+        entryOverflow = true
+        break
+      }
+      entries++
+      if (!entry.name.endsWith('.json')) continue
+      if (names.length >= MAX_MANIFEST_FILES) {
+        manifestOverflow = true
+        break
+      }
+      names.push(entry.name)
+    }
+  } finally {
+    dir.closeSync()
+  }
+  return {
+    files: names.sort().map((name) => join(directory, name)),
+    manifestOverflow,
+    entryOverflow,
+  }
 }
 
 function readManifest(path: string): Manifest {
-  return validateManifest(JSON.parse(readFileSync(path, 'utf8')) as unknown)
+  let fd: number | undefined
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    const stat = fstatSync(fd)
+    if (!stat.isFile() || stat.size > MAX_MANIFEST_BYTES) {
+      throw new Error(`manifest must be a regular file no larger than ${MAX_MANIFEST_BYTES} bytes`)
+    }
+    const bytes = Buffer.alloc(stat.size)
+    let offset = 0
+    while (offset < bytes.length) {
+      const count = readSync(fd, bytes, offset, bytes.length - offset, offset)
+      if (count === 0) break
+      offset += count
+    }
+    if (offset !== bytes.length) throw new Error('manifest changed while reading')
+    return validateManifest(JSON.parse(bytes.toString('utf8')) as unknown)
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
 }
 
 export function loadManifests(): LoadedManifests {
   const manifests = new Map<ClientId, Manifest>()
+  const sources = new Map<ClientId, ManifestSource>()
   const diagnostics: Diagnostic[] = []
   const builtinDir = join(import.meta.dir, 'builtin')
 
-  for (const path of manifestFiles(builtinDir)) {
+  const builtinFiles = manifestFiles(builtinDir)
+  for (const path of builtinFiles.files) {
     try {
       const manifest = readManifest(path)
       manifests.set(manifest.id, manifest)
+      sources.set(manifest.id, { kind: 'built-in', path })
     } catch (error) {
       diagnostics.push({
         client: basename(path, '.json'),
@@ -342,10 +405,29 @@ export function loadManifests(): LoadedManifests {
       })
     }
   }
+  if (builtinFiles.manifestOverflow) {
+    throw new Error(`built-in manifest limit ${MAX_MANIFEST_FILES} exceeded`)
+  }
+  if (builtinFiles.entryOverflow) {
+    throw new Error(`built-in manifest directory entry limit ${MAX_MANIFEST_DIRECTORY_ENTRIES} exceeded`)
+  }
 
   let userFiles: string[] = []
   try {
-    userFiles = manifestFiles(userManifestDir())
+    const listed = manifestFiles(userManifestDir())
+    userFiles = listed.files
+    if (listed.manifestOverflow) {
+      diagnostics.push({
+        client: 'manifest', level: 'error', path: userManifestDir(),
+        message: `user manifest limit ${MAX_MANIFEST_FILES} exceeded; at least one additional manifest omitted`,
+      })
+    }
+    if (listed.entryOverflow) {
+      diagnostics.push({
+        client: 'manifest', level: 'error', path: userManifestDir(),
+        message: `user manifest directory scan stopped after ${MAX_MANIFEST_DIRECTORY_ENTRIES} entries; additional entries were not inspected`,
+      })
+    }
   } catch (error) {
     const code = isRecord(error) ? error.code : undefined
     if (code !== 'ENOENT') {
@@ -362,6 +444,7 @@ export function loadManifests(): LoadedManifests {
     try {
       const manifest = readManifest(path)
       manifests.set(manifest.id, manifest)
+      sources.set(manifest.id, { kind: 'user', path })
       diagnostics.push({
         client: manifest.id,
         level: 'ok',
@@ -381,5 +464,6 @@ export function loadManifests(): LoadedManifests {
   return {
     manifests: [...manifests.values()].sort((a, b) => a.id.localeCompare(b.id)),
     diagnostics,
+    sources,
   }
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -140,6 +140,10 @@ test('validates every supplied sidecar', () => {
 test('rejects client ids that cannot round-trip through a uid', () => {
   expect(() => validateManifest({ ...minimalManifest, id: '' })).toThrow('manifest id')
   expect(() => validateManifest({ ...minimalManifest, id: 'foo:bar' })).toThrow('manifest id')
+  expect(() => validateManifest({ ...minimalManifest, id: 'x'.repeat(257) })).toThrow('manifest id')
+  expect(() => validateManifest({ ...minimalManifest, id: 'bad\nclient' })).toThrow('manifest id')
+  expect(() => validateManifest({ ...minimalManifest, id: 'bad\u202eclient' })).toThrow('manifest id')
+  expect(validateManifest({ ...minimalManifest, id: 'client space' }).id).toBe('client space')
 })
 
 test('expands a leading tilde in roots', () => {
@@ -175,4 +179,29 @@ test('loads all built-in manifests without errors', () => {
   ])
   expect(manifests.find((manifest) => manifest.id === 'opencode')?.name).toBe('opencode')
   expect(diagnostics.filter((diagnostic) => diagnostic.level === 'error')).toEqual([])
+})
+
+test('bounds user-manifest enumeration and reports honest overflow', () => {
+  const clients = join(process.env.XDG_CONFIG_HOME!, 'nekyia', 'clients')
+  mkdirSync(clients, { recursive: true })
+  for (let index = 0; index < 257; index++) {
+    const id = `user-${String(index).padStart(3, '0')}`
+    writeFileSync(join(clients, `${id}.json`), JSON.stringify({ ...minimalManifest, id }))
+  }
+  const loaded = loadManifests()
+  expect(loaded.diagnostics.some((item) => item.message.includes('at least one additional manifest omitted'))).toBe(true)
+  expect(loaded.manifests.length).toBeLessThanOrEqual(262)
+})
+
+test('bounds total directory entries even when none are manifests', () => {
+  const clients = join(process.env.XDG_CONFIG_HOME!, 'nekyia', 'clients')
+  mkdirSync(clients, { recursive: true })
+  for (let index = 0; index < 1025; index++) {
+    writeFileSync(join(clients, `noise-${String(index).padStart(4, '0')}.txt`), '')
+  }
+  const loaded = loadManifests()
+  expect(loaded.diagnostics.some((item) => (
+    item.message.includes('scan stopped after 1024 entries')
+    && item.message.includes('additional entries were not inspected')
+  ))).toBe(true)
 })

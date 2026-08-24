@@ -1,0 +1,241 @@
+import { expect, test } from 'bun:test'
+import { DEFAULT_CONFIG, type Config } from '../src/config'
+import { IndexDb } from '../src/core/db'
+import { query, recencyDecay } from '../src/core/query'
+import type { SessionDoc, SessionRef } from '../src/types'
+
+const DAY = 86_400_000
+const NOW = 1_800_000_000_000
+
+function seed(db: IndexDb, over: Partial<SessionRef>, text: Partial<SessionDoc> = {}): SessionRef {
+  const ref: SessionRef = {
+    uid: 'claude:a',
+    client: 'claude',
+    nativeId: 'a',
+    cwd: '/root/proj',
+    gitBranch: 'main',
+    title: 'untitled',
+    startedAt: NOW,
+    endedAt: NOW,
+    turns: 1,
+    parentNativeId: null,
+    tier: 'resume',
+    origin: 'manifest',
+    sourcePaths: ['/x'],
+    fingerprint: 'f',
+    ...over,
+  }
+  db.upsertRef(ref)
+  db.upsertDoc({ ref, prompts: [], prose: [], files: [], truncated: false, ...text })
+  return ref
+}
+
+test('recencyDecay halves at one half-life and safely handles bad boundaries', () => {
+  expect(recencyDecay(NOW - 14 * DAY, NOW, 14)).toBeCloseTo(0.5, 5)
+  expect(recencyDecay(NOW, NOW, 14)).toBeCloseTo(1, 5)
+  expect(recencyDecay(NOW + DAY, NOW, 14)).toBe(1)
+  expect(recencyDecay(0, NOW, 14)).toBe(1)
+  expect(recencyDecay(NOW, NOW, 0)).toBe(1)
+  expect(recencyDecay(NOW, NOW, Number.NaN)).toBe(1)
+  expect(recencyDecay(NOW, Number.POSITIVE_INFINITY, 14)).toBe(1)
+})
+
+test('with no query text, results are newest first with deterministic ties', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:old', nativeId: 'old', endedAt: NOW - 10 * DAY })
+  seed(db, { uid: 'claude:z', nativeId: 'z' })
+  seed(db, { uid: 'claude:a', nativeId: 'a' })
+  expect(query(db, DEFAULT_CONFIG, { now: NOW }).map((r) => r.uid))
+    .toEqual(['claude:a', 'claude:z', 'claude:old'])
+  db.close()
+})
+
+test('weighted relevance and recency decay produce the intended rankings', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:title', nativeId: 'title', title: 'needle' }, { prose: ['needle'] })
+  seed(db, { uid: 'claude:prose', nativeId: 'prose', title: 'unrelated' }, { prose: ['needle needle'] })
+  expect(query(db, DEFAULT_CONFIG, { text: 'needle', sort: 'relevance', now: NOW })[0]?.uid)
+    .toBe('claude:title')
+
+  seed(db, {
+    uid: 'claude:old', nativeId: 'old', endedAt: NOW - 365 * DAY, title: 'sse sse sse',
+  }, { prompts: ['sse sse sse sse'] })
+  seed(db, {
+    uid: 'claude:new', nativeId: 'new', endedAt: NOW, title: 'sse reconnect',
+  }, { prompts: ['fix the sse reconnect'] })
+  expect(query(db, DEFAULT_CONFIG, { text: 'sse', now: NOW })[0]?.uid).toBe('claude:new')
+  expect(query(db, DEFAULT_CONFIG, { text: 'sse', sort: 'relevance', now: NOW })[0]?.uid)
+    .toBe('claude:old')
+  db.close()
+})
+
+test('recent sort still requires a text match but ignores relevance', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:strong', nativeId: 'strong', endedAt: NOW - DAY, title: 'term term term' })
+  seed(db, { uid: 'claude:weak', nativeId: 'weak', endedAt: NOW, title: 'term' })
+  seed(db, { uid: 'claude:nope', nativeId: 'nope', endedAt: NOW + DAY, title: 'other' })
+  expect(query(db, DEFAULT_CONFIG, { text: 'term', sort: 'recent', now: NOW }).map((r) => r.uid))
+    .toEqual(['claude:weak', 'claude:strong'])
+  db.close()
+})
+
+test('FTS input is literal-safe for punctuation and empty punctuation never throws', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:punct', nativeId: 'punct', title: 'fix sse reconnect quoted' })
+  expect(query(db, DEFAULT_CONFIG, { text: 'sse: reconnect* "quoted"', now: NOW }).map((r) => r.uid))
+    .toEqual(['claude:punct'])
+  expect(() => query(db, DEFAULT_CONFIG, { text: '" OR : * - ( )', now: NOW })).not.toThrow()
+  expect(query(db, DEFAULT_CONFIG, { text: '" OR : * - ( )', now: NOW })).toEqual([])
+  db.close()
+})
+
+test('punctuation-only input is safe but operational FTS failures still propagate', () => {
+  const db = IndexDb.open(':memory:')
+  db.close()
+  expect(query(db, DEFAULT_CONFIG, { text: ': * - ( )', now: NOW })).toEqual([])
+  expect(() => query(db, DEFAULT_CONFIG, { text: 'needle', now: NOW })).toThrow()
+})
+
+test('cwd scope normalizes boundaries, trailing separators, dot segments, and Windows paths', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:exact', nativeId: 'exact', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:in', nativeId: 'in', cwd: '/root/proj/pkg/../sub' })
+  seed(db, { uid: 'claude:sibling', nativeId: 'sibling', cwd: '/root/project-other' })
+  seed(db, { uid: 'claude:win', nativeId: 'win', cwd: 'C:\\Work\\Repo\\sub' })
+  seed(db, { uid: 'claude:win-sibling', nativeId: 'win-sibling', cwd: 'C:\\Work\\Repository' })
+  expect(query(db, DEFAULT_CONFIG, { cwd: '/root/proj/', now: NOW }).map((r) => r.uid))
+    .toEqual(['claude:exact', 'claude:in'])
+  expect(query(db, DEFAULT_CONFIG, { cwd: 'c:/work/repo\\', now: NOW }).map((r) => r.uid))
+    .toEqual(['claude:win'])
+  db.close()
+})
+
+test('Windows drive roots are case-insensitive anchors that traversal cannot escape', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:work', nativeId: 'work', cwd: 'C:\\WORK\\Repo' })
+  seed(db, { uid: 'claude:rooted', nativeId: 'rooted', cwd: 'c:/../../Windows/System32' })
+  seed(db, { uid: 'claude:other-drive', nativeId: 'other-drive', cwd: 'D:\\Work' })
+  expect(query(db, DEFAULT_CONFIG, { cwd: 'c:\\', now: NOW }).map((r) => r.uid))
+    .toEqual(['claude:rooted', 'claude:work'])
+  expect(query(db, DEFAULT_CONFIG, { cwd: 'C:/windows', now: NOW }).map((r) => r.uid))
+    .toEqual(['claude:rooted'])
+  expect(query(db, DEFAULT_CONFIG, { cwd: 'c:\\work\\repo\\..\\repo', now: NOW }).map((r) => r.uid))
+    .toEqual(['claude:work'])
+  db.close()
+})
+
+test('UNC share roots are case-insensitive anchors and do not cross shares', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:unc', nativeId: 'unc', cwd: '\\\\SERVER\\Share\\Dir' })
+  seed(db, { uid: 'claude:unc-rooted', nativeId: 'unc-rooted', cwd: '//server/share/../../Windows' })
+  seed(db, { uid: 'claude:unc-other', nativeId: 'unc-other', cwd: '\\\\server\\other\\Dir' })
+  expect(query(db, DEFAULT_CONFIG, { cwd: '\\\\server\\SHARE', now: NOW }).map((r) => r.uid))
+    .toEqual(['claude:unc', 'claude:unc-rooted'])
+  db.close()
+})
+
+test('fork chains collapse to newest member and retain the best score', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:root', nativeId: 'root', endedAt: NOW - 2 * DAY, title: 'needle needle' })
+  seed(db, { uid: 'claude:mid', nativeId: 'mid', parentNativeId: 'root', endedAt: NOW - DAY, title: 'needle' })
+  seed(db, { uid: 'claude:tip', nativeId: 'tip', parentNativeId: 'mid', endedAt: NOW, title: 'needle' })
+  const rows = query(db, DEFAULT_CONFIG, { text: 'needle', sort: 'relevance', now: NOW })
+  expect(rows).toHaveLength(1)
+  expect(rows[0]?.uid).toBe('claude:tip')
+  expect(rows[0]?.collapsed).toBe(2)
+  expect(rows[0]?.score).toBeGreaterThan(0)
+  db.close()
+})
+
+test('cycles collapse deterministically and cross-client parents never connect', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', parentNativeId: 'b', endedAt: NOW })
+  seed(db, { uid: 'claude:b', nativeId: 'b', parentNativeId: 'a', endedAt: NOW })
+  seed(db, { uid: 'codex:c', client: 'codex', nativeId: 'c', parentNativeId: 'a', endedAt: NOW })
+  const rows = query(db, DEFAULT_CONFIG, { now: NOW })
+  expect(rows.map((r) => [r.uid, r.collapsed])).toEqual([
+    ['claude:a', 1],
+    ['codex:c', 0],
+  ])
+  db.close()
+})
+
+test('orphan siblings can collapse through their absent parent', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', parentNativeId: 'absent', endedAt: NOW - DAY })
+  seed(db, { uid: 'claude:b', nativeId: 'b', parentNativeId: 'absent', endedAt: NOW })
+  expect(query(db, DEFAULT_CONFIG, { now: NOW }).map((r) => [r.uid, r.collapsed]))
+    .toEqual([['claude:b', 1]])
+  db.close()
+})
+
+test('filtered parents still connect visible descendants without inflating collapsed count', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:root', nativeId: 'root', origin: 'sniffed', endedAt: NOW - 2 * DAY })
+  seed(db, { uid: 'claude:left', nativeId: 'left', parentNativeId: 'root', endedAt: NOW - DAY })
+  seed(db, { uid: 'claude:right', nativeId: 'right', parentNativeId: 'root', endedAt: NOW })
+  const rows = query(db, { ...DEFAULT_CONFIG, showSniffed: false }, { now: NOW })
+  expect(rows.map((r) => [r.uid, r.collapsed])).toEqual([['claude:right', 1]])
+  db.close()
+})
+
+test('duplicate native IDs do not overwrite rows or create ambiguous parent edges', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:dup-1', nativeId: 'dup', cwd: '/one' })
+  seed(db, { uid: 'claude:dup-2', nativeId: 'dup', cwd: '/two' })
+  seed(db, { uid: 'claude:child', nativeId: 'child', parentNativeId: 'dup' })
+  expect(query(db, DEFAULT_CONFIG, { now: NOW }).map((r) => r.uid))
+    .toEqual(['claude:child', 'claude:dup-1', 'claude:dup-2'])
+  db.close()
+})
+
+test('missing, sniffed, client, hidden-client, and file filters compose', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:gone', nativeId: 'gone' }, { files: ['src/shared.ts'] })
+  db.markMissing(['claude:gone'])
+  seed(db, { uid: 'codex:sniffed', client: 'codex', nativeId: 'sniffed', origin: 'sniffed' }, { files: ['src/shared.ts'] })
+  seed(db, { uid: 'codex:shown', client: 'codex', nativeId: 'shown' }, { files: ['src/other.ts'] })
+
+  expect(query(db, { ...DEFAULT_CONFIG, showSniffed: false }, { file: 'shared', now: NOW })).toEqual([])
+  expect(query(db, DEFAULT_CONFIG, {
+    file: 'shared', client: 'codex', includeMissing: true, includeSniffed: true, now: NOW,
+  }).map((r) => r.uid)).toEqual(['codex:sniffed'])
+  expect(query(db, { ...DEFAULT_CONFIG, hiddenClients: ['codex'] }, {
+    includeMissing: true, includeSniffed: true, now: NOW,
+  }).map((r) => r.uid)).toEqual(['claude:gone'])
+  db.close()
+})
+
+test('limit has explicit zero and negative semantics and applies after collapse', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:root', nativeId: 'root', endedAt: NOW - DAY })
+  seed(db, { uid: 'claude:tip', nativeId: 'tip', parentNativeId: 'root', endedAt: NOW })
+  seed(db, { uid: 'claude:other', nativeId: 'other', endedAt: NOW - 2 * DAY })
+  expect(query(db, DEFAULT_CONFIG, { limit: 1, now: NOW }).map((r) => r.uid)).toEqual(['claude:tip'])
+  expect(query(db, DEFAULT_CONFIG, { limit: 0, now: NOW })).toEqual([])
+  expect(query(db, DEFAULT_CONFIG, { limit: -1, now: NOW })).toEqual([])
+  db.close()
+})
+
+test('invalid runtime option and config values degrade safely', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', origin: 'sniffed', title: 'needle' })
+  const badCfg = {
+    ...DEFAULT_CONFIG,
+    halfLifeDays: Number.NaN,
+    hiddenClients: null,
+    showSniffed: 'yes',
+  } as unknown as Config
+  const badOpts = {
+    text: 42,
+    cwd: 42,
+    client: 42,
+    file: 42,
+    sort: 'sideways',
+    limit: Number.NaN,
+    now: Number.POSITIVE_INFINITY,
+  } as never
+  expect(() => query(db, badCfg, badOpts)).not.toThrow()
+  expect(query(db, badCfg, badOpts).map((r) => r.uid)).toEqual([])
+  db.close()
+})

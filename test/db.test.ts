@@ -77,6 +77,27 @@ test('upsertDoc rolls back every facet when replacement fails', () => {
   db.close()
 })
 
+test('upsertHydrated rolls back the ref and every document facet together', () => {
+  const db = IndexDb.open(':memory:')
+  const oldRef = ref({ fingerprint: 'old-fingerprint' })
+  db.upsertHydrated(doc(oldRef))
+  db.raw().exec(`CREATE TRIGGER fail_atomic_replacement BEFORE INSERT ON session_text
+    WHEN NEW.prompts LIKE '%replacement%' BEGIN SELECT RAISE(FAIL, 'atomic replacement failed'); END`)
+
+  const changedRef = ref({ fingerprint: 'new-fingerprint', title: 'Changed title' })
+  expect(() => db.upsertHydrated(doc(changedRef, {
+    prompts: ['replacement'],
+    files: ['src/replacement.ts'],
+  }))).toThrow('atomic replacement failed')
+
+  expect(db.getRef(oldRef.uid)?.fingerprint).toBe('old-fingerprint')
+  expect(db.getRef(oldRef.uid)?.title).toBe(oldRef.title)
+  expect(db.ftsSearch('obsoleteprompt').map((hit) => hit.uid)).toEqual([oldRef.uid])
+  expect(db.uidsTouchingFile('src/sse')).toEqual([oldRef.uid])
+  expect(db.uidsTouchingFile('replacement')).toEqual([])
+  db.close()
+})
+
 test('deleteSession rolls back when the final session delete fails', () => {
   const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r); db.upsertDoc(doc(r))
   db.raw().exec(`CREATE TRIGGER fail_session_delete BEFORE DELETE ON session

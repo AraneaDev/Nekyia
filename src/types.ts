@@ -1,5 +1,17 @@
 export type ClientId = string
 
+export const MAX_CLIENT_ID_LENGTH = 256
+const UNSAFE_CLIENT_ID = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+
+/** Client ids must safely round-trip through UIDs and terminal diagnostics. */
+export function isSafeClientId(value: unknown): value is ClientId {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= MAX_CLIENT_ID_LENGTH
+    && !value.includes(':')
+    && !UNSAFE_CLIENT_ID.test(value)
+}
+
 export type Tier = 'resume' | 'search' | 'detected'
 
 export type Origin = 'manifest' | 'user-manifest' | 'sniffed'

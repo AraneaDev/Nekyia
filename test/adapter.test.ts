@@ -80,6 +80,7 @@ test('a throwing format never escapes discovery or hydration', async () => {
   const discovered = await adapter.discover()
   expect(discovered.refs).toEqual([])
   expect(discovered.diagnostics.some((item) => item.level === 'error')).toBe(true)
+  expect(discovered.authoritative).toBeFalse()
 
   const good = buildAdapter(agyManifest())
   const { refs } = await good.discover()
@@ -89,6 +90,19 @@ test('a throwing format never escapes discovery or hydration', async () => {
     ref: refs[0]!, prompts: ['i want domination instead of wordworth'],
     prose: [], files: [], truncated: false,
   })
+})
+
+test('discovery explicitly reports warning-class store failures as non-authoritative', async () => {
+  const root = makeTemp('nekyia-adapter-incomplete-')
+  const discovered = await buildAdapter(agyManifest([root])).discover()
+
+  expect(discovered.refs).toEqual([])
+  expect(discovered.diagnostics.some((item) => item.level === 'warn')).toBeTrue()
+  expect(discovered.authoritative).toBeFalse()
+})
+
+test('successful built-in discovery is authoritative', async () => {
+  expect((await buildAdapter(agyManifest()).discover()).authoritative).toBeTrue()
 })
 
 test('a throwing sidecar never escapes discovery or hydration', async () => {
@@ -102,6 +116,7 @@ test('a throwing sidecar never escapes discovery or hydration', async () => {
   const discovered = await adapter.discover()
   expect(discovered.refs).toHaveLength(1)
   expect(discovered.diagnostics.some((item) => item.message.includes('sidecar failed'))).toBe(true)
+  expect(discovered.authoritative).toBeFalse()
   expect((await adapter.hydrate(refs[0]!, DEFAULT_CONFIG)).truncated).toBe(true)
 })
 

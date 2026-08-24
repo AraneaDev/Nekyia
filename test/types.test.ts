@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { makeUid, parseUid } from '../src/types'
+import { isSafeClientId, makeUid, parseUid } from '../src/types'
 
 test('makeUid joins client and native id', () => {
   expect(makeUid('claude', '9e64fb9e')).toBe('claude:9e64fb9e')
@@ -18,4 +18,12 @@ test('parseUid tolerates colons inside the native id', () => {
 
 test('parseUid throws on a malformed uid', () => {
   expect(() => parseUid('nocolon')).toThrow('malformed uid')
+})
+
+test('client ids share one bounded control-safe contract', () => {
+  expect(isSafeClientId('client space')).toBe(true)
+  expect(isSafeClientId('x'.repeat(256))).toBe(true)
+  for (const value of ['', 'bad:id', 'bad\n', 'bad\u202e', 'x'.repeat(257)]) {
+    expect(isSafeClientId(value)).toBe(false)
+  }
 })
