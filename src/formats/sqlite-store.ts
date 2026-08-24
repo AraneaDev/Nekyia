@@ -308,7 +308,7 @@ export const sqliteStore: FormatModule = {
           client: manifest.id,
           nativeId,
           cwd: parseCwd(cwdValue, cwdShape),
-          gitBranch: null,
+          gitBranch: sensibleString(row.branch),
           title: titleFromRow(row),
           startedAt: parsedStartedAt ?? endedAt,
           endedAt,

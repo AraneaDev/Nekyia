@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "id": "copilot",
+  "name": "GitHub Copilot CLI",
+  "roots": ["~/.copilot"],
+  "format": "sqlite-store",
+  "tier": "resume",
+  "sqlite": {
+    "file": "session-store.db",
+    "sessions": "SELECT id AS id, cwd AS cwd, branch AS branch, summary AS title, created_at AS started_at, updated_at AS ended_at, (SELECT COUNT(*) FROM turns WHERE turns.session_id = sessions.id) AS turns FROM sessions",
+    "text": "SELECT role, text FROM (SELECT session_id, turn_index, 0 AS ord, 'user' AS role, user_message AS text FROM turns UNION ALL SELECT session_id, turn_index, 1 AS ord, 'assistant' AS role, assistant_response AS text FROM turns) WHERE session_id = ?1 AND text IS NOT NULL ORDER BY turn_index, ord",
+    "textShape": "plain",
+    "timeUnit": "iso"
+  },
+  "resume": {
+    "cmd": "copilot",
+    "args": ["--resume={id}"],
+    "cwd": "{cwd}"
+  },
+  "brief": {
+    "cmd": "copilot",
+    "args": ["-p", "{prompt}"],
+    "cwd": "{cwd}"
+  }
+}

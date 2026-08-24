@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
 import { parseCwd, parseSqlTime, sqliteStore } from '../src/formats/sqlite-store'
-import { validateManifest } from '../src/manifests/load'
+import { renderArgs, validateManifest } from '../src/manifests/load'
+import copilotManifest from '../src/manifests/builtin/copilot.json'
 
 const FIX = join(import.meta.dir, 'fixtures')
 const tempDirs: string[] = []
@@ -474,4 +475,40 @@ test('oversized projected tool input is nulled in SQL and marks the document tru
   expect(hydrationSql).toContain('<= ?3')
   expect(doc!.files).not.toContain('/root/proj/src/too-large.ts')
   expect(doc!.truncated).toBe(true)
+})
+
+const copilot = validateManifest(copilotManifest)
+
+test('copilot discover reads cwd, summary as title and the recorded branch', async () => {
+  const { refs } = await sqliteStore.discover(copilot, join(FIX, 'copilot'))
+  const byId = Object.fromEntries(refs.map((ref) => [ref.nativeId, ref]))
+  expect(refs).toHaveLength(2)
+
+  const alpha = byId['c51a6cd4-ff7c-40af-ac6b-7ef82da474ca']!
+  expect(alpha.cwd).toBe('/root/proj')
+  expect(alpha.title).toBe('Chase the duplicate listener')
+  expect(alpha.gitBranch).toBe('feature/alpha')
+  expect(alpha.turns).toBe(2)
+  expect(alpha.startedAt).toBe(Date.parse('2026-08-24T18:13:48.383Z'))
+  expect(alpha.endedAt).toBe(Date.parse('2026-08-24T18:13:50.611Z'))
+})
+
+test('copilot discover leaves the branch null when the session has none', async () => {
+  const { refs } = await sqliteStore.discover(copilot, join(FIX, 'copilot'))
+  const ref = refs.find((candidate) => candidate.nativeId === '222fe270-df55-4a9a-8afd-2821ed25322d')!
+  expect(ref.gitBranch).toBe(null)
+})
+
+test('copilot hydrate splits turns into prompts and prose in turn order', async () => {
+  const { refs } = await sqliteStore.discover(copilot, join(FIX, 'copilot'))
+  const ref = refs.find((candidate) => candidate.nativeId === 'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca')!
+  const doc = await sqliteStore.hydrate(copilot, join(FIX, 'copilot'), ref, DEFAULT_CONFIG)
+  expect(doc.prompts).toEqual(['Chase the duplicate listener', 'Now check the teardown path'])
+  expect(doc.prose).toEqual(['The listener is attached twice.'])
+})
+
+test('copilot resume attaches by id using the form the CLI itself prints', () => {
+  expect(copilot.tier).toBe('resume')
+  expect(renderArgs(copilot.resume!.args, { id: 'abc-123', cwd: '/root/proj' }))
+    .toEqual(['--resume=abc-123'])
 })
