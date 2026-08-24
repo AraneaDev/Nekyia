@@ -88,7 +88,9 @@ test('the preview sits under the list at every width', async () => {
     await tick()
     const lines = view.lastFrame()!.split('\n')
     // A row sharing its line with a vertical rule would mean a split pane.
-    expect(lines.filter((line) => /^[▌ ]\s*claude/.test(line) && line.includes('│')).length).toBe(0)
+    // The gutter itself is a │ now, so a split pane shows as a rule further in.
+    expect(lines.filter((line) => /^[▌│]\s*claude/.test(line) && line.slice(2).includes('│')).length)
+      .toBe(0)
     // The rule that separates list from preview runs across the frame.
     expect(lines.some((line) => /^─+$/u.test(line.trim()) && line.trim().length > 20)).toBe(true)
     expect(lines.length).toBeLessThanOrEqual(30)
@@ -518,7 +520,7 @@ test('arrow keys move the preview selection and ctrl-c never executes a row', as
   await tick()
   // The gutter rail marks the row under the cursor, and the preview below the
   // rule follows it rather than staying on the row the picker opened with.
-  expect(view.lastFrame()!).toContain('  claude     now proj           alpha')
+  expect(view.lastFrame()!).toContain('│ claude     now proj           alpha')
   expect(previewOf(view.lastFrame()!)).toContain('beta')
   view.stdin.write('\u001b[A')
   await tick()
@@ -762,5 +764,21 @@ test('an index with nothing in it points at the command that fills it', async ()
   const frame = view.lastFrame()!
   expect(frame).toContain('No sessions indexed yet')
   expect(frame).toContain('nekyia index')
+  view.unmount()
+})
+
+test('the footer names its keys rather than drawing them', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db)
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  const frame = view.lastFrame()!
+  // A reader who does not already know the glyph cannot find the key.
+  expect(frame).toContain('tab scope')
+  expect(frame).toContain('enter resume')
+  expect(frame).toContain('esc quit')
+  for (const glyph of ['⇥', '↵']) expect(frame).not.toContain(glyph)
   view.unmount()
 })

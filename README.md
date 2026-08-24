@@ -246,3 +246,9 @@ macOS on x64 and arm64. They are not part of this pre-release, so Bun is require
 ## License
 
 Nekyia is available under the [MIT license](LICENSE).
+
+---
+
+Built by [Aranea Development](https://aranea-development.nl). In the _Odyssey_, Odysseus
+digs the trench and the dead crowd forward; he holds them back until the one shade he
+needs may speak. `nekyia --version` says the same thing in one line.

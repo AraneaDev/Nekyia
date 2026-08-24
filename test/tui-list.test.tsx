@@ -9,6 +9,7 @@ import {
   boundedDisplayText,
   clientColor,
   ageEmphasis,
+  railThumb,
   List,
   matchSpans,
   projectColor,
@@ -98,7 +99,8 @@ test('the selected row, collapsed count and client color render', () => {
   // Selection is marked in the gutter; the row itself is no longer inverted and
   // a search-tier client is dimmed rather than given a glyph of its own.
   expect(frame).toContain('▌ codex')
-  expect(frame.split('\n')[0]).toMatch(/^ {2}claude/)
+  // Unselected rows sit on the track; the selected row takes the rail.
+  expect(frame.split('\n')[0]).toMatch(/^│ claude/)
   expect(frame).toContain('+4')
   expect(clientColor('codex')).toBe('cyan')
   expect(clientColor('unknown')).toBe('white')
@@ -348,4 +350,31 @@ test('a project keeps one colour and never borrows the unknown-client white', ()
   for (const name of ['a', 'infra', 'web-console', 'search-svc', 'x'.repeat(40)]) {
     expect(projectColor(name)).not.toBe('white')
   }
+})
+
+test('the rail shows where the visible rows fall in the whole list', () => {
+  // A list that fits has nothing to scroll, so the track is whole.
+  expect(railThumb(0, 10, 10)).toEqual([0, 10])
+  expect(railThumb(0, 10, 3)).toEqual([0, 10])
+
+  // At the top the thumb starts at the top; at the bottom it ends at the bottom.
+  expect(railThumb(0, 10, 100)[0]).toBe(0)
+  expect(railThumb(90, 10, 100)[1]).toBe(10)
+
+  // It never leaves the track, whatever it is asked.
+  for (const [start, visible, total] of [
+    [0, 1, 1000], [500, 20, 1000], [999, 20, 1000], [-5, 10, 100], [10_000, 10, 100],
+  ] as const) {
+    const [from, to] = railThumb(start, visible, total)
+    expect(from).toBeGreaterThanOrEqual(0)
+    expect(to).toBeLessThanOrEqual(visible)
+    expect(to).toBeGreaterThan(from)
+  }
+
+  // A very long list still leaves a thumb you can see rather than a stray mark.
+  const [from, to] = railThumb(0, 20, 5000)
+  expect(to - from).toBeGreaterThanOrEqual(2)
+  // Unless there is barely any track to put it in.
+  expect(railThumb(0, 1, 5000)).toEqual([0, 1])
+  expect(railThumb(0, 0, 100)).toEqual([0, 0])
 })
