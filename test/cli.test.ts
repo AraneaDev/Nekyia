@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from 'bun:test'
+import { versionText } from '../src/cli'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -268,4 +269,14 @@ test('show rejects missing or malformed uids and invalid budgets cleanly', () =>
     expect(result.exitCode).toBe(2)
     expect(result.stderr.toString()).toContain(args.length === 1 ? 'usage:' : 'error:')
   }
+})
+
+test('version names the release and where it came from', () => {
+  const plain = versionText('1.2.3', (text, url) => `${text} <${url}>`)
+  expect(plain).toContain('nekyia 1.2.3')
+  expect(plain).toContain('Find the session. Pick up the thread.')
+  expect(plain).toContain('Aranea Development <https://aranea-development.nl>')
+  expect(plain).toContain('AraneaDev/Nekyia <https://github.com/AraneaDev/Nekyia>')
+  // The myth is one sentence, not a paragraph competing with the version.
+  expect(plain.split('\n').length).toBeLessThanOrEqual(10)
 })
