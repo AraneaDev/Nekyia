@@ -775,3 +775,27 @@ test('harness wrappers never become the title or a prompt', async () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('a title keeps enough text for the widest terminal', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-jsonl-title-'))
+  try {
+    mkdirSync(join(root, 'projects', '-root-proj'), { recursive: true })
+    const long = `start ${'word '.repeat(120)}end`
+    writeJsonl(join(root, 'projects', '-root-proj', 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff.jsonl'), [
+      {
+        type: 'user', timestamp: '2026-01-01T00:00:00.000Z', cwd: '/root/proj', gitBranch: 'main',
+        message: { role: 'user', content: long },
+      },
+    ])
+    const { refs } = await jsonlTranscript.discover(claude, root)
+    const title = refs[0]!.title!
+    // Wide terminals run past 200 columns, so a title cut there loses text that
+    // the screen had room for.
+    expect(title.length).toBeGreaterThan(200)
+    expect(title.startsWith('start word')).toBe(true)
+    // Still bounded, so one runaway line cannot bloat the index.
+    expect(title.length).toBeLessThanOrEqual(512)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

@@ -28,6 +28,7 @@ interface Seed {
   tier: Tier
   branch: string
   prompts?: string[]
+  replies?: string[]
   files?: string[]
 }
 
@@ -39,6 +40,11 @@ const SEEDS: Seed[] = [
       'the retry budget is shared across tenants, it should be per tenant',
       'walk me through where the budget is decremented',
     ],
+    replies: [
+      'The budget lives on the client, so every tenant draws from the same counter.',
+      'Decremented in retry-budget.ts before the hedge fires, keyed by route rather than tenant.',
+      'Moving the key to the tenant id fixes the sharing without touching the hedging path.',
+    ],
     files: [
       'src/gateway/retry-budget.ts', 'src/gateway/tenant.ts', 'src/gateway/router.ts',
       'test/retry-budget.test.ts', 'docs/rate-limits.md',
@@ -48,6 +54,10 @@ const SEEDS: Seed[] = [
     client: 'claude', project: 'billing-svc', branch: 'fix/idempotency', ageMs: 3 * HOUR, turns: 28,
     tier: 'resume', title: 'a retried charge can double bill when the webhook lands twice',
     prompts: ['a retried charge can double bill when the webhook lands twice'],
+    replies: [
+      'The handler is idempotent on charge id but the webhook carries a delivery id.',
+      'Storing the delivery id and rejecting a repeat closes it.',
+    ],
     files: ['src/billing/webhook.ts', 'src/billing/charge.ts', 'test/webhook.test.ts'],
   },
   {
@@ -198,7 +208,7 @@ SEEDS.forEach((seed, index) => {
   db.upsertDoc({
     ref,
     prompts: seed.prompts ?? [],
-    prose: [],
+    prose: seed.replies ?? [],
     files: (seed.files ?? []).map((file) => `/home/dev/work/${seed.project}/${file}`),
     truncated: false,
   })

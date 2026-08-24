@@ -78,9 +78,16 @@ function textOfType(
     .trim()
 }
 
+/**
+ * Titles are bounded here only to keep one runaway line out of the index. The
+ * limit matches the widest the display will ever draw, so a wide terminal is
+ * never short of text that was thrown away at index time.
+ */
+const TITLE_LIMIT = 512
+
 function firstLine(value: string): string {
   const line = value.split(/\r?\n/, 1)[0]!.trim()
-  return line.length <= 200 ? line : `${line.slice(0, 197)}...`
+  return line.length <= TITLE_LIMIT ? line : `${line.slice(0, TITLE_LIMIT - 1)}…`
 }
 
 function isInjectedInput(value: string): boolean {
