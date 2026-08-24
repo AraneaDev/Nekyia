@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.6](https://github.com/AraneaDev/Nekyia/compare/v0.0.5...v0.0.6) (2026-08-24)
+
+
+### Features
+
+* find and resume GitHub Copilot CLI sessions ([4d0025c](https://github.com/AraneaDev/Nekyia/commit/4d0025c53b23e38ab7c04e038eed28e8fb55d6c6))
+
+
+### Fixes
+
+* stop reading stdin while the launched client runs ([2273f62](https://github.com/AraneaDev/Nekyia/commit/2273f62839bd2dc3e9684d78d49ba2d8ff85e7ed))
+
 ## [0.0.5](https://github.com/AraneaDev/Nekyia/compare/v0.0.4...v0.0.5) (2026-08-24)
 
 
