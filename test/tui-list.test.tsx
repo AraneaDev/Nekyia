@@ -9,6 +9,8 @@ import {
   boundedDisplayText,
   clientColor,
   List,
+  ROW_FIXED_COLUMNS,
+  titleColumns,
   type DisplayWork,
   type ListRowProps,
   visibleWindow,
@@ -288,4 +290,23 @@ test('equivalent config identities do not rerun the query', () => {
   expect(sessionSelects).toBe(1)
   view.unmount()
   db.close()
+})
+
+test('the title column grows with the pane instead of a fixed 60', () => {
+  // 92 was the old row width: 32 fixed columns plus a hardcoded 60 for the title.
+  expect(titleColumns(ROW_FIXED_COLUMNS + 60)).toBe(60)
+  expect(titleColumns(200)).toBe(200 - ROW_FIXED_COLUMNS)
+  expect(titleColumns(120)).toBe(120 - ROW_FIXED_COLUMNS)
+  // Narrow panes keep a readable floor rather than collapsing to nothing.
+  expect(titleColumns(10)).toBe(8)
+  expect(titleColumns(0)).toBe(8)
+  expect(titleColumns(Number.NaN)).toBe(8)
+})
+
+test('a wide list renders titles past the old 92 column row', () => {
+  const wide: Row = { ...row(0), title: 'y'.repeat(300) }
+  const view = render(<List rows={[wide]} selected={0} height={1} now={NOW} columns={300} />)
+  const rendered = view.lastFrame()!.split('\n').find((line) => line.includes('y'))!
+  expect(rendered.length).toBeGreaterThan(92)
+  view.unmount()
 })
