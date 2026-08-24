@@ -146,17 +146,6 @@ function useTerminalSize(rowsIn?: number, columnsIn?: number): TerminalSize {
 }
 
 /**
- * Below this the panes would be too narrow to read, so the preview goes back
- * under the list.
- */
-export const SIDE_BY_SIDE_MIN_COLUMNS = 100
-
-/** Columns given to the list when the preview sits beside it. */
-export function listPaneColumns(columns: number): number {
-  return Math.max(40, Math.min(columns - 40, Math.round(columns * 0.55)))
-}
-
-/**
  * Measured height of a flex child, so the list windows against real space.
  * The seed only decides the first paint before layout is measurable; the root
  * box clips, so an over-long seed can never push the frame past the terminal.
@@ -199,12 +188,7 @@ export function App({
   const { exit } = useApp()
   const { rows: terminalHeight, columns: terminalWidth } = useTerminalSize(rows, columns)
   const listRef = useRef<DOMElement | null>(null)
-  const sideBySide = terminalWidth >= SIDE_BY_SIDE_MIN_COLUMNS
-  const listWidth = listPaneColumns(terminalWidth)
-  const listHeight = useMeasuredHeight(
-    listRef,
-    Math.max(1, terminalHeight - (sideBySide ? 4 : CHROME_SEED)),
-  )
+  const listHeight = useMeasuredHeight(listRef, Math.max(1, terminalHeight - CHROME_SEED))
   const sessions = useSessions(db, cfg, cwd)
   const [confirm, setConfirm] = useState<Confirmation | null>(null)
   const [note, setNote] = useState('')
@@ -402,43 +386,21 @@ export function App({
         <Text>{shownSearch}</Text>
         <Text dimColor>{shownSearch ? '' : 'type to search'}</Text>
       </Box>
-      {sideBySide ? (
-        <Box ref={listRef} marginTop={1} flexGrow={1} flexShrink={1} minHeight={1} flexDirection="row">
-          <Box width={listWidth} flexShrink={0} flexDirection="column" overflow="hidden">
-            <List
-              rows={sessions.rows} selected={sessions.selected}
-              height={listHeight} now={now} columns={listWidth} query={sessions.text}
-            />
-          </Box>
-          <Box flexShrink={0} marginX={2} flexDirection="column">
-            <Text dimColor>{'│\n'.repeat(Math.max(1, listHeight)).trimEnd()}</Text>
-          </Box>
-          <Box flexGrow={1} flexDirection="column" overflow="hidden">
-            <Preview
-              row={selectedRow} db={db} now={now}
-              maxLines={Math.max(2, listHeight)} columns={Math.max(20, terminalWidth - listWidth - 5)}
-            />
-          </Box>
-        </Box>
-      ) : (
-        <>
-          <Box ref={listRef} marginTop={1} flexGrow={1} flexShrink={1} minHeight={1} overflow="hidden">
-            <List
-              rows={sessions.rows} selected={sessions.selected}
-              height={listHeight} now={now} columns={terminalWidth} query={sessions.text}
-            />
-          </Box>
-          <Box flexShrink={0} marginTop={1}>
-            <Text dimColor>{'─'.repeat(Math.max(1, terminalWidth))}</Text>
-          </Box>
-          <Box flexShrink={0} flexDirection="column">
-            <Preview
-              row={selectedRow} db={db} now={now}
-              maxLines={previewLines(terminalHeight)} columns={terminalWidth}
-            />
-          </Box>
-        </>
-      )}
+      <Box ref={listRef} marginTop={1} flexGrow={1} flexShrink={1} minHeight={1} overflow="hidden">
+        <List
+          rows={sessions.rows} selected={sessions.selected}
+          height={listHeight} now={now} columns={terminalWidth} query={sessions.text}
+        />
+      </Box>
+      <Box flexShrink={0} marginTop={1}>
+        <Text dimColor>{'─'.repeat(Math.max(1, terminalWidth))}</Text>
+      </Box>
+      <Box flexShrink={0} flexDirection="column">
+        <Preview
+          row={selectedRow} db={db} now={now}
+          maxLines={previewLines(terminalHeight)} columns={terminalWidth}
+        />
+      </Box>
       {sparse ? <SparseHint /> : null}
       <Box flexShrink={0} marginTop={1}>
         <Text wrap="truncate-end">
