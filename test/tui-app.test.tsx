@@ -7,6 +7,7 @@ import { buildAdapter, type Adapter } from '../src/core/adapter'
 import { IndexDb } from '../src/core/db'
 import { validateManifest } from '../src/manifests/load'
 import { App, previewLines, safeCommandForClipboard, type CommandCopyWork } from '../src/tui/App'
+import { shareLines } from '../src/tui/Preview'
 import { createHostClipboard, type ClipboardRuntime } from '../src/tui/clipboard'
 import type { ExecPlan, SessionRef } from '../src/types'
 
@@ -708,4 +709,28 @@ test('typing lights the matching span inside a title', async () => {
   // The title survives being split into lit and unlit spans.
   expect(view.lastFrame()!).toContain('fix the retry budget')
   view.unmount()
+})
+
+test('the preview takes about a third of the screen and leaves the list the rest', () => {
+  for (const rows of [100, 60, 34, 24]) {
+    const preview = previewLines(rows)
+    expect(preview).toBeGreaterThanOrEqual(Math.floor(rows / 3) - 1)
+    expect(preview).toBeLessThanOrEqual(Math.floor(rows / 3))
+    // The list must survive: it never drops below what is left after the pane.
+    expect(rows - preview).toBeGreaterThan(preview)
+  }
+  // A short terminal keeps a floor rather than collapsing to nothing.
+  for (const rows of [4, 8, 12]) expect(previewLines(rows)).toBeGreaterThanOrEqual(4)
+})
+
+test('a long reply cannot crowd out what was asked or which files moved', () => {
+  // 3 lines to split between a short ask, a long reply and a short file list.
+  expect(shareLines(3, [1, 40, 1])).toEqual([1, 1, 1])
+  // Slack from a block that wants little falls to the ones that want more.
+  expect(shareLines(10, [1, 40, 1])).toEqual([1, 8, 1])
+  // Nothing to give, nothing given.
+  expect(shareLines(0, [5, 5])).toEqual([0, 0])
+  expect(shareLines(-3, [5, 5])).toEqual([0, 0])
+  // Never more than a block actually has.
+  expect(shareLines(100, [2, 3])).toEqual([2, 3])
 })

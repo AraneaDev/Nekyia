@@ -34,7 +34,9 @@ function SparseHint() {
 }
 
 export function previewLines(rows: number): number {
-  return Math.max(2, Math.min(12, Math.floor(rows / 2) - 2))
+  // About a third of the screen, so a tall terminal shows the session rather
+  // than a dozen lines under a very long list, while the list keeps the rest.
+  return Math.max(4, Math.min(Math.floor(rows / 3), Math.max(4, rows - 10)))
 }
 const COPY_PROMPT_CHARS = 65_536
 const COPY_PROMPT_BYTES = 16_384
