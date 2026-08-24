@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const root = join(import.meta.dir, '..')
@@ -52,5 +52,23 @@ test('the README install block tracks the released version', () => {
   // any line would survive a release and leave a stale reference behind.
   for (const line of lines) {
     expect((line.match(/\d+\.\d+\.\d+/g) ?? []).length).toBeLessThanOrEqual(1)
+  }
+})
+
+test('every interface shot the README points at exists and is generated', () => {
+  const readme = read('README.md')
+  const referenced = [...readme.matchAll(/\]\((docs\/media\/[^)]+)\)/gu)].map((match) => match[1]!)
+  expect(referenced.length).toBeGreaterThan(0)
+  for (const path of referenced) {
+    // A missing image renders as a broken icon on the page, which is worse
+    // than no image at all.
+    expect(existsSync(join(root, path))).toBe(true)
+    // The shots are captured from the running picker, not drawn by hand.
+    expect(path.endsWith('.svg')).toBe(true)
+  }
+  // Every shot the script produces earns its place on the page.
+  const shots = read('scripts/shots.ts')
+  for (const name of [...shots.matchAll(/name: '([a-z]+)',\n\s*what:/gu)].map((m) => m[1]!)) {
+    expect(referenced).toContain(`docs/media/${name}.svg`)
   }
 })
