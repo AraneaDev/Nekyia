@@ -9,15 +9,15 @@ const FIELD_COLUMNS = 120
 /** Width of the hanging label column in the preview. */
 const LABEL_COLUMNS = 9
 const TITLE_COLUMNS = 512
-const PROMPT_DB_CHARS = 8_192
-const PROSE_DB_CHARS = 16_384
+const PROMPT_DB_CHARS = 65_536
+const PROSE_DB_CHARS = 65_536
 const FILE_DB_CHARS = 2_048
 
 function safe(value: string | null | undefined, columns = FIELD_COLUMNS): string {
   return boundedDisplayText(typeof value === 'string' ? value : '', columns)
 }
 
-function lines(value: string | null | undefined): string[] {
+function textLines(value: string | null | undefined): string[] {
   return (typeof value === 'string' ? value : '')
     .split(/\r?\n/u)
     .map((line) => line.trim())
@@ -33,7 +33,7 @@ function previewData(db: IndexDb, uid: string): PreviewData {
       FROM session_file
       WHERE uid = ?
       ORDER BY path COLLATE BINARY ASC
-      LIMIT 60
+      LIMIT 500
     `).all(FILE_DB_CHARS, uid) as { path: string }[])
       .map((item) => safe(item.path))
       .filter(Boolean)
@@ -42,7 +42,7 @@ function previewData(db: IndexDb, uid: string): PreviewData {
       FROM session_text WHERE uid = ?
     `).get(PROMPT_DB_CHARS, PROSE_DB_CHARS, uid) as
       { prompts: string | null; prose: string | null } | null
-    return { files, prompts: lines(text?.prompts), prose: lines(text?.prose) }
+    return { files, prompts: textLines(text?.prompts), prose: textLines(text?.prose) }
   } catch {
     return { files: [], prompts: [], prose: [] }
   }
@@ -69,35 +69,35 @@ export function shareLines(room: number, wanted: number[]): number[] {
   return given
 }
 
-function Block({ label, body, dim }: { label: string; body: string[]; dim?: boolean }) {
-  return (
-    <Box marginTop={1} flexDirection="row">
-      <Box width={LABEL_COLUMNS} flexShrink={0}><Text dimColor>{label}</Text></Box>
-      <Box flexDirection="column">
-        {body.map((line, index) => (
-          <Text key={`${index}:${line}`} wrap="truncate-end" dimColor={dim}>{line}</Text>
-        ))}
-      </Box>
-    </Box>
-  )
+export interface PreviewLine {
+  text: string
+  /** Hanging label, drawn only on a block's first line. */
+  label?: string
+  dim?: boolean
+  bold?: boolean
+  color?: string
 }
 
 /**
- * Every line is single-line by construction and each block is sliced to its
- * share, so the pane never overflows and Ink is never asked to clip wrapped
- * text, which merges the clipped tail into the line above it.
+ * The whole detail view as flat lines, so the caller can count them, scroll
+ * them and render a window without knowing how a session is laid out.
+ *
+ * Browsing fits the blocks into the space available. Inspecting keeps every
+ * line and lets the reader scroll, which is the only way to read a reply that
+ * runs to hundreds of lines.
  */
-export function Preview({ row, db, now, maxLines = 12, columns = 80 }: {
-  row: Row | undefined
-  db: IndexDb
-  now: number
-  /** Content lines this preview may occupy. */
-  maxLines?: number
-  /** Width available, so lines are bounded to the pane they are drawn in. */
-  columns?: number
-}) {
-  if (!row) return <Box><Text dimColor>nothing selected</Text></Box>
-
+export function buildPreviewLines(
+  db: IndexDb,
+  row: Row | undefined,
+  { columns = 80, maxLines = 12, full = false, now = Date.now() }: {
+    columns?: number
+    maxLines?: number
+    full?: boolean
+    /** Injectable clock, so the metadata line is deterministic in tests. */
+    now?: number
+  } = {},
+): PreviewLine[] {
+  if (!row) return []
   const width = Math.max(12, columns - LABEL_COLUMNS)
   const { files, prompts, prose } = previewData(db, row.uid)
   const title = safe(row.title, TITLE_COLUMNS) || '(no title)'
@@ -118,49 +118,79 @@ export function Preview({ row, db, now, maxLines = 12, columns = 80 }: {
   // every path spends width on something the reader has just been told.
   const base = typeof row.cwd === 'string' && row.cwd ? `${row.cwd.replace(/\/+$/u, '')}/` : ''
   const touched = files.map((file) => (
-    file.startsWith(base) && base ? file.slice(base.length) : file
+    base && file.startsWith(base) ? file.slice(base.length) : file
   ))
 
-  const spent = 2 + (row.tier !== 'resume' ? 1 : 0) + (row.missing ? 1 : 0)
-  const blocks = [
-    { label: 'asked', body: asked, dim: false },
-    { label: 'replied', body: prose, dim: true },
-    { label: 'touched', body: touched, dim: false },
-  ].filter((block) => block.body.length)
-  // Each block that appears costs the blank line above it.
-  const share = shareLines(
-    Math.max(0, maxLines - spent - blocks.length),
-    blocks.map((block) => block.body.length),
-  )
+  const head: PreviewLine[] = [
+    { text: safe(title, width), bold: true },
+    {
+      text: safe(
+        `${cwd}${branch ? ` · ${branch}` : ''} · ${relTime(row.endedAt, now)} ago`
+        + `${turns ? ` · ${turns} turns` : ''}`,
+        width,
+      ),
+      dim: true,
+    },
+  ]
+  if (row.tier !== 'resume') {
+    head.push({
+      text: safe(`${client} cannot resume by id · enter starts a new briefed session`, width),
+      color: 'yellow',
+    })
+  }
+  if (row.missing) {
+    head.push({ text: 'source transcript no longer on disk', color: 'red' })
+  }
 
+  const blocks = [
+    { label: 'asked', body: asked.map((line) => safe(line, width)), dim: false },
+    { label: 'replied', body: prose.map((line) => safe(line, width)), dim: true },
+    { label: 'touched', body: touched.map((line) => boundedPathTail(line, width)), dim: false },
+  ].filter((block) => block.body.length)
+
+  // Each block that appears costs the blank line above it.
+  const share = full
+    ? blocks.map((block) => block.body.length)
+    : shareLines(Math.max(0, maxLines - head.length - blocks.length), blocks.map((b) => b.body.length))
+
+  const out = [...head]
+  blocks.forEach((block, index) => {
+    const count = share[index] ?? 0
+    if (!count) return
+    out.push({ text: '' })
+    block.body.slice(0, count).forEach((line, offset) => {
+      out.push({ text: line, label: offset === 0 ? block.label : '', dim: block.dim })
+    })
+  })
+  return out
+}
+
+
+export function Preview({ lines, offset = 0, maxLines = 12 }: {
+  lines: PreviewLine[]
+  /** First line to draw, so the caller can scroll a long history. */
+  offset?: number
+  maxLines?: number
+}) {
+  if (!lines.length) return <Box><Text dimColor>nothing selected</Text></Box>
+  const start = Math.max(0, Math.min(offset, Math.max(0, lines.length - 1)))
+  const shown = lines.slice(start, start + Math.max(1, maxLines))
   return (
     <Box flexDirection="column">
-      <Text bold wrap="truncate-end">{title}</Text>
-      <Text dimColor wrap="truncate-end">
-        {cwd}{branch ? ` · ${branch}` : ''} · {relTime(row.endedAt, now)} ago
-        {turns ? ` · ${turns} turns` : ''}
-      </Text>
-      {row.tier !== 'resume'
-        ? <Text color="yellow" wrap="truncate-end">
-            {client} cannot resume by id · enter starts a new briefed session
+      {shown.map((line, index) => (
+        <Box key={`${start + index}:${line.label ?? ''}:${line.text}`} flexDirection="row">
+          {line.label !== undefined
+            ? <Box width={LABEL_COLUMNS} flexShrink={0}><Text dimColor>{line.label}</Text></Box>
+            : null}
+          <Text
+            wrap="truncate-end"
+            dimColor={line.dim}
+            bold={line.bold}
+            color={line.color}
+          >
+            {line.text}
           </Text>
-        : null}
-      {row.missing
-        ? <Text color="red" wrap="truncate-end">source transcript no longer on disk</Text>
-        : null}
-      {blocks.map((block, index) => (
-        share[index]
-          ? (
-            <Block
-              key={block.label}
-              label={block.label}
-              dim={block.dim}
-              body={block.body.slice(0, share[index]).map((line) => (
-                block.label === 'touched' ? boundedPathTail(line, width) : safe(line, width)
-              ))}
-            />
-          )
-          : null
+        </Box>
       ))}
     </Box>
   )

@@ -8,7 +8,7 @@ import { shellQuote } from '../core/resume'
 import type { ExecPlan } from '../types'
 import { boundedDisplayText, List } from './List'
 import { projectName } from '../render'
-import { Preview } from './Preview'
+import { buildPreviewLines, Preview } from './Preview'
 import { useSessions } from './useSessions'
 import { createHostClipboard, type ClipboardLike } from './clipboard'
 
@@ -50,6 +50,26 @@ function SparseHint({ project }: { project: string }) {
     </Box>
   )
 }
+
+/**
+ * Keeps as many hints as the width allows, in the order given, so a narrow
+ * terminal loses the least useful key rather than truncating the last one
+ * mid-word and leaving a hint nobody can read.
+ */
+export function fitKeys(keys: [string, string][], columns: number): [string, string][] {
+  const out: [string, string][] = []
+  let used = 0
+  for (const entry of keys) {
+    const width = entry[0].length + 1 + entry[1].length + (out.length ? 3 : 0)
+    if (used + width > Math.max(0, columns)) break
+    out.push(entry)
+    used += width
+  }
+  return out
+}
+
+/** Rows the list keeps while the detail view is being read, for context only. */
+export const INSPECT_LIST_ROWS = 4
 
 export function previewLines(rows: number): number {
   // About a third of the screen, so a tall terminal shows the session rather
@@ -208,13 +228,36 @@ export function App({
   const { exit } = useApp()
   const { rows: terminalHeight, columns: terminalWidth } = useTerminalSize(rows, columns)
   const listRef = useRef<DOMElement | null>(null)
-  const listHeight = useMeasuredHeight(listRef, Math.max(1, terminalHeight - CHROME_SEED))
+  const detailRef = useRef<DOMElement | null>(null)
+  const [inspecting, setInspecting] = useState(false)
+  const [scroll, setScroll] = useState(0)
+  // Reading the history is worth most of the screen; the list keeps a few rows
+  // so you can still see what you are reading about. Whichever pane is not
+  // growing gets a fixed height, and both are measured rather than computed,
+  // so no arithmetic here can drift from what Yoga actually laid out.
+  const listHeight = useMeasuredHeight(
+    listRef,
+    Math.max(1, inspecting ? INSPECT_LIST_ROWS : terminalHeight - CHROME_SEED),
+  )
+  const detailLines = useMeasuredHeight(
+    detailRef,
+    Math.max(1, inspecting ? terminalHeight - INSPECT_LIST_ROWS - 7 : previewLines(terminalHeight)),
+  )
   const sessions = useSessions(db, cfg, cwd)
   const [confirm, setConfirm] = useState<Confirmation | null>(null)
   const [note, setNote] = useState('')
   const executing = useRef(false)
   const mounted = useRef(true)
   const selectedRow = sessions.rows[sessions.selected]
+  const detail = useMemo(
+    () => buildPreviewLines(db, selectedRow, {
+      columns: terminalWidth, maxLines: detailLines, full: inspecting, now,
+    }),
+    [db, selectedRow, terminalWidth, detailLines, inspecting, now],
+  )
+  const maxScroll = Math.max(0, detail.length - detailLines)
+  // Selecting another session, or leaving inspect, starts the reader at the top.
+  const offset = Math.min(scroll, maxScroll)
   const clipboardApi = useMemo(
     () => clipboard === undefined ? clipboardFactory() : clipboard,
     [clipboard, clipboardFactory],
@@ -338,9 +381,26 @@ export function App({
       else if (key.escape) setConfirm(null)
       return
     }
-    if (key.escape || (key.ctrl && input === 'c')) { exit(); return }
-    if (key.upArrow) { sessions.move(-1); return }
-    if (key.downArrow) { sessions.move(1); return }
+    if (key.ctrl && input === 'c') { exit(); return }
+    if (key.ctrl && input === 'o') {
+      setInspecting((previous) => !previous)
+      setScroll(0)
+      return
+    }
+    if (inspecting) {
+      // Escape closes what it opened before it closes the picker.
+      if (key.escape) { setInspecting(false); setScroll(0); return }
+      if (key.upArrow) { setScroll((at) => Math.max(0, at - 1)); return }
+      if (key.downArrow) { setScroll((at) => at + 1); return }
+      if (key.pageUp) { setScroll((at) => Math.max(0, at - detailLines)); return }
+      if (key.pageDown) { setScroll((at) => at + detailLines); return }
+      // Anything that changes the list would move the ground under the reader,
+      // so typing leaves the history and goes back to searching.
+      if (input && !key.ctrl && !key.meta) { setInspecting(false); setScroll(0) }
+    }
+    if (key.escape) { exit(); return }
+    if (key.upArrow) { sessions.move(-1); setScroll(0); return }
+    if (key.downArrow) { sessions.move(1); setScroll(0); return }
     if (key.tab) { sessions.toggleScope(); return }
     if (key.return) { activate(); return }
     if (key.backspace || key.delete) {
@@ -393,10 +453,15 @@ export function App({
   const sparse = !empty && narrowed && sessions.rows.length <= 1
   // Named, not drawn. A reader who does not already know that ⇥ means tab
   // cannot find the key, and the hints elsewhere say "press tab" in words.
-  const keys: [string, string][] = [
-    ['enter', enterLabel], ['ctrl+p', 'prompt'], ['ctrl+y', 'command'],
-    ['ctrl+f', 'client'], ['tab', 'scope'], ['esc', 'quit'],
-  ]
+  const keys: [string, string][] = inspecting
+    ? [
+      ['up/down', 'scroll'], ['pgup/pgdn', 'page'],
+      ['enter', enterLabel], ['ctrl+o', 'close'], ['esc', 'close'],
+    ]
+    : [
+      ['enter', enterLabel], ['ctrl+o', 'history'], ['ctrl+p', 'prompt'],
+      ['ctrl+y', 'command'], ['ctrl+f', 'client'], ['tab', 'scope'], ['esc', 'quit'],
+    ]
 
   // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,
   // decides who yields space. The list takes the slack the preview leaves; both
@@ -413,7 +478,9 @@ export function App({
         <Text dimColor>{shownSearch ? '' : 'type to search'}</Text>
       </Box>
       <Box
-        ref={listRef} marginTop={1} flexGrow={1} flexShrink={1} minHeight={1}
+        ref={listRef} marginTop={1}
+        flexGrow={inspecting ? 0 : 1} flexShrink={1}
+        height={inspecting ? INSPECT_LIST_ROWS : undefined} minHeight={1}
         flexDirection="column" overflow="hidden"
       >
         {empty
@@ -430,18 +497,20 @@ export function App({
           <Box flexShrink={0} marginTop={1}>
             <Text dimColor>{'─'.repeat(Math.max(1, terminalWidth))}</Text>
           </Box>
-          <Box flexShrink={0} flexDirection="column">
-            <Preview
-              row={selectedRow} db={db} now={now}
-              maxLines={previewLines(terminalHeight)} columns={terminalWidth}
-            />
+          <Box
+            ref={detailRef}
+            flexGrow={inspecting ? 1 : 0} flexShrink={1} minHeight={1}
+            height={inspecting ? undefined : previewLines(terminalHeight)}
+            flexDirection="column" overflow="hidden"
+          >
+            <Preview lines={detail} offset={offset} maxLines={detailLines} />
           </Box>
         </>
       ) : null}
-      {sparse ? <SparseHint project={scope} /> : null}
+      {sparse && !inspecting ? <SparseHint project={scope} /> : null}
       <Box flexShrink={0} marginTop={1}>
         <Text wrap="truncate-end">
-          {keys.map(([key, label], index) => (
+          {fitKeys(keys, terminalWidth).map(([key, label], index) => (
             <Text key={key}>
               {index ? <Text dimColor>{'   '}</Text> : null}
               <Text>{key}</Text><Text dimColor>{` ${label}`}</Text>

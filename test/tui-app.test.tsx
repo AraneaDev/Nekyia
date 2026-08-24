@@ -6,7 +6,9 @@ import { mountPicker, runPick, type PickDependencies } from '../src/commands/pic
 import { buildAdapter, type Adapter } from '../src/core/adapter'
 import { IndexDb } from '../src/core/db'
 import { validateManifest } from '../src/manifests/load'
-import { App, previewLines, safeCommandForClipboard, type CommandCopyWork } from '../src/tui/App'
+import {
+  App, fitKeys, previewLines, safeCommandForClipboard, type CommandCopyWork,
+} from '../src/tui/App'
 import { shareLines } from '../src/tui/Preview'
 import { createHostClipboard, type ClipboardRuntime } from '../src/tui/clipboard'
 import type { ExecPlan, SessionRef } from '../src/types'
@@ -776,10 +778,11 @@ test('the footer names its keys rather than drawing them', async () => {
   await tick()
   const frame = view.lastFrame()!
   // A reader who does not already know the glyph cannot find the key.
-  expect(frame).toContain('tab scope')
   expect(frame).toContain('enter resume')
-  expect(frame).toContain('esc quit')
+  expect(frame).toContain('ctrl+o history')
   for (const glyph of ['⇥', '↵']) expect(frame).not.toContain(glyph)
+  // Whatever is shown is shown whole; a hint cut in half helps nobody.
+  expect(frame).not.toContain('…')
   view.unmount()
 })
 
@@ -815,5 +818,80 @@ test('tab narrows to the project under the cursor and widens back', async () => 
   view.stdin.write('\t')
   await tick()
   expect(view.lastFrame()!).toContain('everywhere')
+  view.unmount()
+})
+
+test('the footer drops hints it cannot fit rather than cutting one in half', () => {
+  const keys: [string, string][] = [
+    ['enter', 'resume'], ['ctrl+o', 'history'], ['tab', 'scope'], ['esc', 'quit'],
+  ]
+  // Everything fits when there is room.
+  expect(fitKeys(keys, 200)).toEqual(keys)
+  // "enter resume" is 12 wide; "ctrl+o history" is 14 more plus a 3 space gap.
+  expect(fitKeys(keys, 12)).toEqual([['enter', 'resume']])
+  expect(fitKeys(keys, 28)).toEqual([['enter', 'resume']])
+  expect(fitKeys(keys, 29)).toEqual([['enter', 'resume'], ['ctrl+o', 'history']])
+  // Nothing fits in nothing, and a negative width is not a crash.
+  expect(fitKeys(keys, 0)).toEqual([])
+  expect(fitKeys(keys, -20)).toEqual([])
+})
+
+test('ctrl+o opens the history, scrolls it, and hands focus back', async () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:long', nativeId: 'long', title: 'a long session' })
+  db.upsertDoc({
+    ref,
+    prompts: Array.from({ length: 30 }, (_, i) => `prompt line ${i}`),
+    prose: Array.from({ length: 200 }, (_, i) => `reply line ${i}`),
+    files: [],
+    truncated: false,
+  })
+
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} />,
+  )
+  await tick()
+  // Browsing fits the blocks into a third of the screen, so the tail is unreachable.
+  expect(view.lastFrame()!).not.toContain('reply line 90')
+  expect(view.lastFrame()!).toContain('ctrl+o history')
+
+  view.stdin.write('\u000f')
+  await tick()
+  const opened = view.lastFrame()!
+  // The footer says what the keys do here, so the mode is never a guess.
+  expect(opened).toContain('up/down scroll')
+  expect(opened).toContain('prompt line 0')
+
+  // Down scrolls the history rather than moving the list selection.
+  for (let i = 0; i < 40; i++) view.stdin.write('\u001b[B')
+  await tick()
+  const scrolled = view.lastFrame()!
+  expect(scrolled).not.toContain('prompt line 0')
+  expect(scrolled).toContain('reply line')
+
+  // Escape closes what it opened, and does not quit.
+  view.stdin.write('\u001b')
+  await tick()
+  const closed = view.lastFrame()!
+  expect(closed).toContain('ctrl+o history')
+  expect(closed).toContain('a long session')
+  view.unmount()
+})
+
+test('scrolling stops at the end of the history instead of running past it', async () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:short', nativeId: 'short', title: 'a short session' })
+  db.upsertDoc({ ref, prompts: ['only one prompt'], prose: [], files: [], truncated: false })
+
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} />,
+  )
+  await tick()
+  view.stdin.write('\u000f')
+  await tick()
+  for (let i = 0; i < 50; i++) view.stdin.write('\u001b[B')
+  await tick()
+  // A history shorter than the pane cannot be scrolled off the top.
+  expect(view.lastFrame()!).toContain('a short session')
   view.unmount()
 })
