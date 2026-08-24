@@ -189,6 +189,8 @@ export interface ListRowProps {
   columns: number
   /** Current search text, so the matching span can be lit inside the title. */
   query: string
+  /** Whether this row falls inside the part of the list currently on screen. */
+  onThumb: boolean
 }
 
 /** rail gutter, client, age and project columns, with the spaces between them. */
@@ -200,13 +202,35 @@ export const ROW_FIXED_COLUMNS = 32
  * and it drew a heavy band across the one row meant to feel picked out.
  */
 const RAIL = '▌'
+/** The track the rail runs in, marking how far the list reaches past the screen. */
+const TRACK = '│'
+
+/**
+ * Which rendered rows the visible slice occupies within the whole list, so the
+ * gutter can show position the way a scrollbar does. Returns [from, to) over
+ * the rows actually drawn. A list that fits gets the full height, which reads
+ * as nothing to scroll rather than as a thumb that happens to fill the track.
+ */
+export function railThumb(start: number, visible: number, total: number): [number, number] {
+  const height = naturalNumber(visible)
+  const count = naturalNumber(total)
+  if (height === 0) return [0, 0]
+  if (count <= height) return [0, height]
+  // A single row is arithmetically right on a very long list but reads as a
+  // stray mark, so the thumb keeps enough body to be seen as a segment.
+  const size = Math.max(Math.min(2, height), Math.min(height, Math.floor((height * height) / count)))
+  const furthest = count - height
+  const at = Math.min(Math.max(0, naturalNumber(start)), furthest)
+  const from = Math.round((at / furthest) * (height - size))
+  return [from, from + size]
+}
 
 /** Columns the title may use once the fixed columns are paid for. */
 export function titleColumns(columns: number): number {
   return Math.max(8, naturalNumber(columns) - ROW_FIXED_COLUMNS)
 }
 
-function DefaultListRow({ row, active, now, columns, query }: ListRowProps) {
+function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowProps) {
   const client = boundedDisplayText(row.client, 9) || '?'
   const project = boundedProjectName(row.cwd)
   const title = boundedDisplayText(row.title ?? '(no title)', titleColumns(columns))
@@ -219,7 +243,9 @@ function DefaultListRow({ row, active, now, columns, query }: ListRowProps) {
   const [before, hit, after] = matchSpans(title, query)
   return (
     <Text wrap="truncate-end">
-      <Text color={active ? hue : undefined} dimColor={!active}>{active ? RAIL : ' '}</Text>{' '}
+      <Text color={active ? hue : undefined} dimColor={!active && !onThumb}>
+        {active ? RAIL : TRACK}
+      </Text>{' '}
       <Text color={hue} dimColor={!live}>{padColumns(client, 9)}</Text>{' '}
       <Text dimColor={age.dim} bold={age.bold}>{relTime(row.endedAt, now).padStart(4)}</Text>{' '}
       <Text color={projectColor(project.trim())} dimColor={!projectColor(project.trim())}>
@@ -251,6 +277,7 @@ export function List({
   const total = rows.length
   const active = boundedSelection(selected, total)
   const [start, end] = visibleWindow(active, total, height)
+  const [thumbFrom, thumbTo] = railThumb(start, end - start, total)
 
   return (
     <Box flexDirection="column" width="100%">
@@ -260,6 +287,7 @@ export function List({
           <RowComponent
             key={row.uid} row={row} index={index}
             active={index === active} now={now} columns={columns} query={query}
+            onThumb={offset >= thumbFrom && offset < thumbTo}
           />
         )
       })}

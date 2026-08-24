@@ -388,9 +388,11 @@ export function App({
   // A directory with almost nothing in it is the first thing a new user sees,
   // so it points at the key that widens the search rather than sitting blank.
   const sparse = !empty && narrowed && sessions.rows.length <= 1
+  // Named, not drawn. A reader who does not already know that ⇥ means tab
+  // cannot find the key, and the hints elsewhere say "press tab" in words.
   const keys: [string, string][] = [
-    ['↵', enterLabel], ['^p', 'prompt'], ['^y', 'command'],
-    ['^f', 'client'], ['⇥', 'scope'], ['esc', 'quit'],
+    ['enter', enterLabel], ['ctrl+p', 'prompt'], ['ctrl+y', 'command'],
+    ['ctrl+f', 'client'], ['tab', 'scope'], ['esc', 'quit'],
   ]
 
   // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,
