@@ -47,6 +47,17 @@ test('the README states the offline privacy boundary plainly', () => {
   expect(readme).toContain('no telemetry')
 })
 
+test('the README follows the project house style and is honest about pre-release installation', () => {
+  const readme = readFileSync(join(root, 'README.md'), 'utf8')
+  expect(readme).toStartWith('<div align="center">\n\n# Nekyia')
+  expect(readme).toContain('github/v/release/AraneaDev/Nekyia')
+  expect(readme).toContain('actions/workflow/status/AraneaDev/Nekyia/ci.yml')
+  expect(readme).toContain('status-pre--release')
+  expect(readme).toContain('> **Nekyia**')
+  expect(readme).toContain('**not yet published to npm**')
+  expect(readme).toContain('git clone https://github.com/AraneaDev/Nekyia.git')
+})
+
 test('the package contains only publishable runtime material', () => {
   expect(pkg.files).toEqual(['src', 'README.md', 'LICENSE'])
   expect(pkg.engines?.bun).toBe('>=1.1.0')

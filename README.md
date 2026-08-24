@@ -1,50 +1,139 @@
+<div align="center">
+
 # Nekyia
 
-## What it does
+**Find the session. Pick up the thread.**
 
-Every agent CLI keeps its history somewhere different. I built Nekyia so you can search those histories at once, see the work from your current directory, and resume the right session when the client supports exact resume. For a search-tier client, Nekyia starts a fresh session with a deterministic brief and labels it as briefed, never resumed.
+[![Release](https://img.shields.io/github/v/release/AraneaDev/Nekyia?label=release&include_prereleases)](https://github.com/AraneaDev/Nekyia/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/AraneaDev/Nekyia/ci.yml?label=CI)](https://github.com/AraneaDev/Nekyia/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/AraneaDev/Nekyia?label=license&color=yellow)](./LICENSE)
+[![Language](https://img.shields.io/github/languages/top/AraneaDev/Nekyia)](https://github.com/AraneaDev/Nekyia)
+[![Last commit](https://img.shields.io/github/last-commit/AraneaDev/Nekyia?label=last%20commit)](https://github.com/AraneaDev/Nekyia/commits/main)
+[![Conventional Commits](https://img.shields.io/badge/commits-conventional-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org/)
+[![Status](https://img.shields.io/badge/status-pre--release-orange)](#quick-start)
 
-## Install
+</div>
+
+> **Nekyia** (Νέκυια) is the rite in the _Odyssey_ through which Odysseus calls up
+> the dead and asks them what they know. This tool does something less dramatic
+> with old agent sessions: it brings the useful context back when you need it.
+
+Nekyia searches the local histories kept by your agent CLIs, ranks the sessions that
+matter, and launches the right client. Verified clients resume the exact session.
+Search-tier clients start fresh with a deterministic handover that says plainly it is
+a brief, not a resumed state.
+
+> **Status:** pre-release. Nekyia is **not yet published to npm**. Install from the
+> source repository or from the package attached to the
+> [GitHub pre-release](https://github.com/AraneaDev/Nekyia/releases). The command
+> `bun install -g nekyia` is the planned published experience and does not work yet.
+
+---
+
+## Features
+
+- **One Search Surface**: query Claude Code, Codex, opencode, Kilo Code, Codebuff, and Antigravity histories together
+- **Verified Resume**: attach to the selected session by ID only where that exact command was tested
+- **Deterministic Handovers**: start search-tier clients with every indexed user prompt, touched files, branch context, and bounded assistant prose
+- **Two-Phase Indexing**: discover cheap fingerprints first, then hydrate only sessions that changed
+- **Fast Local Search**: SQLite FTS5 combines weighted prompt relevance with recency decay
+- **Interactive and Scriptable**: use the virtualized Ink picker or plain, JSON-capable CLI commands
+- **Privacy Controls**: forget one session, prune deleted sources, or exclude whole directory globs
+- **Extensible Manifests**: describe another client locally and use the conservative sniffer to scaffold a draft
+- **Local by Design**: no network service, API key, telemetry, model-written summary, or tool-output indexing
+
+## Installation
 
 Nekyia requires [Bun](https://bun.sh/) 1.1 or newer.
 
-```sh
-bun install -g nekyia
+### From the pre-release package
+
+Download `nekyia-0.0.1.tgz` from the
+[v0.0.1 pre-release](https://github.com/AraneaDev/Nekyia/releases/tag/v0.0.1), then run:
+
+```bash
+bun install -g ./nekyia-0.0.1.tgz
 ```
 
-This installs both `nekyia` and the shorter `nek` command.
+### From source
 
-## Use
-
-```sh
-nekyia                     # open the interactive picker
-nekyia search reconnect    # search without the picker
-nekyia last                # launch the latest session in this directory
-nekyia index               # refresh the local index
-nekyia doctor              # inspect clients, stores, and parse problems
+```bash
+git clone https://github.com/AraneaDev/Nekyia.git
+cd Nekyia
+bun install --frozen-lockfile
+bun link
 ```
 
-In the picker:
+Both install paths expose `nekyia` and the shorter `nek` command.
+
+## Quick start
+
+### 1. Build the local index
+
+```bash
+nekyia index
+```
+
+The first run shows what Nekyia plans to inspect and asks for consent before it
+opens a transcript store or creates the index. Use `nekyia index --yes` only when
+you have already reviewed that boundary and need a non-interactive run.
+
+### 2. Find a session
+
+```bash
+nekyia                         # interactive picker
+nekyia search reconnect race   # table output
+nekyia search reconnect --json # machine-readable output
+nekyia last                    # newest session under this directory
+```
+
+Search defaults to the current directory. Pass `--all` to search everywhere,
+`--client <id>` for one client, or `--file <path>` for sessions that touched a file.
+
+### 3. Resume or hand over
+
+Press Enter in the picker, or run `nekyia last`. A resume-tier row launches the
+verified exact-session command. A search-tier row asks for confirmation, builds a
+deterministic handover, and starts a new client session with that context.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `nekyia` | Open the interactive picker |
+| `nekyia search <query>` | Search from the terminal, with optional JSON output |
+| `nekyia last` | Launch the newest visible session in this directory |
+| `nekyia index [--rebuild]` | Refresh fingerprints and changed session content |
+| `nekyia show <uid>` | Print a deterministic handover as Markdown |
+| `nekyia doctor [--sniff]` | Report clients, paths, parse failures, caps, and unsupported stores |
+| `nekyia forget <uid>` | Remove one session and every searchable facet from the index |
+| `nekyia prune --missing` | Remove indexed sessions whose sources disappeared |
+| `nekyia exclude <glob>` | Add an index-time directory exclusion |
+
+Run `nekyia --help` for search filters, sort modes, limits, and command-specific options.
+
+## Picker keys
 
 | Key | Action |
-|---|---|
+| --- | --- |
 | Type | Search indexed session text |
-| Up and down | Move through results |
-| Enter | Resume, or confirm a new briefed session |
-| Tab | Switch between this directory and everywhere |
+| Up / Down | Move through results |
+| Enter | Resume, or confirm a fresh briefed session |
+| Tab | Toggle this directory / everywhere |
 | Ctrl+F | Cycle the client filter |
 | Ctrl+P | Copy the first indexed prompt |
-| Ctrl+Y | Copy the resume command when one exists |
-| Escape | Cancel or quit |
-
-`nekyia search <query>` accepts `--client`, `--file`, `--sort`, `--all`, `--limit`, and `--json`. Run `nekyia --help` for the complete command list.
+| Ctrl+Y | Copy the verified resume command when one exists |
+| Escape | Cancel confirmation or quit |
 
 ## Supported clients
 
-The table reflects the tier that actually ships. Resume means the command can attach to the selected session by ID. Search means Nekyia starts the client fresh with an indexed handover, because exact attachment was not confirmed. Support here means the client store was installed and tested, not guessed from a likely path. Kilo shares opencode's tested store format, but its executable was not installed during command verification, so I do not claim exact resume for it.
+Support means the store format was exercised against real or fidelity-matched local
+data, not guessed from a likely path. Resume means the selected ID can be passed to a
+verified resume command. Search means Nekyia starts a fresh briefed session because
+exact attachment was not confirmed.
 
 | Client | Tier | Command Nekyia runs |
-|---|---|---|
+| --- | --- | --- |
 | Claude Code | Resume | `claude --resume <id>` |
 | Codex | Resume | `codex resume <id>` |
 | Antigravity CLI, agy | Resume | `agy --conversation <id>` |
@@ -52,23 +141,47 @@ The table reflects the tier that actually ships. Resume means the command can at
 | Kilo Code | Search | `kilo <brief>` |
 | Codebuff / freebuff | Search | `codebuff --cwd <cwd> <brief>` |
 
-Search-tier clients always start fresh briefed sessions. They do not recover tool state or file snapshots, and sending the brief can cost tokens. I only promote a client to resume after I can verify attachment to the requested ID. See the [roadmap](#roadmap) for clients that still need hands-on verification.
+Kilo shares opencode's tested store format, but its executable was not installed during
+command verification. opencode and Codebuff were exercised against real local IDs, but
+the result did not prove attachment to the requested context. I do not call any of those
+three resumable. Search-tier clients always start fresh briefed sessions. They never claim
+to recover tool state or file snapshots, and sending a handover can cost tokens.
 
 ## How it works
 
-The first phase discovers cheap metadata and fingerprints without loading whole transcripts. The second phase hydrates only new or changed sessions into a local SQLite FTS index. Nekyia indexes your prompts and selected assistant prose, but excludes tool output because file dumps and command results are noisy, large, and can contain unrelated private data.
+Nekyia separates indexing into two phases. Discovery reads bounded metadata and stable
+fingerprints. Hydration runs only for new or changed sessions, streams or projects the
+relevant content, and commits metadata plus search facets atomically to SQLite.
 
-## Privacy
+Search weights titles, user prompts, and selected assistant prose differently, then can
+blend relevance with recency. Fork chains collapse to one visible result. Tool output is
+excluded because command results and file dumps are noisy, large, and likely to contain
+private material that does not belong in search.
 
-Nekyia makes no network requests. There is no network service, no API key, and no telemetry. The deterministic brief uses no model call.
+The index normally lives at `~/.local/share/nekyia/index.db`; configuration lives at
+`~/.config/nekyia/config.json`. Nekyia honours `XDG_DATA_HOME` and `XDG_CONFIG_HOME`.
 
-The index reads transcripts that are already on your disk and aggregates their paths and text locally. An indexed copy can survive deletion of the source transcript. Use `nekyia forget <uid>` to purge one indexed session, `nekyia prune --missing` to purge sessions whose sources disappeared, and `nekyia exclude <glob>` followed by `nekyia index --rebuild` to keep matching directories out of the rebuilt index.
+## Privacy and data retention
 
-Nekyia does not promise secret redaction or index encryption. Review output before you paste it into a public issue.
+Nekyia makes no network requests. There is no network service, no API key, and no telemetry.
+The handover is deterministic and makes no model call.
+
+The index reads transcripts already on your disk and stores selected paths and text
+locally. That indexed copy can survive deletion of the original transcript. You control
+that retention explicitly:
+
+- `nekyia forget <uid>` purges one indexed session
+- `nekyia prune --missing` purges sessions whose source files disappeared
+- `nekyia exclude '/work/private/**'` adds an exclusion, followed by `nekyia index --rebuild` to remove existing matches
+
+Nekyia does not promise secret redaction or index encryption. Review `show`, `doctor`,
+and JSON output before pasting it into a public issue.
 
 ## Adding a client
 
-User manifests live in `~/.config/nekyia/clients/*.json`. Each manifest uses schema version 1 and describes roots, a storage format, a tier, and the command template. A minimal flat JSONL manifest looks like this:
+User manifests live in `~/.config/nekyia/clients/*.json`. Schema version 1 describes the
+client roots, storage format, support tier, and optional launch templates. A minimal flat
+JSONL manifest looks like this:
 
 ```json
 {
@@ -99,14 +212,33 @@ User manifests live in `~/.config/nekyia/clients/*.json`. Each manifest uses sch
 }
 ```
 
-`nekyia doctor --sniff` inspects likely unsupported stores without declaring them supported. `nekyia doctor --sniff --emit-manifest ./my-client.json` writes a non-overwriting draft for the first store it can describe. Inspect and test the draft before moving it into your user manifest directory or contributing it.
+`nekyia doctor --sniff` looks for session-shaped stores without declaring them supported.
+`nekyia doctor --sniff --emit-manifest ./my-client.json` writes a non-overwriting draft
+for the first store it can describe. Inspect and test that draft before moving it into the
+user manifest directory or contributing it.
+
+## Development
+
+```bash
+bun install --frozen-lockfile
+bun run typecheck
+bun run test
+bun pm pack --dry-run
+```
+
+CI runs the frozen install, typecheck, full suite, and package check on Linux and macOS.
+Releases use Conventional Commits and Release Please.
 
 ## Roadmap
 
-These clients need hands-on testing before I ship a built-in manifest: Aider, Goose, Crush, Cursor CLI, GitHub Copilot CLI, Qwen Code, Continue CLI, Droid, Amazon Q Developer CLI, Plandex, OpenHands, Amp, Warp Agent, Grok CLI, Rovo Dev, Auggie, Trae, Cline CLI, and Zed.
+These clients still need hands-on testing before I ship a built-in manifest: Aider,
+Goose, Crush, Cursor CLI, GitHub Copilot CLI, Qwen Code, Continue CLI, Droid,
+Amazon Q Developer CLI, Plandex, OpenHands, Amp, Warp Agent, Grok CLI, Rovo Dev,
+Auggie, Trae, Cline CLI, and Zed.
 
-I also plan compiled standalone binaries via `bun build --compile` for Linux and macOS on x64 and arm64. They are not part of this release, so Bun is currently required.
+I also plan compiled standalone binaries through `bun build --compile` for Linux and
+macOS on x64 and arm64. They are not part of this pre-release, so Bun is required.
 
-## Licence
+## License
 
-Nekyia is available under the [MIT licence](LICENSE).
+Nekyia is available under the [MIT license](LICENSE).
