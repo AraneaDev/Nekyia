@@ -8,6 +8,7 @@ import { indexPath, loadConfig, type Config } from '../config'
 import { loadManifests } from '../manifests/load'
 import type { Diagnostic, SessionRef } from '../types'
 
+/** Controls an index refresh, including whether to discard and rebuild. */
 export interface ReindexOptions {
   rebuild?: boolean
   quiet?: boolean
@@ -18,6 +19,7 @@ export interface ReindexOptions {
   adapterSet?: AdapterSet
 }
 
+/** A resolved set of adapters and whatever went wrong building them. */
 export interface AdapterSet {
   adapters: Adapter[]
   diagnostics: Diagnostic[]
@@ -135,6 +137,7 @@ export async function reindexWith(
     : 0
 }
 
+/** Refreshes fingerprints, then hydrates only the sessions that changed. */
 export async function runReindex(opts: ReindexOptions = {}): Promise<number> {
   const cfg = loadConfig()
   const adapterSet = opts.adapterSet ?? adaptersForRun()

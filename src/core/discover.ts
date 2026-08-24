@@ -3,6 +3,7 @@ import type { Diagnostic, SessionRef } from '../types'
 import type { Adapter, AdapterDiscovery } from './adapter'
 import type { IndexDb } from './db'
 
+/** What one discovery pass learned: everything visible, what changed and so needs hydrating, and what has disappeared. */
 export interface Scan {
   refs: SessionRef[]
   changed: SessionRef[]
@@ -18,6 +19,14 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/**
+ * Runs the cheap discovery phase across every installed client.
+ *
+ * Only fingerprints change detection: sessions whose fingerprint still
+ * matches are never re-read. A client that could not be fully enumerated has
+ * its sessions withheld from the missing list, so a transient read failure
+ * cannot delete real history.
+ */
 export async function scan(db: IndexDb, cfg: Config, adapters: Adapter[]): Promise<Scan> {
   const known = db.getFingerprints()
   const diagnostics: Diagnostic[] = []

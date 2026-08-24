@@ -94,11 +94,28 @@ test('a throwing format never escapes discovery or hydration', async () => {
 
 test('discovery explicitly reports warning-class store failures as non-authoritative', async () => {
   const root = makeTemp('nekyia-adapter-incomplete-')
-  const discovered = await buildAdapter(agyManifest([root])).discover()
+  // A store Nekyia refuses to open leaves the view of this client incomplete,
+  // so its sessions stay protected from missing-session pruning.
+  const escaping = validateManifest({
+    ...agyManifest([root]),
+    sqlite: { ...agyManifest([root]).sqlite, file: '../outside.db' },
+  })
+  const discovered = await buildAdapter(escaping).discover()
 
   expect(discovered.refs).toEqual([])
   expect(discovered.diagnostics.some((item) => item.level === 'warn')).toBeTrue()
   expect(discovered.authoritative).toBeFalse()
+})
+
+test('a client that is installed but never used stays authoritative', async () => {
+  const root = makeTemp('nekyia-adapter-unused-')
+  const discovered = await buildAdapter(agyManifest([root])).discover()
+
+  // Nothing is wrong here: there are no sessions, and that is a complete
+  // answer. Treating it as a gap would disable prune --missing for the client.
+  expect(discovered.refs).toEqual([])
+  expect(discovered.diagnostics).toEqual([])
+  expect(discovered.authoritative).toBeTrue()
 })
 
 test('successful built-in discovery is authoritative', async () => {

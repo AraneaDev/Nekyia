@@ -11,10 +11,16 @@ import {
 } from 'node:fs'
 import type { Dir, Dirent } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Manifest } from '../manifests/load'
 import { expandRoot, loadManifests } from '../manifests/load'
 
+/**
+ * A store Nekyia recognised but does not ship support for, with a draft manifest to start from.
+ *
+ * `confidence` and `sample` exist so a person can judge the guess: a draft is
+ * a starting point for a manifest, never a supported client.
+ */
 export interface SniffResult {
   path: string
   kind: 'jsonl' | 'sqlite'
@@ -181,6 +187,7 @@ function readJsonlPrefix(path: string): { text: string; truncated: boolean } | n
   }
 }
 
+/** Inspects a bounded prefix of a line-per-record file and drafts a manifest when the shape is recognisable. */
 export function sniffJsonl(path: string): SniffResult | null {
   const name = basename(path).toLowerCase()
   if (NEVER_JSON.has(name) || !name.endsWith('.jsonl')) return null
@@ -223,7 +230,7 @@ export function sniffJsonl(path: string): SniffResult | null {
       format: 'jsonl-transcript',
       tier: 'search',
       jsonl: {
-        glob: `**/${basename(path).replace(/[\\*?\[\]{}()!+@]/g, '\\$&')}`,
+        glob: `**/${basename(path).replace(/[\\*?[\]{}()!+@]/g, '\\$&')}`,
         variant: 'generic',
         generic: {
           idFrom: 'filename',
@@ -334,6 +341,7 @@ function sqliteTimeUnit(value: unknown): 'ms' | 's' | 'iso' {
   return 'iso'
 }
 
+/** Inspects a SQLite file's tables and columns, opened read-only, and drafts a manifest when a session-like table is present. */
 export function sniffSqlite(path: string): SniffResult | null {
   if (!safeRegularFile(path)) return null
   let db: Database | null = null
@@ -457,6 +465,7 @@ function sniffKind(path: string): SniffResult | null {
   return null
 }
 
+/** Walks likely store locations and returns the best drafts, bounded in both directories visited and results returned. */
 export function sniffRoots(dirs: string[] = candidateRoots(), limit = MAX_RESULTS): SniffResult[] {
   const resultLimit = Math.max(0, Math.min(MAX_RESULTS, Number.isFinite(limit) ? Math.floor(limit) : MAX_RESULTS))
   if (resultLimit === 0) return []

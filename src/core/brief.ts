@@ -1,5 +1,6 @@
 import type { IndexDb } from './db'
 
+/** Bounds on a generated handover, so a long session cannot produce an unbounded prompt. */
 export interface BriefOpts {
   /** Roughly four characters per token, so 40,000 is about 10k tokens. */
   maxChars?: number

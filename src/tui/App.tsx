@@ -7,7 +7,7 @@ import type { IndexDb } from '../core/db'
 import { shellQuote } from '../core/resume'
 import type { ExecPlan } from '../types'
 import { boundedDisplayText, List } from './List'
-import { projectName } from '../render'
+import { projectName, relTime } from '../render'
 import { buildPreviewLines, Preview } from './Preview'
 import { useSessions } from './useSessions'
 import { createHostClipboard, type ClipboardLike } from './clipboard'
@@ -68,9 +68,13 @@ export function fitKeys(keys: [string, string][], columns: number): [string, str
   return out
 }
 
+/** Below this, the index is recent enough that naming its age is only noise. */
+const STALE_INDEX_MS = 3_600_000
+
 /** Rows the list keeps while the detail view is being read, for context only. */
 export const INSPECT_LIST_ROWS = 4
 
+/** Splits the screen between the list and the session preview, scaled to terminal height. */
 export function previewLines(rows: number): number {
   // About a third of the screen, so a tall terminal shows the session rather
   // than a dozen lines under a very long list, while the list keeps the rest.
@@ -104,6 +108,7 @@ function sanitizePromptForClipboard(text: string): string {
   return new TextDecoder().decode(bytes.subarray(0, end))
 }
 
+/** Records how much text the copy guard inspected, so the bound can be asserted in tests. */
 export interface CommandCopyWork {
   scannedCodeUnits: number
 }
@@ -119,6 +124,14 @@ function commandUnitUnsafe(code: number): boolean {
     || code === 0xfeff
 }
 
+/**
+ * Renders a launch command safe to place on the clipboard, or null when it cannot be.
+ *
+ * The clipboard is a loaded gun: this text may be pasted straight into a
+ * shell. Every value is quoted, control and bidi characters are refused
+ * outright, and the work is bounded so a hostile transcript cannot stall the
+ * picker.
+ */
 export function safeCommandForClipboard(plan: ExecPlan, work?: CommandCopyWork): string | null {
   try {
     if (typeof plan.cmd !== 'string' || typeof plan.cwd !== 'string' || !Array.isArray(plan.args)) return null
@@ -219,11 +232,19 @@ export interface AppProps {
   rows?: number
   /** Injectable terminal width; the live terminal is used when omitted. */
   columns?: number
+  /**
+   * When the index was last written, as Unix epoch milliseconds.
+   *
+   * Omitted when it cannot be read, which leaves the age unstated rather than
+   * guessed at.
+   */
+  indexedAt?: number
 }
 
+/** The picker: search, scoping, client filtering, history inspection, and launch. */
 export function App({
   db, cfg, adapters, cwd, now, onExec, clipboard,
-  clipboardFactory = createHostClipboard, rows, columns,
+  clipboardFactory = createHostClipboard, rows, columns, indexedAt,
 }: AppProps) {
   const { exit } = useApp()
   const { rows: terminalHeight, columns: terminalWidth } = useTerminalSize(rows, columns)
@@ -441,7 +462,15 @@ export function App({
   // Name what is being filtered. "this directory" left the reader guessing
   // which one, and launching from a parent made it look like it did nothing.
   const scope = sessions.scope ? projectName(sessions.scope) : 'everywhere'
-  const context = [`${sessions.rows.length} sessions`, scope, shownClient, shownNote]
+  // A stale index is the difference between "that session does not exist" and
+  // "it is not indexed yet", and only one of those is the user's problem. The
+  // age is stated, never the conclusion: discovering whether anything actually
+  // changed costs a full scan, which the picker must not pay on startup.
+  const indexAge = indexedAt !== undefined && Number.isFinite(indexedAt)
+    && now - indexedAt >= STALE_INDEX_MS
+    ? `index ${relTime(indexedAt, now)} old`
+    : ''
+  const context = [`${sessions.rows.length} sessions`, scope, shownClient, shownNote, indexAge]
     .filter(Boolean).join(' · ')
   // The first key names what enter does to the row under the cursor, so the
   // hint matches the outcome instead of always promising a resume.

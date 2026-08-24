@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import React from 'react'
 import { render } from 'ink'
 import { buildAdapters } from '../core/adapter'
@@ -11,11 +11,13 @@ import type { ExecPlan } from '../types'
 import { runReindex } from './reindex'
 import { needsConsent } from './firstrun'
 
+/** The subset of Ink's render handle the picker lifecycle needs. */
 export interface PickerInstance {
   waitUntilExit(): Promise<unknown>
   unmount(): void
 }
 
+/** Injection points for the picker command, covering the terminal, index, and launch. */
 export interface PickDependencies {
   isTTY(): boolean
   indexExists(path: string): boolean
@@ -31,8 +33,11 @@ export interface PickDependencies {
   runPlan(plan: ExecPlan): Promise<number>
   ensureIndex(): Promise<number>
   error(message: string): void
+  /** Undefined when the index's age cannot be read, so the picker states nothing. */
+  indexedAt(path: string): number | undefined
 }
 
+/** Mounts the picker on the alternate screen, so the session list never displaces the user's scrollback. */
 export function mountPicker(props: AppProps, renderer: typeof render = render): PickerInstance {
   return renderer(React.createElement(App, props), { alternateScreen: true })
 }
@@ -52,6 +57,13 @@ const defaults: PickDependencies = {
   runPlan,
   ensureIndex: () => runReindex({ yes: false }),
   error: (message) => { console.error(message) },
+  indexedAt: (path) => {
+    try {
+      return statSync(path).mtimeMs
+    } catch {
+      return undefined
+    }
+  },
 }
 
 function message(error: unknown): string {
@@ -118,6 +130,7 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
       adapters,
       cwd: deps.cwd(),
       now: deps.now(),
+      indexedAt: deps.indexedAt(path),
       onExec: (plan) => { pending ??= plan },
     })
     await picker.waitUntilExit()

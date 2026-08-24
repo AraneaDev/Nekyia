@@ -3,6 +3,7 @@ import { IndexDb } from '../core/db'
 import { query } from '../core/query'
 import { formatRow } from '../render'
 
+/** Everything the search command accepts, mirroring its flags. */
 export interface SearchOptions {
   text?: string
   cwd?: string
@@ -32,6 +33,7 @@ function publicRow(row: ReturnType<typeof query>[number]) {
   }
 }
 
+/** Searches from the terminal, printing a table or machine-readable JSON. */
 export async function runSearch(opts: SearchOptions = {}): Promise<number> {
   const cfg = loadConfig()
   const path = indexPath()

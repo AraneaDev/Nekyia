@@ -5,6 +5,7 @@ import { runSearch, type SearchOptions } from './commands/search'
 import { runShow } from './commands/show'
 import { parseUid } from './types'
 
+/** The help text, and the single source of truth for the command surface. */
 export const USAGE = `nekyia - search every agent CLI session on your machine and resume the right one
 
 usage:
@@ -71,6 +72,7 @@ function link(text: string, url: string): string {
     : `${text} · ${url}`
 }
 
+/** Renders the version line, linking to the release when the terminal supports hyperlinks. */
 export function versionText(version: string, hyperlink = link): string {
   return [
     `nekyia ${version}`,
@@ -221,6 +223,7 @@ async function dispatch(argv: string[]): Promise<number> {
   return runSearch(search)
 }
 
+/** Parses argv, dispatches to a command, and returns the process exit code rather than exiting itself, so tests can drive it. */
 export async function main(argv: string[]): Promise<number> {
   try {
     return await dispatch(argv)

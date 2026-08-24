@@ -12,6 +12,7 @@ const CLIENT_COLOR: Record<string, string> = {
   agy: 'red',
 }
 
+/** The fixed hue for a known client, so the same client reads the same everywhere. */
 export function clientColor(client: string): string {
   return CLIENT_COLOR[client] ?? 'white'
 }
@@ -23,6 +24,7 @@ export function clientColor(client: string): string {
  */
 const PROJECT_COLOR = ['cyan', 'green', 'yellow', 'blue', 'magenta', 'red'] as const
 
+/** A stable hue derived from the project name, so the column is scannable without a fixed palette. */
 export function projectColor(project: string): string | undefined {
   if (!project || project === '-') return undefined
   let hash = 0
@@ -58,6 +60,7 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/gu
 const BIDI_FORMAT = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f\ufeff]/gu
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 
+/** Records how much text bounding inspected, so the caps stay observable in tests. */
 export interface DisplayWork {
   sampledCodeUnits: number
   graphemes: number
@@ -180,6 +183,7 @@ export function visibleWindow(selected: number, total: number, height: number): 
   return [start, start + windowHeight]
 }
 
+/** One rendered session row, given the width it must fill and the query to light inside it. */
 export interface ListRowProps {
   row: Row
   index: number
@@ -259,6 +263,7 @@ function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowPr
   )
 }
 
+/** Draws the visible window of sessions, virtualized so a large index costs no more to render than a small one. */
 export function List({
   rows, selected, height, now, columns = 92, query = '',
   rowComponent: RowComponent = DefaultListRow,

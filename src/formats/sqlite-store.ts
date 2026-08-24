@@ -2,7 +2,6 @@ import { Database } from 'bun:sqlite'
 import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Config } from '../config'
-import type { Manifest } from '../manifests/load'
 import type { Diagnostic, SessionDoc, SessionRef } from '../types'
 import { makeUid } from '../types'
 import type { FormatModule } from './jsonl-transcript'
@@ -10,6 +9,8 @@ import { collectPaths } from './paths'
 
 type SqlRow = Record<string, unknown>
 const MAX_PROJECTED_JSON_BYTES = 4 * 1024 * 1024
+/** Per-session ceiling on recorded paths, so one runaway session cannot bloat the index. */
+const MAX_SESSION_FILES = 1024
 
 function sensibleString(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim().length === 0 || value.includes('\0')) return null
@@ -40,6 +41,12 @@ function parseSqlTimeNullable(
   return Number.isFinite(timestamp) ? timestamp : null
 }
 
+/**
+ * Reads a timestamp in the unit a manifest declares, returning 0 for anything it cannot trust.
+ *
+ * Zero means unknown rather than 1970: callers rank on it, so a bogus value
+ * must sort as undated instead of impossibly old.
+ */
 export function parseSqlTime(
   value: unknown,
   unit: 'ms' | 's' | 'iso' = 'ms',
@@ -47,6 +54,7 @@ export function parseSqlTime(
   return parseSqlTimeNullable(value, unit) ?? 0
 }
 
+/** Reads a working directory, unwrapping the file-URI array shape some clients store instead of a plain path. */
 export function parseCwd(
   value: unknown,
   shape: 'plain' | 'file-uri-array' = 'plain',
@@ -98,19 +106,42 @@ function isWithin(root: string, path: string): boolean {
     || (!isAbsolute(fromRoot) && fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`))
 }
 
-function safeDatabasePath(root: string, file: string): string | null {
-  if (isAbsolute(file) || file.split(/[\\/]+/).includes('..')) return null
+/**
+ * Where a manifest's store turned out to be.
+ *
+ * `absent` and `unsafe` are deliberately not the same answer: a client that
+ * was never used has nothing to report, while a path escaping the root is a
+ * refusal the user should hear about.
+ */
+type DatabaseLocation =
+  | { kind: 'ok'; path: string }
+  | { kind: 'absent' }
+  | { kind: 'unsafe' }
+
+function isNotFound(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code
+  return code === 'ENOENT' || code === 'ENOTDIR'
+}
+
+function locateDatabase(root: string, file: string): DatabaseLocation {
+  if (isAbsolute(file) || file.split(/[\\/]+/).includes('..')) return { kind: 'unsafe' }
   const lexicalRoot = resolve(root)
   const lexicalPath = resolve(lexicalRoot, file)
-  if (!isWithin(lexicalRoot, lexicalPath)) return null
+  if (!isWithin(lexicalRoot, lexicalPath)) return { kind: 'unsafe' }
 
+  let realRoot: string
+  let realPath: string
   try {
-    const realRoot = realpathSync(lexicalRoot)
-    const realPath = realpathSync(lexicalPath)
-    return isWithin(realRoot, realPath) ? realPath : null
-  } catch {
-    return null
+    realRoot = realpathSync(lexicalRoot)
+  } catch (error) {
+    return isNotFound(error) ? { kind: 'absent' } : { kind: 'unsafe' }
   }
+  try {
+    realPath = realpathSync(lexicalPath)
+  } catch (error) {
+    return isNotFound(error) ? { kind: 'absent' } : { kind: 'unsafe' }
+  }
+  return isWithin(realRoot, realPath) ? { kind: 'ok', path: realPath } : { kind: 'unsafe' }
 }
 
 function innerQuery(sql: string): string {
@@ -255,23 +286,54 @@ function projectedInput(value: unknown): unknown | null {
   }
 }
 
+/**
+ * Reads the paths a client recorded for one session, bounded and sanitised.
+ *
+ * The store belongs to the client, so blank and unusable values are dropped
+ * rather than trusted, and passing the ceiling marks the document truncated
+ * instead of silently keeping a partial list.
+ */
+function collectRecordedFiles(
+  db: Database,
+  sql: string,
+  nativeId: string,
+  into: Set<string>,
+  onTruncated: () => void,
+): void {
+  for (const row of db.query(innerQuery(sql)).iterate(nativeId) as Iterable<SqlRow>) {
+    if (into.size >= MAX_SESSION_FILES) {
+      onTruncated()
+      return
+    }
+    const path = sensibleString(row.path)
+    if (path !== null) into.add(path)
+  }
+}
+
+/** Reads SQLite-backed stores, projecting them onto Nekyia's model through the manifest's own SQL. */
 export const sqliteStore: FormatModule = {
   async discover(manifest, root) {
     const spec = manifest.sqlite!
     const refs: SessionRef[] = []
     const diagnostics: Diagnostic[] = []
     const unresolvedPath = resolve(root, spec.file)
-    const dbPath = safeDatabasePath(root, spec.file)
+    const located = locateDatabase(root, spec.file)
 
-    if (!dbPath) {
+    // An absent store means the client is installed but unused. Reporting that
+    // would mark discovery non-authoritative, which switches off missing-session
+    // pruning for a client that simply has no sessions.
+    if (located.kind === 'absent') return { refs, diagnostics }
+
+    if (located.kind === 'unsafe') {
       diagnostics.push(diagnostic(
         manifest.id,
         'warn',
         unresolvedPath,
-        'database path is missing or outside the manifest root',
+        'database path is outside the manifest root',
       ))
       return { refs, diagnostics }
     }
+    const dbPath = located.path
 
     let db: Database
     try {
@@ -336,9 +398,10 @@ export const sqliteStore: FormatModule = {
 
   async hydrate(manifest, root, ref, config: Config) {
     const spec = manifest.sqlite!
-    if (!spec.text) return emptyDoc(ref)
-    const dbPath = safeDatabasePath(root, spec.file)
-    if (!dbPath) return emptyDoc(ref)
+    if (!spec.text && !spec.files) return emptyDoc(ref)
+    const located = locateDatabase(root, spec.file)
+    if (located.kind !== 'ok') return emptyDoc(ref)
+    const dbPath = located.path
 
     const prompts: string[] = []
     const prose: string[] = []
@@ -351,6 +414,8 @@ export const sqliteStore: FormatModule = {
     const db = new Database(dbPath, { readonly: true })
 
     try {
+      if (spec.files) collectRecordedFiles(db, spec.files, ref.nativeId, files, () => { truncated = true })
+      if (!spec.text) return { ref, prompts, prose, files: [...files], truncated }
       const isStructured = spec.textShape === 'opencode-part'
         || spec.textShape === 'opencode-message-json'
       const query = isStructured

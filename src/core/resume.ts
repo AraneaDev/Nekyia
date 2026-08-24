@@ -2,6 +2,7 @@ import { accessSync, constants, statSync } from 'node:fs'
 import { delimiter, isAbsolute, join, resolve } from 'node:path'
 import type { ExecPlan } from '../types'
 
+/** Whether a plan can be launched, and if not, the reason to show the user. */
 export interface RunResult {
   ok: boolean
   reason?: string
@@ -15,6 +16,7 @@ interface SpawnOptions {
   stderr: 'inherit'
 }
 
+/** The process launcher, injectable so tests can observe a spawn without running one. */
 export interface RunIo {
   spawn(command: string[], options: SpawnOptions): { exited: Promise<number> }
 }
@@ -42,6 +44,7 @@ function resolveCommand(command: string, cwd: string): string | undefined {
   return undefined
 }
 
+/** Checks a plan is launchable before any teardown happens, so a failure is reported into a live terminal rather than a torn-down one. */
 export function checkPlan(plan: ExecPlan): RunResult {
   if (!plan.cwd) {
     return { ok: false, reason: 'the directory no longer exists' }
@@ -122,6 +125,7 @@ function quoteCommand(value: string): string {
   return quote(value)
 }
 
+/** Renders a plan as a copyable shell command, quoting anything the shell would otherwise interpret. */
 export function shellQuote(plan: ExecPlan): string {
   const command = [quoteCommand(plan.cmd), ...plan.args.map(quote)].join(' ')
   const cwd = !isAbsolute(plan.cwd) && plan.cwd.startsWith('-') ? `./${plan.cwd}` : plan.cwd

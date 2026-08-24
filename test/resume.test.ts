@@ -153,7 +153,13 @@ test('shellQuote command names round-trip through a POSIX shell without parser a
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-resume-')))
   temporary.push(root)
   const marker = join(root, 'ran')
-  for (const command of ['FOO=bar', 'if', 'semi;colon']) {
+  // `ZED=q'x` both takes the reserved-word/assignment branch AND carries a
+  // single quote, so it is the only case that exercises the escape inside that
+  // branch. Losing the escape renames the command being launched, and the name
+  // it collapses to (`ZED=qx`) deliberately does not exist here: an earlier
+  // case spelling that name would let the broken command find a real file and
+  // pass anyway.
+  for (const command of ['FOO=bar', 'if', 'semi;colon', "ZED=q'x", "it's"]) {
     const executable = join(root, command)
     writeFileSync(executable, '#!/bin/sh\nprintf ok > "$1"\n')
     chmodSync(executable, 0o700)

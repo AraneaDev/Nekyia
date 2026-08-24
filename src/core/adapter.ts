@@ -9,6 +9,7 @@ import type { Manifest } from '../manifests/load'
 import { expandRoot, loadManifests, renderArgs } from '../manifests/load'
 import type { Diagnostic, ExecPlan, SessionDoc, SessionRef } from '../types'
 
+/** One client, wired up: how to detect it, list its sessions, read one, and launch it. */
 export interface Adapter {
   id: string
   manifest: Manifest
@@ -19,6 +20,12 @@ export interface Adapter {
   plan(ref: SessionRef, promptText?: string): ExecPlan | null
 }
 
+/**
+ * The outcome of listing one client's sessions.
+ *
+ * `authoritative` is the important field: when discovery could not see the
+ * whole store, that client's sessions are protected from missing-source pruning.
+ */
 export interface AdapterDiscovery {
   refs: SessionRef[]
   diagnostics: Diagnostic[]
@@ -96,6 +103,7 @@ function includeSidecarEntry(ref: SessionRef, path: string, entry: SidecarEntry)
   ref.fingerprint = JSON.stringify([ref.fingerprint, digest])
 }
 
+/** Wires one manifest into a working adapter, resolving its roots and format module. */
 export function buildAdapter(manifest: Manifest): Adapter {
   const roots = manifest.roots.map(expandRoot)
   const format = FORMAT_MODULES[manifest.format]
@@ -252,6 +260,7 @@ export function buildAdapter(manifest: Manifest): Adapter {
   }
 }
 
+/** Builds an adapter for every loaded manifest, carrying forward the diagnostics rather than dropping a client silently. */
 export function buildAdapters(): { adapters: Adapter[]; diagnostics: Diagnostic[] } {
   const { manifests, diagnostics } = loadManifests()
   return { adapters: manifests.map(buildAdapter), diagnostics }

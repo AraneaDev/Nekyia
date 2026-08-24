@@ -1,0 +1,23 @@
+{
+  "version": 3,
+  "entries": {
+    "src/core/resume.ts": [
+      {
+        "line": 111,
+        "mutator": "ConditionalExpression",
+        "addedAt": 1787609430349,
+        "change": "value !== '' → true",
+        "reason": "Equivalent: with '' the original short-circuits to the else branch, and the mutant reaches the regex, which requires one or more characters, fails, and lands in that same else branch. Both return the quoted empty string.",
+        "fingerprint": "d71fa0a368d7"
+      },
+      {
+        "line": 122,
+        "mutator": "Regex",
+        "addedAt": 1787609430349,
+        "change": "/^[A-Za-z_][A-Za-z0-9_]*=/ → /[A-Za-z_][A-Za-z0-9_]*=/",
+        "reason": "Equivalent in observable output: dropping the anchor only matches more values, and everything it newly matches is quoted by quote() anyway. The mutant can only quote more, never less, so no input distinguishes them.",
+        "fingerprint": "22543e5ca350"
+      }
+    ]
+  }
+}

@@ -18,13 +18,21 @@
   },
   "scripts": {
     "test": "bun run scripts/make-fixtures.ts && bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stryker-mutator/core": "^10.0.0",
     "@types/bun": "latest",
     "@types/react": "^19.2.18",
+    "eslint": "^10.9.1",
+    "eslint-plugin-jsdoc": "^64.2.1",
     "ink-testing-library": "^4.0.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.68.0"
   },
   "dependencies": {
     "ink": "^7.1.1",

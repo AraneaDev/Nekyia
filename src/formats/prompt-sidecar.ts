@@ -9,6 +9,7 @@ const MAX_ROW_BYTES = 4 * 1024 * 1024
 const NUMERIC_TIMESTAMP = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/
 
+/** What a sidecar contributes for one session: its prompts, its time span, and a working directory when it records one. */
 export interface SidecarEntry {
   prompts: string[]
   firstTs: number
@@ -124,6 +125,7 @@ function readLines(path: string, consume: (line: string) => void): boolean {
   }
 }
 
+/** Reads a flat prompt log kept beside the transcripts, bounded per row so one oversized line cannot stall indexing. */
 export function readSidecar(root: string, spec: SidecarSpec): Map<string, SidecarEntry> {
   const out = new Map<string, SidecarEntry>()
   const path = safeSidecarPath(root, spec.file)

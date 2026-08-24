@@ -1,0 +1,28 @@
+#!/usr/bin/env sh
+# Lints and typechecks before a commit is written.
+#
+# Activated by `git config core.hooksPath .githooks`, which the package's
+# prepare script runs on install. Set NEKYIA_SKIP_HOOKS=1 to bypass once.
+set -eu
+
+if [ "${NEKYIA_SKIP_HOOKS:-0}" = "1" ]; then
+  echo "pre-commit: skipped (NEKYIA_SKIP_HOOKS=1)"
+  exit 0
+fi
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-commit: bun not found, skipping checks" >&2
+  exit 0
+fi
+
+# Only the staged TypeScript files, so the hook stays fast on a large tree.
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' '*.mjs')
+
+if [ -n "$staged" ]; then
+  echo "pre-commit: eslint"
+  # shellcheck disable=SC2086
+  bun x eslint --no-warn-ignored $staged
+fi
+
+echo "pre-commit: typecheck"
+bun run typecheck

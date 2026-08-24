@@ -9,7 +9,6 @@ import type { FileHandle } from 'node:fs/promises'
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
 import { Glob } from 'bun'
 import type { Config } from '../config'
-import type { Manifest } from '../manifests/load'
 import { makeUid } from '../types'
 import type { Diagnostic, SessionDoc, SessionRef } from '../types'
 import type { FormatModule } from './jsonl-transcript'
@@ -182,16 +181,40 @@ function within(root: string, path: string): boolean {
   return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
 }
 
-function containedRealPath(rootReal: string, path: string): string | null {
+/**
+ * Where a file inside a session directory turned out to be.
+ *
+ * A file that is simply not there and one reached through a symlink out of the
+ * root are different answers: the first is an incomplete chat, the second is a
+ * refusal the user should hear about.
+ */
+type ContainedPath =
+  | { kind: 'ok'; path: string }
+  | { kind: 'absent' }
+  | { kind: 'unsafe' }
+
+function isNotFound(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code
+  return code === 'ENOENT' || code === 'ENOTDIR'
+}
+
+function locateContained(rootReal: string, path: string): ContainedPath {
+  const lexical = resolve(path)
+  if (!within(rootReal, lexical)) return { kind: 'unsafe' }
+
+  let actual: string
   try {
-    const lexical = resolve(path)
-    if (!within(rootReal, lexical)) return null
-    const actual = realpathSync(lexical)
-    if (!within(rootReal, actual) || actual !== lexical) return null
-    return actual
-  } catch {
-    return null
+    actual = realpathSync(lexical)
+  } catch (error) {
+    return isNotFound(error) ? { kind: 'absent' } : { kind: 'unsafe' }
   }
+  if (!within(rootReal, actual) || actual !== lexical) return { kind: 'unsafe' }
+  return { kind: 'ok', path: actual }
+}
+
+function containedRealPath(rootReal: string, path: string): string | null {
+  const located = locateContained(rootReal, path)
+  return located.kind === 'ok' ? located.path : null
 }
 
 async function readSmallJson(path: string, cap: number): Promise<{
@@ -439,6 +462,7 @@ async function scanMessageArray(
   }
 }
 
+/** Reads stores that keep one directory of JSON documents per session. */
 export const jsonDir: FormatModule = {
   async discover(manifest, root) {
     const refs: SessionRef[] = []
@@ -474,9 +498,13 @@ export const jsonDir: FormatModule = {
       }
 
       const messagesCandidate = resolve(dir, 'chat-messages.json')
-      const messages = containedRealPath(rootReal, messagesCandidate)
+      const locatedMessages = locateContained(rootReal, messagesCandidate)
+      // A chat with no messages file was abandoned before anything was written.
+      // There is nothing to index and nothing to report.
+      if (locatedMessages.kind === 'absent') continue
+      const messages = locatedMessages.kind === 'ok' ? locatedMessages.path : null
       if (messages === null) {
-        diagnostics.push(warning(manifest.id, messagesCandidate, 'missing or unsafe chat-messages.json'))
+        diagnostics.push(warning(manifest.id, messagesCandidate, 'unsafe chat-messages.json'))
         continue
       }
 
@@ -487,10 +515,15 @@ export const jsonDir: FormatModule = {
         let nativeId: string | null = null
         let runStateSnapshot: PathSnapshot | null = null
         const runStateCandidate = resolve(dir, 'run-state.json')
-        const runState = containedRealPath(rootReal, runStateCandidate)
-        if (runState === null) {
-          diagnostics.push(warning(manifest.id, runStateCandidate, 'missing or unsafe run-state.json'))
-        } else {
+        const locatedRunState = locateContained(rootReal, runStateCandidate)
+        // Run state carries the working directory and native id. Its absence
+        // costs those facets but not the session, exactly as a missing
+        // chat-meta.json does, so it is not reported either.
+        const runState = locatedRunState.kind === 'ok' ? locatedRunState.path : null
+        if (locatedRunState.kind === 'unsafe') {
+          diagnostics.push(warning(manifest.id, runStateCandidate, 'unsafe run-state.json'))
+        }
+        if (runState !== null) {
           try {
             const { head, tail, token } = await readHeadTailSnapshot(
               runState,

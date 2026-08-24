@@ -4,11 +4,17 @@ import { buildBrief } from '../core/brief'
 import { IndexDb } from '../core/db'
 import { parseUid } from '../types'
 
+/** Names the session to render a handover for. */
 export interface ShowOptions {
   uid?: string
   maxChars?: number
 }
 
+/**
+ * Prints the deterministic handover for one session as Markdown.
+ *
+ * No model is involved: the same session always renders the same text.
+ */
 export async function runShow(opts: ShowOptions): Promise<number> {
   if (!opts.uid) {
     console.error('usage: nekyia show <uid>')

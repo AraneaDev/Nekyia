@@ -3,6 +3,7 @@ import type { Diagnostic, SessionRef } from '../types'
 import type { Adapter } from './adapter'
 import type { IndexDb } from './db'
 
+/** Hydration progress, reported so a long first index can show what it is working on. */
 export interface Progress {
   done: number
   total: number
@@ -12,6 +13,7 @@ export interface Progress {
 /** Higher runs later. Codebuff files average 19 MB, so it goes behind everything. */
 const PRIORITY: Record<string, number> = { codebuff: 1 }
 
+/** Orders sessions so the cheap clients hydrate first and the heaviest store cannot stall visible progress. */
 export function orderByPriority(refs: SessionRef[]): SessionRef[] {
   return [...refs].sort((a, b) => (PRIORITY[a.client] ?? 0) - (PRIORITY[b.client] ?? 0))
 }

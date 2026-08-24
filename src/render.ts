@@ -6,6 +6,7 @@ const DAY = 86_400_000
 const WEEK = 7 * DAY
 const YEAR = 365 * DAY
 
+/** Formats an age as a short, column-friendly span. Anything undateable reads as `now` rather than a misleading number. */
 export function relTime(ms: number, now: number = Date.now()): string {
   if (!Number.isFinite(ms) || !Number.isFinite(now)) return 'now'
   const delta = Math.max(0, now - ms)
@@ -17,16 +18,19 @@ export function relTime(ms: number, now: number = Date.now()): string {
   return `${Math.floor(delta / YEAR)}y`
 }
 
+/** Reduces a working directory to the project name a person would recognise it by. */
 export function projectName(cwd: string | null): string {
   if (!cwd) return '-'
   const parts = cwd.split(/[\\/]/).filter(Boolean)
   return parts[parts.length - 1] ?? '/'
 }
 
+/** Marks whether a row resumes the exact session or starts a fresh briefed one. */
 export function tierGlyph(tier: string): string {
   return tier === 'resume' ? '*' : 'o'
 }
 
+/** Renders one search result as a fixed-width terminal line. */
 export function formatRow(row: Row, now: number = Date.now()): string {
   const suffix = row.collapsed ? `  +${row.collapsed}` : ''
   return [
