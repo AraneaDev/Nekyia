@@ -94,6 +94,10 @@ nekyia last                    # newest session under this directory
 Search defaults to the current directory. Pass `--all` to search everywhere,
 `--client <id>` for one client, or `--file <path>` for sessions that touched a file.
 
+In the picker, `tab` widens to every directory, and pressing it again narrows to the
+project of the row under the cursor, so you can start anywhere and end up in one
+project. The count beside the search line always names what is being searched.
+
 ### 3. Resume or hand over
 
 Press Enter in the picker, or run `nekyia last`. A resume-tier row launches the

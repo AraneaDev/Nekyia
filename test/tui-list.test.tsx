@@ -227,14 +227,20 @@ test('useSessions composes text, scope and client filters and resets selection',
   expect(state?.selected).toBe(0)
   expect(state?.rows.map((item) => item.uid)).toEqual(['claude:one'])
 
-  withAct(() => state?.setScope('all'))
+  withAct(() => state?.setScope(null))
   withAct(() => state?.setClient('codex'))
   expect(state?.selected).toBe(0)
   expect(state?.rows.map((item) => item.uid)).toEqual(['codex:two'])
 
+  // Tab narrows to the project of the row under the cursor, not to a fixed
+  // directory, so it follows what is on screen.
   withAct(() => state?.toggleScope())
-  expect(state?.scope).toBe('cwd')
-  expect(state?.rows).toEqual([])
+  expect(state?.scope).toBe('/else')
+  expect(state?.rows.map((item) => item.uid)).toEqual(['codex:two'])
+
+  // Pressing it again widens back to the whole index.
+  withAct(() => state?.toggleScope())
+  expect(state?.scope).toBeNull()
   view.unmount()
   db.close()
 })

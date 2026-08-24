@@ -226,7 +226,7 @@ test('unmodified p, y and f always search; ctrl+p, ctrl+y and ctrl+f are shortcu
   expect(copied[1]).toContain("claude --resume a")
   view.stdin.write('\u0006')
   await tick()
-  expect(view.lastFrame()).toContain('this directory · claude')
+  expect(view.lastFrame()).toContain('proj · claude')
   view.unmount()
   db.close()
 })
@@ -690,12 +690,12 @@ test('a directory with nothing in it points at the key that widens the search', 
     <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
   )
   await tick()
-  expect(view.lastFrame()!).toContain('Press tab to search every directory')
+  expect(view.lastFrame()!).toContain('Press tab to search everywhere')
 
   // Once the scope is widened the hint has done its job and gets out of the way.
   view.stdin.write('\t')
   await tick()
-  expect(view.lastFrame()!).not.toContain('Press tab to search every directory')
+  expect(view.lastFrame()!).not.toContain('Press tab to search everywhere')
   view.unmount()
 })
 
@@ -780,5 +780,40 @@ test('the footer names its keys rather than drawing them', async () => {
   expect(frame).toContain('enter resume')
   expect(frame).toContain('esc quit')
   for (const glyph of ['⇥', '↵']) expect(frame).not.toContain(glyph)
+  view.unmount()
+})
+
+test('tab narrows to the project under the cursor and widens back', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', title: 'gateway work', cwd: '/work/api-gateway' })
+  seed(db, { uid: 'claude:b', nativeId: 'b', title: 'console work', cwd: '/work/web-console' })
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+      cwd="/somewhere-else" now={NOW} rows={24} />,
+  )
+  await tick()
+  // Launched outside either project, so the scope names where it actually is.
+  expect(view.lastFrame()!).toContain('somewhere-else')
+
+  view.stdin.write('\t')
+  await tick()
+  expect(view.lastFrame()!).toContain('everywhere')
+  expect(view.lastFrame()!).toContain('gateway work')
+  expect(view.lastFrame()!).toContain('console work')
+
+  // Move onto the console row, then narrow to whatever the cursor is on.
+  view.stdin.write('\u001b[B')
+  await tick()
+  view.stdin.write('\t')
+  await tick()
+  const scoped = view.lastFrame()!
+  expect(scoped).toContain('web-console')
+  expect(scoped).toContain('console work')
+  expect(scoped).not.toContain('gateway work')
+
+  // And back out again.
+  view.stdin.write('\t')
+  await tick()
+  expect(view.lastFrame()!).toContain('everywhere')
   view.unmount()
 })

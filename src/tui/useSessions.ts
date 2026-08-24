@@ -3,7 +3,12 @@ import type { Config } from '../config'
 import type { IndexDb } from '../core/db'
 import { query, type Row } from '../core/query'
 
-export type Scope = 'cwd' | 'all'
+/**
+ * The directory the list is narrowed to, or null for the whole index. A path
+ * rather than a flag, so the picker can narrow to whatever project the cursor
+ * is on instead of only to the directory it was launched from.
+ */
+export type Scope = string | null
 
 export interface SessionsState {
   rows: Row[]
@@ -11,6 +16,7 @@ export interface SessionsState {
   setText: (text: string) => void
   scope: Scope
   setScope: (scope: Scope) => void
+  /** Narrows to the selected session's project, or widens back to everything. */
   toggleScope: () => void
   client: string | undefined
   setClient: (client: string | undefined) => void
@@ -28,7 +34,7 @@ function clampSelection(selected: number, length: number): number {
 /** Query state shared by the picker and its keyboard bindings. */
 export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsState {
   const [text, setTextState] = useState('')
-  const [scope, setScopeState] = useState<Scope>('cwd')
+  const [scope, setScopeState] = useState<Scope>(cwd || null)
   const [client, setClientState] = useState<string | undefined>()
   const [selectedState, setSelectedState] = useState(0)
 
@@ -47,7 +53,7 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
   const rows = useMemo(
     () => query(db, queryConfig, {
       text: text || undefined,
-      cwd: scope === 'cwd' ? cwd : undefined,
+      cwd: scope ?? undefined,
       client,
       limit: 500,
     }),
@@ -56,7 +62,13 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
 
   const rowCount = useRef(rows.length)
   rowCount.current = rows.length
+  // Read at the moment tab is pressed, so narrowing follows the cursor rather
+  // than whichever row was selected when the handler was built.
+  const rowsRef = useRef(rows)
+  rowsRef.current = rows
+  const selectedRef = useRef(0)
   const selected = clampSelection(selectedState, rows.length)
+  selectedRef.current = selected
   useEffect(() => {
     if (selectedState !== selected) setSelectedState(selected)
   }, [selectedState, selected])
@@ -85,9 +97,13 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
     setSelectedState(0)
   }, [])
   const toggleScope = useCallback(() => {
-    setScopeState((previous) => previous === 'cwd' ? 'all' : 'cwd')
+    setScopeState((previous) => {
+      if (previous !== null) return null
+      const row = rowsRef.current[selectedRef.current]
+      return (typeof row?.cwd === 'string' && row.cwd) || cwd || null
+    })
     setSelectedState(0)
-  }, [])
+  }, [cwd])
   const setClient = useCallback((next: string | undefined) => {
     setClientState(next)
     setSelectedState(0)
