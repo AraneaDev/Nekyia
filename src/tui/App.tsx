@@ -20,6 +20,19 @@ const CHROME_SEED = 12
  * Content lines the preview may claim. Derived from the terminal alone, never
  * from its own content, so sizing cannot feed back into itself.
  */
+function SparseHint() {
+  return (
+    <Box marginTop={1} flexDirection="column" flexShrink={0}>
+      <Text dimColor wrap="truncate-end">
+        Only this directory is being searched.
+      </Text>
+      <Text dimColor wrap="truncate-end">
+        Press <Text color="cyan">tab</Text> to search every directory.
+      </Text>
+    </Box>
+  )
+}
+
 export function previewLines(rows: number): number {
   return Math.max(2, Math.min(12, Math.floor(rows / 2) - 2))
 }
@@ -367,6 +380,9 @@ export function App({
   // The first key names what enter does to the row under the cursor, so the
   // hint matches the outcome instead of always promising a resume.
   const enterLabel = selectedRow && selectedRow.tier !== 'resume' ? 'brief' : 'resume'
+  // A directory with nothing in it is the first thing a new user sees, so it
+  // points at the key that widens the search rather than sitting blank.
+  const sparse = sessions.scope === 'cwd' && sessions.rows.length <= 1
   const keys: [string, string][] = [
     ['↵', enterLabel], ['^p', 'prompt'], ['^y', 'command'],
     ['^f', 'client'], ['⇥', 'scope'], ['esc', 'quit'],
@@ -391,7 +407,7 @@ export function App({
           <Box width={listWidth} flexShrink={0} flexDirection="column" overflow="hidden">
             <List
               rows={sessions.rows} selected={sessions.selected}
-              height={listHeight} now={now} columns={listWidth}
+              height={listHeight} now={now} columns={listWidth} query={sessions.text}
             />
           </Box>
           <Box flexShrink={0} marginX={2} flexDirection="column">
@@ -409,7 +425,7 @@ export function App({
           <Box ref={listRef} marginTop={1} flexGrow={1} flexShrink={1} minHeight={1} overflow="hidden">
             <List
               rows={sessions.rows} selected={sessions.selected}
-              height={listHeight} now={now} columns={terminalWidth}
+              height={listHeight} now={now} columns={terminalWidth} query={sessions.text}
             />
           </Box>
           <Box flexShrink={0} marginTop={1}>
@@ -423,6 +439,7 @@ export function App({
           </Box>
         </>
       )}
+      {sparse ? <SparseHint /> : null}
       <Box flexShrink={0} marginTop={1}>
         <Text wrap="truncate-end">
           {keys.map(([key, label], index) => (
