@@ -73,12 +73,28 @@ const defaultIo: RunIo = {
 }
 
 /**
+ * Stops reading fd 0 so the child has the terminal to itself.
+ *
+ * Ink restores cooked mode, drops its listener and unrefs stdin when it
+ * unmounts, but it never pauses the stream. Unref only stops the handle
+ * holding the event loop open; the read stays live. This process then sits
+ * on that read for as long as the client runs, and the two race for every
+ * keystroke: the client feels fine for a second or two, until the picker
+ * finishes tearing down and starts winning races, and from then on it eats
+ * roughly one key in six.
+ */
+function releaseStdin(): void {
+  try { process.stdin.pause() } catch { /* stdin may not be a stream at all */ }
+}
+
+/**
  * Spawns the client with inherited stdio and returns its exact process status.
  * The caller must tear down any TUI first: the child owns the terminal.
  */
 export async function runPlan(plan: ExecPlan, io: RunIo = defaultIo): Promise<number> {
   const command = resolveCommand(plan.cmd, plan.cwd)
   if (!command) throw new Error(`${plan.cmd} was not found or is not executable`)
+  releaseStdin()
   const proc = io.spawn([command, ...plan.args], {
     cwd: plan.cwd,
     stdin: 'inherit',
