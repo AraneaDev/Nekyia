@@ -361,10 +361,28 @@ export function App({
   // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,
   // decides who yields space. The list takes the slack the preview leaves; both
   // clip rather than pushing the frame past the last row and scrolling the top away.
+  const scope = sessions.scope === 'cwd' ? 'this directory' : 'everywhere'
+  const context = [`${sessions.rows.length} sessions`, scope, shownClient, shownNote]
+    .filter(Boolean).join(' · ')
+  // The first key names what enter does to the row under the cursor, so the
+  // hint matches the outcome instead of always promising a resume.
+  const enterLabel = selectedRow && selectedRow.tier !== 'resume' ? 'brief' : 'resume'
+  const keys: [string, string][] = [
+    ['↵', enterLabel], ['^p', 'prompt'], ['^y', 'command'],
+    ['^f', 'client'], ['⇥', 'scope'], ['esc', 'quit'],
+  ]
+
+  // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,
+  // decides who yields space. The list takes the slack the preview leaves; both
+  // clip rather than pushing the frame past the last row and scrolling the top away.
   return (
     <Box flexDirection="column" height={terminalHeight} overflow="hidden">
       <Box flexShrink={0}>
-        <Text color="cyan">{'> '}</Text>
+        <Box flexGrow={1}><Text dimColor wrap="truncate-end">nekyia</Text></Box>
+        <Text dimColor wrap="truncate-end">{context}</Text>
+      </Box>
+      <Box flexShrink={0}>
+        <Text color="cyan">{'▸ '}</Text>
         <Text>{shownSearch}</Text>
         <Text dimColor>{shownSearch ? '' : 'type to search'}</Text>
       </Box>
@@ -376,11 +394,14 @@ export function App({
               height={listHeight} now={now} columns={listWidth}
             />
           </Box>
-          <Box
-            flexGrow={1} marginLeft={1} borderStyle="single" borderColor="gray"
-            flexDirection="column" overflow="hidden"
-          >
-            <Preview row={selectedRow} db={db} now={now} maxLines={Math.max(2, listHeight - 2)} />
+          <Box flexShrink={0} marginX={2} flexDirection="column">
+            <Text dimColor>{'│\n'.repeat(Math.max(1, listHeight)).trimEnd()}</Text>
+          </Box>
+          <Box flexGrow={1} flexDirection="column" overflow="hidden">
+            <Preview
+              row={selectedRow} db={db} now={now}
+              maxLines={Math.max(2, listHeight)} columns={Math.max(20, terminalWidth - listWidth - 5)}
+            />
           </Box>
         </Box>
       ) : (
@@ -391,21 +412,27 @@ export function App({
               height={listHeight} now={now} columns={terminalWidth}
             />
           </Box>
-          <Box
-            marginTop={1} borderStyle="single" borderColor="gray"
-            flexDirection="column" flexShrink={0}
-          >
-            <Preview row={selectedRow} db={db} now={now} maxLines={previewLines(terminalHeight)} />
+          <Box flexShrink={0} marginTop={1}>
+            <Text dimColor>{'─'.repeat(Math.max(1, terminalWidth))}</Text>
+          </Box>
+          <Box flexShrink={0} flexDirection="column">
+            <Preview
+              row={selectedRow} db={db} now={now}
+              maxLines={previewLines(terminalHeight)} columns={terminalWidth}
+            />
           </Box>
         </>
       )}
-      <Box flexShrink={0}>
-        <Text dimColor wrap="truncate-end">
-          {sessions.rows.length} sessions - {sessions.scope === 'cwd' ? 'this directory' : 'everywhere'}
-          {shownClient ? ` - ${shownClient}` : ''}{shownNote ? ` - ${shownNote}` : ''}
+      <Box flexShrink={0} marginTop={1}>
+        <Text wrap="truncate-end">
+          {keys.map(([key, label], index) => (
+            <Text key={key}>
+              {index ? <Text dimColor>{'   '}</Text> : null}
+              <Text>{key}</Text><Text dimColor>{` ${label}`}</Text>
+            </Text>
+          ))}
         </Text>
       </Box>
-      <Box flexShrink={0}><Text dimColor wrap="truncate-end">enter run - ctrl+p prompt - ctrl+y command - ctrl+f client - tab scope - esc quit</Text></Box>
     </Box>
   )
 }

@@ -1,452 +1,162 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1141" height="536" viewBox="0 0 1141 536" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">
 <rect width="1141" height="536" rx="8" fill="#12151b"/>
-<text x="16.0" y="16.0" fill="#56b6c2" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">&gt; </text>
-<text x="32.8" y="16.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">type to search</text>
-<rect x="16.0" y="39.0" width="16.8" height="18" fill="#c9d1d9"/>
-<text x="16.0" y="52.0" fill="#12151b" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<rect x="32.8" y="39.0" width="75.6" height="18" fill="#c678dd"/>
-<text x="32.8" y="52.0" fill="#12151b" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<rect x="108.4" y="39.0" width="8.4" height="18" fill="#c9d1d9"/>
-<rect x="116.8" y="39.0" width="33.6" height="18" fill="#c9d1d9"/>
-<text x="116.8" y="52.0" fill="#12151b" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> 22m</text>
-<rect x="150.4" y="39.0" width="8.4" height="18" fill="#c9d1d9"/>
-<rect x="158.8" y="39.0" width="117.6" height="18" fill="#c9d1d9"/>
-<text x="158.8" y="52.0" fill="#12151b" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway   </text>
-<rect x="276.4" y="39.0" width="352.8" height="18" fill="#c9d1d9"/>
-<text x="276.4" y="52.0" fill="#12151b" textLength="352.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> the retry budget is shared across tenants</text>
-<line x1="641.8" y1="48.0" x2="646.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="48.0" x2="641.8" y2="57.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="646.0" y1="48.0" x2="650.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="650.2" y1="48.0" x2="654.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="654.4" y1="48.0" x2="658.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="658.6" y1="48.0" x2="662.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="662.8" y1="48.0" x2="667.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="667.0" y1="48.0" x2="671.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="671.2" y1="48.0" x2="675.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="675.4" y1="48.0" x2="679.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="679.6" y1="48.0" x2="683.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="683.8" y1="48.0" x2="688.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="688.0" y1="48.0" x2="692.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="692.2" y1="48.0" x2="696.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="696.4" y1="48.0" x2="700.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="700.6" y1="48.0" x2="704.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="704.8" y1="48.0" x2="709.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="709.0" y1="48.0" x2="713.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="713.2" y1="48.0" x2="717.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="717.4" y1="48.0" x2="721.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="721.6" y1="48.0" x2="725.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="725.8" y1="48.0" x2="730.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="730.0" y1="48.0" x2="734.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="734.2" y1="48.0" x2="738.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="738.4" y1="48.0" x2="742.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="742.6" y1="48.0" x2="746.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="746.8" y1="48.0" x2="751.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="751.0" y1="48.0" x2="755.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="755.2" y1="48.0" x2="759.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="759.4" y1="48.0" x2="763.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="763.6" y1="48.0" x2="767.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="767.8" y1="48.0" x2="772.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="772.0" y1="48.0" x2="776.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="776.2" y1="48.0" x2="780.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="780.4" y1="48.0" x2="784.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="784.6" y1="48.0" x2="788.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="788.8" y1="48.0" x2="793.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="793.0" y1="48.0" x2="797.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="797.2" y1="48.0" x2="801.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="801.4" y1="48.0" x2="805.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="805.6" y1="48.0" x2="809.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="809.8" y1="48.0" x2="814.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="814.0" y1="48.0" x2="818.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="818.2" y1="48.0" x2="822.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="822.4" y1="48.0" x2="826.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="826.6" y1="48.0" x2="830.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="830.8" y1="48.0" x2="835.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="835.0" y1="48.0" x2="839.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="839.2" y1="48.0" x2="843.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="843.4" y1="48.0" x2="847.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="847.6" y1="48.0" x2="851.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="851.8" y1="48.0" x2="856.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="856.0" y1="48.0" x2="860.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="860.2" y1="48.0" x2="864.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="864.4" y1="48.0" x2="868.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="868.6" y1="48.0" x2="872.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="872.8" y1="48.0" x2="877.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="877.0" y1="48.0" x2="881.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="881.2" y1="48.0" x2="885.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="885.4" y1="48.0" x2="889.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="889.6" y1="48.0" x2="893.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="893.8" y1="48.0" x2="898.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="898.0" y1="48.0" x2="902.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="902.2" y1="48.0" x2="906.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="906.4" y1="48.0" x2="910.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="910.6" y1="48.0" x2="914.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="914.8" y1="48.0" x2="919.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="919.0" y1="48.0" x2="923.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="923.2" y1="48.0" x2="927.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="927.4" y1="48.0" x2="931.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="931.6" y1="48.0" x2="935.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="935.8" y1="48.0" x2="940.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="940.0" y1="48.0" x2="944.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="944.2" y1="48.0" x2="948.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="948.4" y1="48.0" x2="952.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="952.6" y1="48.0" x2="956.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="956.8" y1="48.0" x2="961.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="961.0" y1="48.0" x2="965.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="965.2" y1="48.0" x2="969.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="969.4" y1="48.0" x2="973.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="973.6" y1="48.0" x2="977.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="977.8" y1="48.0" x2="982.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="982.0" y1="48.0" x2="986.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="986.2" y1="48.0" x2="990.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="990.4" y1="48.0" x2="994.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="994.6" y1="48.0" x2="998.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="998.8" y1="48.0" x2="1003.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1003.0" y1="48.0" x2="1007.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1007.2" y1="48.0" x2="1011.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1011.4" y1="48.0" x2="1015.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1015.6" y1="48.0" x2="1019.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1019.8" y1="48.0" x2="1024.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1024.0" y1="48.0" x2="1028.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1028.2" y1="48.0" x2="1032.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1032.4" y1="48.0" x2="1036.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1036.6" y1="48.0" x2="1040.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1040.8" y1="48.0" x2="1045.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1045.0" y1="48.0" x2="1049.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1049.2" y1="48.0" x2="1053.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1053.4" y1="48.0" x2="1057.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1057.6" y1="48.0" x2="1061.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1061.8" y1="48.0" x2="1066.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1066.0" y1="48.0" x2="1070.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1070.2" y1="48.0" x2="1074.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1074.4" y1="48.0" x2="1078.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1078.6" y1="48.0" x2="1082.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1082.8" y1="48.0" x2="1087.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1087.0" y1="48.0" x2="1091.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1091.2" y1="48.0" x2="1095.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1095.4" y1="48.0" x2="1099.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1099.6" y1="48.0" x2="1103.8" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1103.8" y1="48.0" x2="1108.0" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1108.0" y1="48.0" x2="1112.2" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1112.2" y1="48.0" x2="1116.4" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1116.4" y1="48.0" x2="1120.6" y2="48.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="48.0" x2="1120.6" y2="57.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="70.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="70.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="70.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  3h</text>
-<text x="158.8" y="70.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">billing-svc   </text>
-<text x="276.4" y="70.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> a retried charge can double bill when the </text>
-<line x1="641.8" y1="57.0" x2="641.8" y2="66.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="66.0" x2="641.8" y2="75.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="654.4" y="70.0" fill="#c9d1d9" font-weight="600" textLength="453.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the retry budget is shared across tenants, it should …</text>
-<line x1="1120.6" y1="57.0" x2="1120.6" y2="66.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="66.0" x2="1120.6" y2="75.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="88.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">o </text>
-<text x="32.8" y="88.0" fill="#56b6c2" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex    </text>
-<text x="116.8" y="88.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  6h</text>
-<text x="158.8" y="88.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway   </text>
-<text x="276.4" y="88.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> add structured logging around the upstrea </text>
-<line x1="641.8" y1="75.0" x2="641.8" y2="84.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="84.0" x2="641.8" y2="93.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="654.4" y="88.0" fill="#c9d1d9" opacity="0.62" textLength="453.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude - /home/dev/work/api-gateway - main - 22m ago …</text>
-<line x1="1120.6" y1="75.0" x2="1120.6" y2="84.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="84.0" x2="1120.6" y2="93.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="106.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="106.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="106.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  9h</text>
-<text x="158.8" y="106.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console   </text>
-<text x="276.4" y="106.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> the saved filter chips lose their order a </text>
-<line x1="641.8" y1="93.0" x2="641.8" y2="102.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="102.0" x2="641.8" y2="111.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="93.0" x2="1120.6" y2="102.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="102.0" x2="1120.6" y2="111.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="124.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">o </text>
-<text x="32.8" y="124.0" fill="#98c379" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">opencode </text>
-<text x="116.8" y="124.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> 14h</text>
-<text x="158.8" y="124.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">billing-svc   </text>
-<text x="276.4" y="124.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> port the invoice numbering to the new seq </text>
-<line x1="641.8" y1="111.0" x2="641.8" y2="120.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="120.0" x2="641.8" y2="129.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="654.4" y="124.0" fill="#c9d1d9" opacity="0.62" textLength="109.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">files touched</text>
-<line x1="1120.6" y1="111.0" x2="1120.6" y2="120.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="120.0" x2="1120.6" y2="129.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="142.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="142.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="142.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  1d</text>
-<text x="158.8" y="142.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">infra         </text>
-<text x="276.4" y="142.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> the nightly restore drill fails whenever  </text>
-<line x1="641.8" y1="129.0" x2="641.8" y2="138.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="138.0" x2="641.8" y2="147.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="654.4" y="142.0" fill="#c9d1d9" opacity="0.62" textLength="403.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  /home/dev/work/api-gateway/docs/rate-limits.md</text>
-<line x1="1120.6" y1="129.0" x2="1120.6" y2="138.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="138.0" x2="1120.6" y2="147.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="160.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">o </text>
-<text x="32.8" y="160.0" fill="#61afef" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codebuff </text>
-<text x="116.8" y="160.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  1d</text>
-<text x="158.8" y="160.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">search-svc    </text>
-<text x="276.4" y="160.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> stemming is applied twice for german, so  </text>
-<line x1="641.8" y1="147.0" x2="641.8" y2="156.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="156.0" x2="641.8" y2="165.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="654.4" y="160.0" fill="#c9d1d9" opacity="0.62" textLength="453.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  /home/dev/work/api-gateway/src/gateway/retry-budget…</text>
-<line x1="1120.6" y1="147.0" x2="1120.6" y2="156.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="156.0" x2="1120.6" y2="165.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="178.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="178.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="178.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  2d</text>
-<text x="158.8" y="178.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console   </text>
-<text x="276.4" y="178.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> make the empty state say what to do next  </text>
-<line x1="641.8" y1="165.0" x2="641.8" y2="174.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="174.0" x2="641.8" y2="183.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="654.4" y="178.0" fill="#c9d1d9" opacity="0.62" textLength="420.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  /home/dev/work/api-gateway/src/gateway/router.ts</text>
-<line x1="1120.6" y1="165.0" x2="1120.6" y2="174.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="174.0" x2="1120.6" y2="183.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="196.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">o </text>
-<text x="32.8" y="196.0" fill="#e5c07b" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">kilo     </text>
-<text x="116.8" y="196.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  2d</text>
-<text x="158.8" y="196.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">search-svc    </text>
-<text x="276.4" y="196.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> sketch a relevance scoring change and arg </text>
-<line x1="641.8" y1="183.0" x2="641.8" y2="192.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="192.0" x2="641.8" y2="201.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="654.4" y="196.0" fill="#c9d1d9" opacity="0.62" textLength="420.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  /home/dev/work/api-gateway/src/gateway/tenant.ts</text>
-<line x1="1120.6" y1="183.0" x2="1120.6" y2="192.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="192.0" x2="1120.6" y2="201.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="214.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="214.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="214.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  3d</text>
-<text x="158.8" y="214.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway   </text>
-<text x="276.4" y="214.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> hedged requests are firing even when the  </text>
-<line x1="641.8" y1="201.0" x2="641.8" y2="210.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="210.0" x2="641.8" y2="219.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="654.4" y="214.0" fill="#c9d1d9" opacity="0.62" textLength="453.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  /home/dev/work/api-gateway/test/retry-budget.test.ts</text>
-<line x1="1120.6" y1="201.0" x2="1120.6" y2="210.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="210.0" x2="1120.6" y2="219.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="232.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">o </text>
-<text x="32.8" y="232.0" fill="#e06c75" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">agy      </text>
-<text x="116.8" y="232.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  3d</text>
-<text x="158.8" y="232.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">infra         </text>
-<text x="276.4" y="232.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> draft the incident review for the certifi </text>
-<line x1="641.8" y1="219.0" x2="641.8" y2="228.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="228.0" x2="641.8" y2="237.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="219.0" x2="1120.6" y2="228.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="228.0" x2="1120.6" y2="237.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="250.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="250.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="250.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  4d</text>
-<text x="158.8" y="250.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">billing-svc   </text>
-<text x="276.4" y="250.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> refunds past ninety days should fail loud </text>
-<line x1="641.8" y1="237.0" x2="641.8" y2="246.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="246.0" x2="641.8" y2="255.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="237.0" x2="1120.6" y2="246.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="246.0" x2="1120.6" y2="255.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="268.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">o </text>
-<text x="32.8" y="268.0" fill="#56b6c2" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex    </text>
-<text x="116.8" y="268.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  5d</text>
-<text x="158.8" y="268.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console   </text>
-<text x="276.4" y="268.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> convert the settings page to the new form </text>
-<line x1="641.8" y1="255.0" x2="641.8" y2="264.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="264.0" x2="641.8" y2="273.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="255.0" x2="1120.6" y2="264.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="264.0" x2="1120.6" y2="273.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="286.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="286.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="286.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  6d</text>
-<text x="158.8" y="286.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">search-svc    </text>
-<text x="276.4" y="286.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> segment merges stall the write path for s </text>
-<line x1="641.8" y1="273.0" x2="641.8" y2="282.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="282.0" x2="641.8" y2="291.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="273.0" x2="1120.6" y2="282.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="282.0" x2="1120.6" y2="291.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="304.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">o </text>
-<text x="32.8" y="304.0" fill="#98c379" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">opencode </text>
-<text x="116.8" y="304.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  1w</text>
-<text x="158.8" y="304.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">infra         </text>
-<text x="276.4" y="304.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> pin the runner image so builds stop drift </text>
-<line x1="641.8" y1="291.0" x2="641.8" y2="300.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="300.0" x2="641.8" y2="309.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="291.0" x2="1120.6" y2="300.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="300.0" x2="1120.6" y2="309.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="322.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="322.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="322.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  1w</text>
-<text x="158.8" y="322.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console   </text>
-<text x="276.4" y="322.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> the table header detaches from the body o </text>
-<line x1="641.8" y1="309.0" x2="641.8" y2="318.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="318.0" x2="641.8" y2="327.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="309.0" x2="1120.6" y2="318.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="318.0" x2="1120.6" y2="327.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="340.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">o </text>
-<text x="32.8" y="340.0" fill="#61afef" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codebuff </text>
-<text x="116.8" y="340.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  1w</text>
-<text x="158.8" y="340.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway   </text>
-<text x="276.4" y="340.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> explain how the circuit breaker decides t </text>
-<line x1="641.8" y1="327.0" x2="641.8" y2="336.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="336.0" x2="641.8" y2="345.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="327.0" x2="1120.6" y2="336.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="336.0" x2="1120.6" y2="345.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="358.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="358.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="358.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  1w</text>
-<text x="158.8" y="358.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">infra         </text>
-<text x="276.4" y="358.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> split the monolithic terraform state befo </text>
-<line x1="641.8" y1="345.0" x2="641.8" y2="354.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="354.0" x2="641.8" y2="363.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="345.0" x2="1120.6" y2="354.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="354.0" x2="1120.6" y2="363.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="376.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="376.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="376.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  2w</text>
-<text x="158.8" y="376.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">billing-svc   </text>
-<text x="276.4" y="376.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> proration is off by a day whenever the pl </text>
-<line x1="641.8" y1="363.0" x2="641.8" y2="372.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="372.0" x2="641.8" y2="381.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="363.0" x2="1120.6" y2="372.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="372.0" x2="1120.6" y2="381.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="394.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">o </text>
-<text x="32.8" y="394.0" fill="#e5c07b" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">kilo     </text>
-<text x="116.8" y="394.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  2w</text>
-<text x="158.8" y="394.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console   </text>
-<text x="276.4" y="394.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> compare two approaches to optimistic upda </text>
-<line x1="641.8" y1="381.0" x2="641.8" y2="390.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="390.0" x2="641.8" y2="399.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="381.0" x2="1120.6" y2="390.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="390.0" x2="1120.6" y2="399.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="412.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">* </text>
-<text x="32.8" y="412.0" fill="#c678dd" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude   </text>
-<text x="116.8" y="412.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  3w</text>
-<text x="158.8" y="412.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">search-svc    </text>
-<text x="276.4" y="412.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> highlighting drops the match when it stra </text>
-<line x1="641.8" y1="399.0" x2="641.8" y2="408.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="408.0" x2="641.8" y2="417.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="399.0" x2="1120.6" y2="408.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="408.0" x2="1120.6" y2="417.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="430.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">o </text>
-<text x="32.8" y="430.0" fill="#e06c75" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">agy      </text>
-<text x="116.8" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">  4w</text>
-<text x="158.8" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway   </text>
-<text x="276.4" y="430.0" fill="#c9d1d9" textLength="361.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve"> write the migration note for the header r </text>
-<line x1="641.8" y1="417.0" x2="641.8" y2="426.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="426.0" x2="641.8" y2="435.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="417.0" x2="1120.6" y2="426.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="426.0" x2="1120.6" y2="435.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="435.0" x2="641.8" y2="444.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="444.0" x2="641.8" y2="453.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="435.0" x2="1120.6" y2="444.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="444.0" x2="1120.6" y2="453.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="462.0" x2="646.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="641.8" y1="453.0" x2="641.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="646.0" y1="462.0" x2="650.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="650.2" y1="462.0" x2="654.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="654.4" y1="462.0" x2="658.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="658.6" y1="462.0" x2="662.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="662.8" y1="462.0" x2="667.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="667.0" y1="462.0" x2="671.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="671.2" y1="462.0" x2="675.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="675.4" y1="462.0" x2="679.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="679.6" y1="462.0" x2="683.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="683.8" y1="462.0" x2="688.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="688.0" y1="462.0" x2="692.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="692.2" y1="462.0" x2="696.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="696.4" y1="462.0" x2="700.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="700.6" y1="462.0" x2="704.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="704.8" y1="462.0" x2="709.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="709.0" y1="462.0" x2="713.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="713.2" y1="462.0" x2="717.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="717.4" y1="462.0" x2="721.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="721.6" y1="462.0" x2="725.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="725.8" y1="462.0" x2="730.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="730.0" y1="462.0" x2="734.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="734.2" y1="462.0" x2="738.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="738.4" y1="462.0" x2="742.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="742.6" y1="462.0" x2="746.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="746.8" y1="462.0" x2="751.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="751.0" y1="462.0" x2="755.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="755.2" y1="462.0" x2="759.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="759.4" y1="462.0" x2="763.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="763.6" y1="462.0" x2="767.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="767.8" y1="462.0" x2="772.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="772.0" y1="462.0" x2="776.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="776.2" y1="462.0" x2="780.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="780.4" y1="462.0" x2="784.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="784.6" y1="462.0" x2="788.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="788.8" y1="462.0" x2="793.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="793.0" y1="462.0" x2="797.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="797.2" y1="462.0" x2="801.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="801.4" y1="462.0" x2="805.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="805.6" y1="462.0" x2="809.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="809.8" y1="462.0" x2="814.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="814.0" y1="462.0" x2="818.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="818.2" y1="462.0" x2="822.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="822.4" y1="462.0" x2="826.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="826.6" y1="462.0" x2="830.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="830.8" y1="462.0" x2="835.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="835.0" y1="462.0" x2="839.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="839.2" y1="462.0" x2="843.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="843.4" y1="462.0" x2="847.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="847.6" y1="462.0" x2="851.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="851.8" y1="462.0" x2="856.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="856.0" y1="462.0" x2="860.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="860.2" y1="462.0" x2="864.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="864.4" y1="462.0" x2="868.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="868.6" y1="462.0" x2="872.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="872.8" y1="462.0" x2="877.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="877.0" y1="462.0" x2="881.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="881.2" y1="462.0" x2="885.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="885.4" y1="462.0" x2="889.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="889.6" y1="462.0" x2="893.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="893.8" y1="462.0" x2="898.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="898.0" y1="462.0" x2="902.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="902.2" y1="462.0" x2="906.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="906.4" y1="462.0" x2="910.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="910.6" y1="462.0" x2="914.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="914.8" y1="462.0" x2="919.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="919.0" y1="462.0" x2="923.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="923.2" y1="462.0" x2="927.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="927.4" y1="462.0" x2="931.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="931.6" y1="462.0" x2="935.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="935.8" y1="462.0" x2="940.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="940.0" y1="462.0" x2="944.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="944.2" y1="462.0" x2="948.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="948.4" y1="462.0" x2="952.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="952.6" y1="462.0" x2="956.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="956.8" y1="462.0" x2="961.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="961.0" y1="462.0" x2="965.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="965.2" y1="462.0" x2="969.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="969.4" y1="462.0" x2="973.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="973.6" y1="462.0" x2="977.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="977.8" y1="462.0" x2="982.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="982.0" y1="462.0" x2="986.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="986.2" y1="462.0" x2="990.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="990.4" y1="462.0" x2="994.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="994.6" y1="462.0" x2="998.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="998.8" y1="462.0" x2="1003.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1003.0" y1="462.0" x2="1007.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1007.2" y1="462.0" x2="1011.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1011.4" y1="462.0" x2="1015.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1015.6" y1="462.0" x2="1019.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1019.8" y1="462.0" x2="1024.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1024.0" y1="462.0" x2="1028.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1028.2" y1="462.0" x2="1032.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1032.4" y1="462.0" x2="1036.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1036.6" y1="462.0" x2="1040.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1040.8" y1="462.0" x2="1045.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1045.0" y1="462.0" x2="1049.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1049.2" y1="462.0" x2="1053.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1053.4" y1="462.0" x2="1057.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1057.6" y1="462.0" x2="1061.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1061.8" y1="462.0" x2="1066.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1066.0" y1="462.0" x2="1070.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1070.2" y1="462.0" x2="1074.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1074.4" y1="462.0" x2="1078.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1078.6" y1="462.0" x2="1082.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1082.8" y1="462.0" x2="1087.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1087.0" y1="462.0" x2="1091.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1091.2" y1="462.0" x2="1095.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1095.4" y1="462.0" x2="1099.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1099.6" y1="462.0" x2="1103.8" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1103.8" y1="462.0" x2="1108.0" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1108.0" y1="462.0" x2="1112.2" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1112.2" y1="462.0" x2="1116.4" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1116.4" y1="462.0" x2="1120.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="1120.6" y1="453.0" x2="1120.6" y2="462.0" stroke="#5c6370" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="484.0" fill="#c9d1d9" opacity="0.62" textLength="201.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">22 sessions - everywhere</text>
-<text x="16.0" y="502.0" fill="#c9d1d9" opacity="0.62" textLength="680.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">enter run - ctrl+p prompt - ctrl+y command - ctrl+f client - tab scope - esc quit</text>
+<text x="16.0" y="16.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">nekyia</text>
+<text x="923.2" y="16.0" fill="#c9d1d9" opacity="0.62" textLength="201.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">22 sessions · everywhere</text>
+<text x="16.0" y="34.0" fill="#56b6c2" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▸</text>
+<text x="32.8" y="34.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">type to search</text>
+<text x="16.0" y="70.0" fill="#c678dd" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▌</text>
+<text x="32.8" y="70.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="125.2" y="70.0" fill="#c9d1d9" opacity="0.62" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">24m</text>
+<text x="158.8" y="70.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway</text>
+<text x="284.8" y="70.0" fill="#c9d1d9" font-weight="600" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the retry budget is shared across tenants</text>
+<line x1="650.2" y1="57.0" x2="650.2" y2="66.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="66.0" x2="650.2" y2="75.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="671.2" y="70.0" fill="#c9d1d9" font-weight="600" textLength="453.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the retry budget is shared across tenants, it should …</text>
+<text x="32.8" y="88.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="88.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">3h</text>
+<text x="158.8" y="88.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">billing-svc</text>
+<text x="284.8" y="88.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">a retried charge can double bill when the</text>
+<line x1="650.2" y1="75.0" x2="650.2" y2="84.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="84.0" x2="650.2" y2="93.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="671.2" y="88.0" fill="#c9d1d9" opacity="0.62" textLength="453.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">/home/dev/work/api-gateway · main · 24m ago · 41 turns</text>
+<text x="32.8" y="106.0" fill="#56b6c2" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
+<text x="133.6" y="106.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">6h</text>
+<text x="158.8" y="106.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway</text>
+<text x="284.8" y="106.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">add structured logging around the upstrea</text>
+<line x1="650.2" y1="93.0" x2="650.2" y2="102.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="102.0" x2="650.2" y2="111.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="124.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="124.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">9h</text>
+<text x="158.8" y="124.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console</text>
+<text x="284.8" y="124.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the saved filter chips lose their order a</text>
+<line x1="650.2" y1="111.0" x2="650.2" y2="120.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="120.0" x2="650.2" y2="129.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="671.2" y="124.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">touched</text>
+<text x="746.8" y="124.0" fill="#c9d1d9" textLength="159.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">docs/rate-limits.md</text>
+<text x="32.8" y="142.0" fill="#98c379" opacity="0.62" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">opencode</text>
+<text x="125.2" y="142.0" fill="#c9d1d9" opacity="0.62" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">14h</text>
+<text x="158.8" y="142.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">billing-svc</text>
+<text x="284.8" y="142.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">port the invoice numbering to the new seq</text>
+<line x1="650.2" y1="129.0" x2="650.2" y2="138.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="138.0" x2="650.2" y2="147.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="746.8" y="142.0" fill="#c9d1d9" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">src/gateway/retry-budget.ts</text>
+<text x="32.8" y="160.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="160.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1d</text>
+<text x="158.8" y="160.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">infra</text>
+<text x="284.8" y="160.0" fill="#c9d1d9" opacity="0.62" textLength="336.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the nightly restore drill fails whenever</text>
+<line x1="650.2" y1="147.0" x2="650.2" y2="156.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="156.0" x2="650.2" y2="165.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="746.8" y="160.0" fill="#c9d1d9" textLength="176.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">src/gateway/router.ts</text>
+<text x="32.8" y="178.0" fill="#61afef" opacity="0.62" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codebuff</text>
+<text x="133.6" y="178.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1d</text>
+<text x="158.8" y="178.0" fill="#c9d1d9" opacity="0.62" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">search-svc</text>
+<text x="284.8" y="178.0" fill="#c9d1d9" opacity="0.62" textLength="336.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">stemming is applied twice for german, so</text>
+<line x1="650.2" y1="165.0" x2="650.2" y2="174.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="174.0" x2="650.2" y2="183.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="746.8" y="178.0" fill="#c9d1d9" textLength="176.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">src/gateway/tenant.ts</text>
+<text x="32.8" y="196.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="196.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2d</text>
+<text x="158.8" y="196.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console</text>
+<text x="284.8" y="196.0" fill="#c9d1d9" opacity="0.62" textLength="336.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">make the empty state say what to do next</text>
+<line x1="650.2" y1="183.0" x2="650.2" y2="192.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="192.0" x2="650.2" y2="201.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="746.8" y="196.0" fill="#c9d1d9" textLength="210.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">test/retry-budget.test.ts</text>
+<text x="32.8" y="214.0" fill="#e5c07b" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">kilo</text>
+<text x="133.6" y="214.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2d</text>
+<text x="158.8" y="214.0" fill="#c9d1d9" opacity="0.62" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">search-svc</text>
+<text x="284.8" y="214.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">sketch a relevance scoring change and arg</text>
+<line x1="650.2" y1="201.0" x2="650.2" y2="210.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="210.0" x2="650.2" y2="219.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="232.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="232.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">3d</text>
+<text x="158.8" y="232.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway</text>
+<text x="284.8" y="232.0" fill="#c9d1d9" opacity="0.62" textLength="336.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">hedged requests are firing even when the</text>
+<line x1="650.2" y1="219.0" x2="650.2" y2="228.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="228.0" x2="650.2" y2="237.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="250.0" fill="#e06c75" opacity="0.62" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">agy</text>
+<text x="133.6" y="250.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">3d</text>
+<text x="158.8" y="250.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">infra</text>
+<text x="284.8" y="250.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">draft the incident review for the certifi</text>
+<line x1="650.2" y1="237.0" x2="650.2" y2="246.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="246.0" x2="650.2" y2="255.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="268.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="268.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">4d</text>
+<text x="158.8" y="268.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">billing-svc</text>
+<text x="284.8" y="268.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">refunds past ninety days should fail loud</text>
+<line x1="650.2" y1="255.0" x2="650.2" y2="264.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="264.0" x2="650.2" y2="273.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="286.0" fill="#56b6c2" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
+<text x="133.6" y="286.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">5d</text>
+<text x="158.8" y="286.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console</text>
+<text x="284.8" y="286.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">convert the settings page to the new form</text>
+<line x1="650.2" y1="273.0" x2="650.2" y2="282.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="282.0" x2="650.2" y2="291.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="304.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="304.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">6d</text>
+<text x="158.8" y="304.0" fill="#c9d1d9" opacity="0.62" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">search-svc</text>
+<text x="284.8" y="304.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">segment merges stall the write path for s</text>
+<line x1="650.2" y1="291.0" x2="650.2" y2="300.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="300.0" x2="650.2" y2="309.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="322.0" fill="#98c379" opacity="0.62" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">opencode</text>
+<text x="133.6" y="322.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1w</text>
+<text x="158.8" y="322.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">infra</text>
+<text x="284.8" y="322.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">pin the runner image so builds stop drift</text>
+<line x1="650.2" y1="309.0" x2="650.2" y2="318.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="318.0" x2="650.2" y2="327.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="340.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="340.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1w</text>
+<text x="158.8" y="340.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console</text>
+<text x="284.8" y="340.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the table header detaches from the body o</text>
+<line x1="650.2" y1="327.0" x2="650.2" y2="336.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="336.0" x2="650.2" y2="345.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="358.0" fill="#61afef" opacity="0.62" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codebuff</text>
+<text x="133.6" y="358.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1w</text>
+<text x="158.8" y="358.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway</text>
+<text x="284.8" y="358.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">explain how the circuit breaker decides t</text>
+<line x1="650.2" y1="345.0" x2="650.2" y2="354.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="354.0" x2="650.2" y2="363.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="376.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="376.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1w</text>
+<text x="158.8" y="376.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">infra</text>
+<text x="284.8" y="376.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">split the monolithic terraform state befo</text>
+<line x1="650.2" y1="363.0" x2="650.2" y2="372.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="372.0" x2="650.2" y2="381.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="394.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="394.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2w</text>
+<text x="158.8" y="394.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">billing-svc</text>
+<text x="284.8" y="394.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">proration is off by a day whenever the pl</text>
+<line x1="650.2" y1="381.0" x2="650.2" y2="390.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="390.0" x2="650.2" y2="399.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="412.0" fill="#e5c07b" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">kilo</text>
+<text x="133.6" y="412.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2w</text>
+<text x="158.8" y="412.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console</text>
+<text x="284.8" y="412.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">compare two approaches to optimistic upda</text>
+<line x1="650.2" y1="399.0" x2="650.2" y2="408.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="408.0" x2="650.2" y2="417.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="430.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
+<text x="133.6" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">3w</text>
+<text x="158.8" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">search-svc</text>
+<text x="284.8" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">highlighting drops the match when it stra</text>
+<line x1="650.2" y1="417.0" x2="650.2" y2="426.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="426.0" x2="650.2" y2="435.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="448.0" fill="#e06c75" opacity="0.62" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">agy</text>
+<text x="133.6" y="448.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">4w</text>
+<text x="158.8" y="448.0" fill="#c9d1d9" opacity="0.62" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway</text>
+<text x="284.8" y="448.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">write the migration note for the header r</text>
+<line x1="650.2" y1="435.0" x2="650.2" y2="444.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="444.0" x2="650.2" y2="453.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="453.0" x2="650.2" y2="462.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="650.2" y1="462.0" x2="650.2" y2="471.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="16.0" y="502.0" fill="#c9d1d9" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">↵</text>
+<text x="32.8" y="502.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">resume</text>
+<text x="108.4" y="502.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">^p</text>
+<text x="133.6" y="502.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">prompt</text>
+<text x="209.2" y="502.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">^y</text>
+<text x="234.4" y="502.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">command</text>
+<text x="318.4" y="502.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">^f</text>
+<text x="343.6" y="502.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">client</text>
+<text x="419.2" y="502.0" fill="#c9d1d9" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">⇥</text>
+<text x="436.0" y="502.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">scope</text>
+<text x="503.2" y="502.0" fill="#c9d1d9" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">esc</text>
+<text x="536.8" y="502.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">quit</text>
 </svg>

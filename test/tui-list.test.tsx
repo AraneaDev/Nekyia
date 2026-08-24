@@ -85,14 +85,17 @@ test('the list mounts only O(height) row components for a large corpus', () => {
   view.unmount()
 })
 
-test('the selected row, collapsed count, client color and tier glyph render', () => {
+test('the selected row, collapsed count and client color render', () => {
   const rows = [
     row(0),
     { ...row(1), client: 'codex', tier: 'search' as const, collapsed: 4 },
   ]
   const { lastFrame, unmount } = render(<List rows={rows} selected={1} height={5} now={NOW} />)
   const frame = lastFrame()!
-  expect(frame).toContain('o codex')
+  // Selection is marked in the gutter; the row itself is no longer inverted and
+  // a search-tier client is dimmed rather than given a glyph of its own.
+  expect(frame).toContain('▌ codex')
+  expect(frame.split('\n')[0]).toMatch(/^ {2}claude/)
   expect(frame).toContain('+4')
   expect(clientColor('codex')).toBe('cyan')
   expect(clientColor('unknown')).toBe('white')

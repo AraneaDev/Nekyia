@@ -1,7 +1,7 @@
 import React from 'react'
 import { Box, Text } from 'ink'
 import type { Row } from '../core/query'
-import { projectName, relTime, tierGlyph } from '../render'
+import { projectName, relTime } from '../render'
 
 const CLIENT_COLOR: Record<string, string> = {
   claude: 'magenta',
@@ -92,6 +92,24 @@ function padColumns(value: string, columns: number): string {
   return value + ' '.repeat(Math.max(0, columns - Bun.stringWidth(value)))
 }
 
+/**
+ * Keeps the end of a path when it will not fit. Trimming the far end drops the
+ * file name, which is the part worth reading; the directories above it are not.
+ */
+export function boundedPathTail(value: string, columns: number): string {
+  const limit = displayColumns(columns)
+  if (limit === 0) return ''
+  if (Bun.stringWidth(value) <= limit) return value
+  const { sample } = suffixByCodeUnits(value, scanLimit(limit))
+  let kept = ''
+  for (const part of [...GRAPHEMES.segment(sample)].reverse()) {
+    const next = part.segment + kept
+    if (Bun.stringWidth(next) > limit - 1) break
+    kept = next
+  }
+  return `…${kept}`
+}
+
 function boundedProjectName(cwd: string | null): string {
   if (!cwd) return '-'
   const columns = 14
@@ -135,8 +153,15 @@ export interface ListRowProps {
   columns: number
 }
 
-/** glyph, client, age and project columns, with the single space after each. */
+/** rail gutter, client, age and project columns, with the spaces between them. */
 export const ROW_FIXED_COLUMNS = 32
+
+/**
+ * The selected row is marked in the gutter rather than inverted. Inverting the
+ * whole row put the client colour on its own background and made it unreadable,
+ * and it drew a heavy band across the one row meant to feel picked out.
+ */
+const RAIL = '▌'
 
 /** Columns the title may use once the fixed columns are paid for. */
 export function titleColumns(columns: number): number {
@@ -147,13 +172,18 @@ function DefaultListRow({ row, active, now, columns }: ListRowProps) {
   const client = boundedDisplayText(row.client, 9) || '?'
   const project = boundedProjectName(row.cwd)
   const title = boundedDisplayText(row.title ?? '(no title)', titleColumns(columns))
+  const hue = clientColor(client)
+  // A client that cannot resume is dimmed rather than given its own glyph: the
+  // question the mark answered was how live the session is, and dimming says
+  // that without another symbol to learn.
+  const live = row.tier === 'resume'
   return (
-    <Text inverse={active} wrap="truncate-end">
-      {tierGlyph(row.tier)}{' '}
-      <Text color={clientColor(client)}>{padColumns(client, 9)}</Text>{' '}
+    <Text wrap="truncate-end">
+      <Text color={active ? hue : undefined} dimColor={!active}>{active ? RAIL : ' '}</Text>{' '}
+      <Text color={hue} dimColor={!live}>{padColumns(client, 9)}</Text>{' '}
       <Text dimColor>{relTime(row.endedAt, now).padStart(4)}</Text>{' '}
       <Text dimColor>{padColumns(project, 14)}</Text>{' '}
-      {title}
+      <Text bold={active} dimColor={!active}>{title}</Text>
       {row.collapsed ? <Text dimColor>{`  +${row.collapsed}`}</Text> : null}
     </Text>
   )
