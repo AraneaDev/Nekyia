@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, expect, spyOn, test } from 'bun:test'
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -176,4 +176,34 @@ test('shellQuote protects a relative cwd beginning with a dash from cd option pa
   const result = Bun.spawnSync(['/bin/sh', '-c', quoted], { cwd: root })
   expect(result.exitCode).toBe(0)
   expect(new TextDecoder().decode(result.stdout).trim()).toBe(join(root, '-project'))
+})
+
+test('runPlan stops reading stdin before the child starts, so keystrokes are not stolen', async () => {
+  const order: string[] = []
+  const paused = spyOn(process.stdin, 'pause').mockImplementation(() => {
+    order.push('pause')
+    return process.stdin
+  })
+  try {
+    await runPlan(ok, {
+      spawn: () => {
+        order.push('spawn')
+        return { exited: Promise.resolve(0) }
+      },
+    })
+  } finally {
+    paused.mockRestore()
+  }
+  expect(order).toEqual(['pause', 'spawn'])
+})
+
+test('runPlan still launches when stdin cannot be paused', async () => {
+  const paused = spyOn(process.stdin, 'pause').mockImplementation(() => {
+    throw new Error('no stdin here')
+  })
+  try {
+    expect(await runPlan({ ...ok, cmd: 'sh', args: ['-c', 'exit 3'] })).toBe(3)
+  } finally {
+    paused.mockRestore()
+  }
 })
