@@ -46,14 +46,16 @@ a brief, not a resumed state.
 
 Nekyia requires [Bun](https://bun.sh/) 1.1 or newer.
 
-### From the pre-release package
+### From the release package
 
-Download `nekyia-0.0.1.tgz` from the
-[v0.0.1 pre-release](https://github.com/AraneaDev/Nekyia/releases/tag/v0.0.1), then run:
+<!-- x-release-please-start-version -->
+Download `nekyia-0.0.2.tgz` from the
+[latest release](https://github.com/AraneaDev/Nekyia/releases/latest), then run:
 
 ```bash
-bun install -g ./nekyia-0.0.1.tgz
+bun install -g ./nekyia-0.0.2.tgz
 ```
+<!-- x-release-please-end -->
 
 ### From source
 
