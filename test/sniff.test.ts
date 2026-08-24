@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite'
 import {
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -17,7 +18,7 @@ import { candidateRoots, sniffJsonl, sniffRoots, sniffSqlite } from '../src/core
 const temporary: string[] = []
 
 function tempDir(): string {
-  const path = mkdtempSync(join(tmpdir(), 'nekyia-sniff-'))
+  const path = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-sniff-')))
   temporary.push(path)
   return path
 }

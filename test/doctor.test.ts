@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -19,7 +20,7 @@ const CLI = join(import.meta.dir, '..', 'src', 'cli.ts')
 const temporaries: string[] = []
 
 function environment(rootOverride = true) {
-  const tmp = mkdtempSync(join(tmpdir(), 'nekyia-doc-'))
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-doc-')))
   temporaries.push(tmp)
   const roots = join(tmp, 'roots')
   mkdirSync(roots)

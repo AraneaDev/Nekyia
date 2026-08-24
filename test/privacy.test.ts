@@ -6,6 +6,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -26,7 +27,7 @@ let temporary: string
 let savedEnvironment: NodeJS.ProcessEnv
 
 beforeEach(() => {
-  temporary = mkdtempSync(join(tmpdir(), 'nekyia-privacy-'))
+  temporary = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-privacy-')))
   savedEnvironment = { ...process.env }
   process.env.XDG_CONFIG_HOME = join(temporary, 'config')
   process.env.XDG_DATA_HOME = join(temporary, 'data')

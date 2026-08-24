@@ -4,6 +4,7 @@ import {
   closeSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   openSync,
   rmSync,
   symlinkSync,
@@ -33,7 +34,7 @@ function manifest(root: string) {
 }
 
 function tempRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'nekyia-json-dir-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-json-dir-')))
   tempDirs.push(root)
   return root
 }

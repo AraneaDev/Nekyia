@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
@@ -10,7 +10,7 @@ const FIX = join(import.meta.dir, 'fixtures')
 const tempDirs: string[] = []
 
 function makeTemp(prefix: string): string {
-  const path = mkdtempSync(join(tmpdir(), prefix))
+  const path = realpathSync(mkdtempSync(join(tmpdir(), prefix)))
   tempDirs.push(path)
   return path
 }

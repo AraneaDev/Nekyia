@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkPlan, runPlan, shellQuote } from '../src/core/resume'
@@ -23,7 +23,7 @@ test('checkPlan refuses a vanished cwd rather than guessing', () => {
 })
 
 test('checkPlan requires cwd to be an accessible directory', () => {
-  const root = mkdtempSync(join(tmpdir(), 'nekyia-resume-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-resume-')))
   temporary.push(root)
   const file = join(root, 'not-a-directory')
   writeFileSync(file, '')
@@ -47,7 +47,7 @@ test('checkPlan accepts an explicit executable path and rejects a directory', ()
 })
 
 test('checkPlan resolves relative PATH entries from the planned cwd', () => {
-  const root = mkdtempSync(join(tmpdir(), 'nekyia-resume-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-resume-')))
   temporary.push(root)
   mkdirSync(join(root, 'bin'))
   for (const relative of ['bin/from-bin', 'from-dot']) {
@@ -73,7 +73,7 @@ test('checkPlan resolves relative PATH entries from the planned cwd', () => {
 })
 
 test('runPlan executes the same absolute command accepted from relative PATH entries', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'nekyia-resume-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-resume-')))
   temporary.push(root)
   mkdirSync(join(root, 'bin'))
   writeFileSync(join(root, 'bin', 'relative-command'), '#!/bin/sh\nexit 23\n')
@@ -150,7 +150,7 @@ test('shellQuote safely quotes cmd, empty values, quotes and newlines without a 
 })
 
 test('shellQuote command names round-trip through a POSIX shell without parser ambiguity', () => {
-  const root = mkdtempSync(join(tmpdir(), 'nekyia-resume-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-resume-')))
   temporary.push(root)
   const marker = join(root, 'ran')
   for (const command of ['FOO=bar', 'if', 'semi;colon']) {
@@ -168,7 +168,7 @@ test('shellQuote command names round-trip through a POSIX shell without parser a
 })
 
 test('shellQuote protects a relative cwd beginning with a dash from cd option parsing', () => {
-  const root = mkdtempSync(join(tmpdir(), 'nekyia-resume-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-resume-')))
   temporary.push(root)
   mkdirSync(join(root, '-project'))
   const quoted = shellQuote({ kind: 'resume', cmd: 'pwd', args: [], cwd: '-project' })
