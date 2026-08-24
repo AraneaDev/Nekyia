@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/AraneaDev/Nekyia/compare/v0.0.3...v0.0.4) (2026-08-24)
+
+
+### Documentation
+
+* install a release with one command that works ([#4](https://github.com/AraneaDev/Nekyia/issues/4)) ([c4dd68a](https://github.com/AraneaDev/Nekyia/commit/c4dd68a0e6315e277f500ef6e7424b4d98b222c8))
+
 ## [0.0.3](https://github.com/AraneaDev/Nekyia/compare/v0.0.2...v0.0.3) (2026-08-24)
 
 
