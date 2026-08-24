@@ -41,6 +41,13 @@ const adapters = [buildAdapter(validateManifest({
 const opts = { cwd: '/root/proj', now: NOW }
 const tick = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** Everything below the rule that separates the list from the preview. */
+function previewOf(frame: string): string {
+  const lines = frame.split('\n')
+  const rule = lines.findIndex((line) => /^─+$/u.test(line.trim()) && line.trim().length > 10)
+  return rule === -1 ? '' : lines.slice(rule + 1).join('\n')
+}
+
 test('the picker never renders taller than the terminal', async () => {
   const db = IndexDb.open(':memory:')
   for (let i = 0; i < 40; i++) {
@@ -87,8 +94,8 @@ test('a wide terminal puts the preview beside the list and fills the width', asy
   await tick()
   const lines = view.lastFrame()!.split('\n')
 
-  // The preview border shares a line with list rows only when they sit side by side.
-  const beside = lines.filter((line) => /^\*\s+claude/.test(line) && line.includes('│'))
+  // The rule column shares a line with list rows only when they sit side by side.
+  const beside = lines.filter((line) => /^[▌ ]\s*claude/.test(line) && line.includes('│'))
   expect(beside.length).toBeGreaterThan(0)
   expect(lines.length).toBeLessThanOrEqual(30)
   view.unmount()
@@ -102,7 +109,7 @@ test('a narrow terminal stacks the preview under the list', async () => {
   )
   await tick()
   const lines = view.lastFrame()!.split('\n')
-  expect(lines.filter((line) => /^\*\s+claude/.test(line) && line.includes('│')).length).toBe(0)
+  expect(lines.filter((line) => /^[▌ ]\s*claude/.test(line) && line.includes('│')).length).toBe(0)
   expect(lines.length).toBeLessThanOrEqual(24)
   view.unmount()
 })
@@ -148,7 +155,7 @@ test('typing and pasted multi-codepoint text filter the list and grapheme backsp
   expect(view.lastFrame()).not.toContain('Unrelated work')
   view.stdin.write('\u007f')
   await tick()
-  expect(view.lastFrame()).toContain('> reconnect')
+  expect(view.lastFrame()).toContain('▸ reconnect')
   expect(view.lastFrame()?.split('\n', 1)[0]).not.toContain('🧪')
   view.unmount()
   db.close()
@@ -215,7 +222,7 @@ test('unmodified p, y and f always search; ctrl+p, ctrl+y and ctrl+f are shortcu
   const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} clipboard={clipboard} onExec={() => {}} {...opts} />)
   view.stdin.write('p')
   await tick()
-  expect(view.lastFrame()).toContain('> p')
+  expect(view.lastFrame()).toContain('▸ p')
   expect(copied).toEqual([])
   view.stdin.write('\u007f')
   await tick()
@@ -225,7 +232,7 @@ test('unmodified p, y and f always search; ctrl+p, ctrl+y and ctrl+f are shortcu
   expect(view.lastFrame()).toContain('first prompt copied')
   view.stdin.write('app')
   await tick()
-  expect(view.lastFrame()).toContain('> app')
+  expect(view.lastFrame()).toContain('▸ app')
   for (let index = 0; index < 3; index++) {
     view.stdin.write('\u007f')
     await tick()
@@ -235,7 +242,7 @@ test('unmodified p, y and f always search; ctrl+p, ctrl+y and ctrl+f are shortcu
   expect(copied[1]).toContain("claude --resume a")
   view.stdin.write('\u0006')
   await tick()
-  expect(view.lastFrame()).toContain('this directory - claude')
+  expect(view.lastFrame()).toContain('this directory · claude')
   view.unmount()
   db.close()
 })
@@ -527,10 +534,14 @@ test('arrow keys move the preview selection and ctrl-c never executes a row', as
   const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={(plan) => plans.push(plan)} {...opts} />)
   view.stdin.write('\u001b[B')
   await tick()
-  expect(view.lastFrame()).toContain('│ beta')
+  // The gutter rail marks the row under the cursor, and the preview below the
+  // rule follows it rather than staying on the row the picker opened with.
+  expect(view.lastFrame()!).toContain('  claude     now proj           alpha')
+  expect(previewOf(view.lastFrame()!)).toContain('beta')
   view.stdin.write('\u001b[A')
   await tick()
-  expect(view.lastFrame()).toContain('│ alpha')
+  expect(view.lastFrame()!).toContain('▌ claude     now proj           alpha')
+  expect(previewOf(view.lastFrame()!)).toContain('alpha')
   view.stdin.write('\u0003')
   await tick()
   expect(plans).toEqual([])

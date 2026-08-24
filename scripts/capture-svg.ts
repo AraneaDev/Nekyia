@@ -176,15 +176,20 @@ lines.forEach((line, rowIndex) => {
     let run = ''
     let runStart = column
     const flush = () => {
-      if (!run.trim()) { run = ''; return }
+      // Renderers drop leading whitespace inside a text node even with
+      // xml:space, which silently pulls a run left out of its column. Spacing
+      // comes from the x position instead, so only the inked part is emitted.
+      const lead = run.length - run.trimStart().length
+      const inked = run.trim()
+      if (!inked) { run = ''; return }
       const weight = span.style.bold ? ' font-weight="600"' : ''
       const opacity = span.style.dim && !span.style.inverse ? ' opacity="0.62"' : ''
       // Pin the span to the cell grid, so the font's own advance width cannot
       // drift the columns apart.
       body.push(
-        `<text x="${(PAD + runStart * CELL_W).toFixed(1)}" y="${y.toFixed(1)}" fill="${fg}"`
-        + `${weight}${opacity} textLength="${(run.length * CELL_W).toFixed(1)}"`
-        + ` lengthAdjust="spacingAndGlyphs" xml:space="preserve">${escapeXml(run)}</text>`,
+        `<text x="${(PAD + (runStart + lead) * CELL_W).toFixed(1)}" y="${y.toFixed(1)}"`
+        + ` fill="${fg}"${weight}${opacity} textLength="${(inked.length * CELL_W).toFixed(1)}"`
+        + ` lengthAdjust="spacingAndGlyphs" xml:space="preserve">${escapeXml(inked)}</text>`,
       )
       run = ''
     }
