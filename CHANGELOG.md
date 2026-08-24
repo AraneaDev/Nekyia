@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/AraneaDev/Nekyia/compare/v0.0.2...v0.0.3) (2026-08-24)
+
+
+### Documentation
+
+* keep the README install version in sync with each release ([#2](https://github.com/AraneaDev/Nekyia/issues/2)) ([96c986c](https://github.com/AraneaDev/Nekyia/commit/96c986c25469f8a30c57fda495d78352a1cb3c00))
+
 ## [0.0.2](https://github.com/AraneaDev/Nekyia/compare/v0.0.1...v0.0.2) (2026-08-24)
 
 
