@@ -104,19 +104,42 @@ function isWithin(root: string, path: string): boolean {
     || (!isAbsolute(fromRoot) && fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`))
 }
 
-function safeDatabasePath(root: string, file: string): string | null {
-  if (isAbsolute(file) || file.split(/[\\/]+/).includes('..')) return null
+/**
+ * Where a manifest's store turned out to be.
+ *
+ * `absent` and `unsafe` are deliberately not the same answer: a client that
+ * was never used has nothing to report, while a path escaping the root is a
+ * refusal the user should hear about.
+ */
+type DatabaseLocation =
+  | { kind: 'ok'; path: string }
+  | { kind: 'absent' }
+  | { kind: 'unsafe' }
+
+function isNotFound(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code
+  return code === 'ENOENT' || code === 'ENOTDIR'
+}
+
+function locateDatabase(root: string, file: string): DatabaseLocation {
+  if (isAbsolute(file) || file.split(/[\\/]+/).includes('..')) return { kind: 'unsafe' }
   const lexicalRoot = resolve(root)
   const lexicalPath = resolve(lexicalRoot, file)
-  if (!isWithin(lexicalRoot, lexicalPath)) return null
+  if (!isWithin(lexicalRoot, lexicalPath)) return { kind: 'unsafe' }
 
+  let realRoot: string
+  let realPath: string
   try {
-    const realRoot = realpathSync(lexicalRoot)
-    const realPath = realpathSync(lexicalPath)
-    return isWithin(realRoot, realPath) ? realPath : null
-  } catch {
-    return null
+    realRoot = realpathSync(lexicalRoot)
+  } catch (error) {
+    return isNotFound(error) ? { kind: 'absent' } : { kind: 'unsafe' }
   }
+  try {
+    realPath = realpathSync(lexicalPath)
+  } catch (error) {
+    return isNotFound(error) ? { kind: 'absent' } : { kind: 'unsafe' }
+  }
+  return isWithin(realRoot, realPath) ? { kind: 'ok', path: realPath } : { kind: 'unsafe' }
 }
 
 function innerQuery(sql: string): string {
@@ -268,17 +291,23 @@ export const sqliteStore: FormatModule = {
     const refs: SessionRef[] = []
     const diagnostics: Diagnostic[] = []
     const unresolvedPath = resolve(root, spec.file)
-    const dbPath = safeDatabasePath(root, spec.file)
+    const located = locateDatabase(root, spec.file)
 
-    if (!dbPath) {
+    // An absent store means the client is installed but unused. Reporting that
+    // would mark discovery non-authoritative, which switches off missing-session
+    // pruning for a client that simply has no sessions.
+    if (located.kind === 'absent') return { refs, diagnostics }
+
+    if (located.kind === 'unsafe') {
       diagnostics.push(diagnostic(
         manifest.id,
         'warn',
         unresolvedPath,
-        'database path is missing or outside the manifest root',
+        'database path is outside the manifest root',
       ))
       return { refs, diagnostics }
     }
+    const dbPath = located.path
 
     let db: Database
     try {
@@ -344,8 +373,9 @@ export const sqliteStore: FormatModule = {
   async hydrate(manifest, root, ref, config: Config) {
     const spec = manifest.sqlite!
     if (!spec.text) return emptyDoc(ref)
-    const dbPath = safeDatabasePath(root, spec.file)
-    if (!dbPath) return emptyDoc(ref)
+    const located = locateDatabase(root, spec.file)
+    if (located.kind !== 'ok') return emptyDoc(ref)
+    const dbPath = located.path
 
     const prompts: string[] = []
     const prose: string[] = []

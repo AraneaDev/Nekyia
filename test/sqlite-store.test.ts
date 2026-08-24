@@ -110,10 +110,12 @@ test('agy discover falls back to preview when title is empty', async () => {
   expect(refs[0]!.turns).toBe(50)
 })
 
-test('a missing database yields a diagnostic, not a throw', async () => {
+test('a root that does not exist yields nothing at all, and never throws', async () => {
   const { refs, diagnostics } = await sqliteStore.discover(opencode, '/nonexistent')
   expect(refs).toEqual([])
-  expect(diagnostics[0]!.level).toBe('warn')
+  // The client is not installed. That is a complete answer, not a fault, and
+  // reporting it would cost the client its authoritative status.
+  expect(diagnostics).toEqual([])
 })
 
 test('a bad sessions query yields a diagnostic and leaves the database reusable', async () => {
@@ -511,4 +513,35 @@ test('copilot resume attaches by id using the form the CLI itself prints', () =>
   expect(copilot.tier).toBe('resume')
   expect(renderArgs(copilot.resume!.args, { id: 'abc-123', cwd: '/root/proj' }))
     .toEqual(['--resume=abc-123'])
+})
+
+test('an absent store is a zero-session answer, not a warning', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-absent-'))
+  tempDirs.push(root)
+  const manifest = validateManifest({
+    ...copilotManifest, roots: [root],
+  })
+  const { refs, diagnostics } = await sqliteStore.discover(manifest, root)
+
+  // The client's root exists but it was never used, so there is simply
+  // nothing to report. A diagnostic here would mark discovery non-authoritative
+  // and switch off missing-session pruning for the client.
+  expect(refs).toEqual([])
+  expect(diagnostics).toEqual([])
+})
+
+test('a store escaping the manifest root is still refused, and says so', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-escape-'))
+  tempDirs.push(root)
+  const manifest = validateManifest({
+    ...copilotManifest,
+    roots: [root],
+    sqlite: { ...copilotManifest.sqlite, file: '../outside.db' },
+  })
+  const { refs, diagnostics } = await sqliteStore.discover(manifest, root)
+
+  expect(refs).toEqual([])
+  expect(diagnostics).toHaveLength(1)
+  expect(diagnostics[0]!.level).toBe('warn')
+  expect(diagnostics[0]!.message).toContain('outside the manifest root')
 })
