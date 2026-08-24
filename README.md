@@ -34,7 +34,7 @@ a brief, not a resumed state.
 
 ## Features
 
-- **One Search Surface**: query Claude Code, Codex, opencode, Kilo Code, Codebuff, and Antigravity histories together
+- **One Search Surface**: query Claude Code, Codex, GitHub Copilot CLI, opencode, Kilo Code, Codebuff, and Antigravity histories together
 - **Verified Resume**: attach to the selected session by ID only where that exact command was tested
 - **Deterministic Handovers**: start search-tier clients with every indexed user prompt, touched files, branch context, and bounded assistant prose
 - **Two-Phase Indexing**: discover cheap fingerprints first, then hydrate only sessions that changed
@@ -184,6 +184,7 @@ exact attachment was not confirmed.
 | Claude Code | Resume | `claude --resume <id>` |
 | Codex | Resume | `codex resume <id>` |
 | Antigravity CLI, agy | Resume | `agy --conversation <id>` |
+| GitHub Copilot CLI | Resume | `copilot --resume=<id>` |
 | opencode | Search | `opencode <brief>` |
 | Kilo Code | Search | `kilo <brief>` |
 | Codebuff / freebuff | Search | `codebuff --cwd <cwd> <brief>` |

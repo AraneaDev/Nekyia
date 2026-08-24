@@ -243,7 +243,7 @@ test('public adapter methods contain malicious getters', async () => {
 test('buildAdapters composes every valid built-in manifest', () => {
   const built = buildAdapters()
   expect(built.adapters.map((adapter) => adapter.id)).toEqual([
-    'agy', 'claude', 'codebuff', 'codex', 'kilo', 'opencode',
+    'agy', 'claude', 'codebuff', 'codex', 'copilot', 'kilo', 'opencode',
   ])
   expect(built.diagnostics.every((item) => item.level !== 'error')).toBe(true)
 })

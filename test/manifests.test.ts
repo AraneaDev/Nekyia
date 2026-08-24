@@ -174,6 +174,7 @@ test('loads all built-in manifests without errors', () => {
     'claude',
     'codebuff',
     'codex',
+    'copilot',
     'kilo',
     'opencode',
   ])
@@ -190,7 +191,7 @@ test('bounds user-manifest enumeration and reports honest overflow', () => {
   }
   const loaded = loadManifests()
   expect(loaded.diagnostics.some((item) => item.message.includes('at least one additional manifest omitted'))).toBe(true)
-  expect(loaded.manifests.length).toBeLessThanOrEqual(262)
+  expect(loaded.manifests.length).toBeLessThanOrEqual(263)
 })
 
 test('bounds total directory entries even when none are manifests', () => {

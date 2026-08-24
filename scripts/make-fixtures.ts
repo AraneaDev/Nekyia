@@ -170,4 +170,77 @@ agy.run(
 )
 agy.close()
 
+const copilot = recreate('copilot/session-store.db')
+copilot.exec(`
+  CREATE TABLE sessions(
+    id TEXT PRIMARY KEY,
+    cwd TEXT,
+    repository TEXT,
+    host_type TEXT,
+    branch TEXT,
+    summary TEXT,
+    created_at TEXT,
+    updated_at TEXT
+  );
+  CREATE TABLE turns(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    turn_index INTEGER NOT NULL,
+    user_message TEXT,
+    assistant_response TEXT,
+    timestamp TEXT,
+    UNIQUE(session_id, turn_index)
+  );
+`)
+const insertCopilotSession = copilot.prepare(
+  'INSERT INTO sessions VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)',
+)
+insertCopilotSession.run(
+  'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca',
+  '/root/proj',
+  'AraneaDev/probe-alpha',
+  'github',
+  'feature/alpha',
+  'Chase the duplicate listener',
+  '2026-08-24T18:13:48.383Z',
+  '2026-08-24T18:13:50.611Z',
+)
+// A session outside a repository: Copilot leaves branch and repository null.
+insertCopilotSession.run(
+  '222fe270-df55-4a9a-8afd-2821ed25322d',
+  '/root/other',
+  null,
+  null,
+  null,
+  'Rename the sidecar loader',
+  '2026-08-24T18:14:02.271Z',
+  '2026-08-24T18:14:04.260Z',
+)
+const insertCopilotTurn = copilot.prepare(
+  'INSERT INTO turns(session_id, turn_index, user_message, assistant_response, timestamp) VALUES (?1, ?2, ?3, ?4, ?5)',
+)
+insertCopilotTurn.run(
+  'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca',
+  0,
+  'Chase the duplicate listener',
+  'The listener is attached twice.',
+  '2026-08-24T18:13:52.015Z',
+)
+// A turn still in flight: the user message is stored before any reply exists.
+insertCopilotTurn.run(
+  'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca',
+  1,
+  'Now check the teardown path',
+  null,
+  '2026-08-24T18:13:59.500Z',
+)
+insertCopilotTurn.run(
+  '222fe270-df55-4a9a-8afd-2821ed25322d',
+  0,
+  'Rename the sidecar loader',
+  'Renamed it to loadSidecar.',
+  '2026-08-24T18:14:21.400Z',
+)
+copilot.close()
+
 console.log('fixtures written')

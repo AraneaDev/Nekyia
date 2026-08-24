@@ -177,10 +177,10 @@ test('doctor reports every bounded loaded manifest without a second silent cap',
   const report = JSON.parse(result.stdout.toString())
   const reported = new Set(report.clients.map((client: any) => client.client))
   for (const id of ids) expect(reported.has(id)).toBe(true)
-  for (const id of ['agy', 'claude', 'codebuff', 'codex', 'kilo', 'opencode']) {
+  for (const id of ['agy', 'claude', 'codebuff', 'codex', 'copilot', 'kilo', 'opencode']) {
     expect(reported.has(id)).toBe(true)
   }
-  expect(report.clients).toHaveLength(262)
+  expect(report.clients).toHaveLength(263)
 })
 
 test('doctor --sniff emits a deterministic working draft without private samples', async () => {
