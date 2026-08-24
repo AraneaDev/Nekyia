@@ -16,6 +16,42 @@ export function clientColor(client: string): string {
   return CLIENT_COLOR[client] ?? 'white'
 }
 
+/**
+ * Projects have no fixed set, so their hue is derived from the name. The same
+ * project keeps the same colour across runs and machines, which is what makes
+ * it scannable; the client hues are excluded so the two columns stay apart.
+ */
+const PROJECT_COLOR = ['cyan', 'green', 'yellow', 'blue', 'magenta', 'red'] as const
+
+export function projectColor(project: string): string | undefined {
+  if (!project || project === '-') return undefined
+  let hash = 0
+  for (const char of project) hash = (hash * 31 + char.codePointAt(0)!) >>> 0
+  return PROJECT_COLOR[hash % PROJECT_COLOR.length]
+}
+
+/** Recency is the ranking signal, so the age column reads as a gradient. */
+export function ageEmphasis(endedAt: number, now: number): { dim: boolean; bold: boolean } {
+  const age = now - endedAt
+  if (!Number.isFinite(age)) return { dim: true, bold: false }
+  if (age < 24 * 3_600_000) return { dim: false, bold: true }
+  if (age < 7 * 24 * 3_600_000) return { dim: false, bold: false }
+  return { dim: true, bold: false }
+}
+
+/**
+ * Splits a title around the query so the matching span can be lit. Matching is
+ * case-insensitive on the first occurrence only: the point is to show the list
+ * reacting to what was typed, not to mark up every letter.
+ */
+export function matchSpans(title: string, queryText: string): [string, string, string] {
+  const needle = queryText.trim().toLowerCase()
+  if (!needle) return [title, '', '']
+  const at = title.toLowerCase().indexOf(needle)
+  if (at === -1) return [title, '', '']
+  return [title.slice(0, at), title.slice(at, at + needle.length), title.slice(at + needle.length)]
+}
+
 const DISPLAY_SCAN_FACTOR = 8
 const MAX_DISPLAY_COLUMNS = 512
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/gu
@@ -151,6 +187,8 @@ export interface ListRowProps {
   now: number
   /** Columns available to this row, so the title fills the pane it is drawn in. */
   columns: number
+  /** Current search text, so the matching span can be lit inside the title. */
+  query: string
 }
 
 /** rail gutter, client, age and project columns, with the spaces between them. */
@@ -168,7 +206,7 @@ export function titleColumns(columns: number): number {
   return Math.max(8, naturalNumber(columns) - ROW_FIXED_COLUMNS)
 }
 
-function DefaultListRow({ row, active, now, columns }: ListRowProps) {
+function DefaultListRow({ row, active, now, columns, query }: ListRowProps) {
   const client = boundedDisplayText(row.client, 9) || '?'
   const project = boundedProjectName(row.cwd)
   const title = boundedDisplayText(row.title ?? '(no title)', titleColumns(columns))
@@ -177,25 +215,34 @@ function DefaultListRow({ row, active, now, columns }: ListRowProps) {
   // question the mark answered was how live the session is, and dimming says
   // that without another symbol to learn.
   const live = row.tier === 'resume'
+  const age = ageEmphasis(row.endedAt, now)
+  const [before, hit, after] = matchSpans(title, query)
   return (
     <Text wrap="truncate-end">
       <Text color={active ? hue : undefined} dimColor={!active}>{active ? RAIL : ' '}</Text>{' '}
       <Text color={hue} dimColor={!live}>{padColumns(client, 9)}</Text>{' '}
-      <Text dimColor>{relTime(row.endedAt, now).padStart(4)}</Text>{' '}
-      <Text dimColor>{padColumns(project, 14)}</Text>{' '}
-      <Text bold={active} dimColor={!active}>{title}</Text>
+      <Text dimColor={age.dim} bold={age.bold}>{relTime(row.endedAt, now).padStart(4)}</Text>{' '}
+      <Text color={projectColor(project.trim())} dimColor={!projectColor(project.trim())}>
+        {padColumns(project, 14)}
+      </Text>{' '}
+      <Text bold={active} dimColor={!active}>{before}</Text>
+      {hit ? <Text color="black" backgroundColor="yellow">{hit}</Text> : null}
+      <Text bold={active} dimColor={!active}>{after}</Text>
       {row.collapsed ? <Text dimColor>{`  +${row.collapsed}`}</Text> : null}
     </Text>
   )
 }
 
 export function List({
-  rows, selected, height, now, columns = 92, rowComponent: RowComponent = DefaultListRow,
+  rows, selected, height, now, columns = 92, query = '',
+  rowComponent: RowComponent = DefaultListRow,
 }: {
   rows: Row[]
   selected: number
   height: number
   now: number
+  /** Current search text, passed to rows so a match can be lit. */
+  query?: string
   /** Width of the pane holding the list; the title claims whatever the fixed columns leave. */
   columns?: number
   /** Injectable row component for structural virtualization tests. */
@@ -212,7 +259,7 @@ export function List({
         return (
           <RowComponent
             key={row.uid} row={row} index={index}
-            active={index === active} now={now} columns={columns}
+            active={index === active} now={now} columns={columns} query={query}
           />
         )
       })}

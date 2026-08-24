@@ -710,3 +710,33 @@ test('the preview keeps a first prompt that differs from the title', async () =>
   expect(view.lastFrame()!).toContain('an entirely different opening prompt')
   view.unmount()
 })
+
+test('a directory with nothing in it points at the key that widens the search', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:only', nativeId: 'only' })
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  expect(view.lastFrame()!).toContain('Press tab to search every directory')
+
+  // Once the scope is widened the hint has done its job and gets out of the way.
+  view.stdin.write('\t')
+  await tick()
+  expect(view.lastFrame()!).not.toContain('Press tab to search every directory')
+  view.unmount()
+})
+
+test('typing lights the matching span inside a title', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:m', nativeId: 'm', title: 'fix the retry budget' })
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  view.stdin.write('retry')
+  await tick()
+  // The title survives being split into lit and unlit spans.
+  expect(view.lastFrame()!).toContain('fix the retry budget')
+  view.unmount()
+})

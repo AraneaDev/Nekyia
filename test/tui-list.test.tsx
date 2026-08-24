@@ -8,7 +8,10 @@ import type { Row } from '../src/core/query'
 import {
   boundedDisplayText,
   clientColor,
+  ageEmphasis,
   List,
+  matchSpans,
+  projectColor,
   ROW_FIXED_COLUMNS,
   titleColumns,
   type DisplayWork,
@@ -312,4 +315,37 @@ test('a wide list renders titles past the old 92 column row', () => {
   const rendered = view.lastFrame()!.split('\n').find((line) => line.includes('y'))!
   expect(rendered.length).toBeGreaterThan(92)
   view.unmount()
+})
+
+test('a match is split out of the title so it can be lit', () => {
+  expect(matchSpans('fix the retry budget', 'retry')).toEqual(['fix the ', 'retry', ' budget'])
+  // Case folds, because the query is typed and the title is not.
+  expect(matchSpans('Fix the RETRY budget', 'retry')).toEqual(['Fix the ', 'RETRY', ' budget'])
+  // Only the first occurrence: this shows the list reacting, not full markup.
+  expect(matchSpans('retry the retry', 'retry')).toEqual(['', 'retry', ' the retry'])
+  // No query, or no hit, leaves the title in one piece.
+  expect(matchSpans('fix the retry budget', '')).toEqual(['fix the retry budget', '', ''])
+  expect(matchSpans('fix the retry budget', '   ')).toEqual(['fix the retry budget', '', ''])
+  expect(matchSpans('fix the retry budget', 'absent')).toEqual(['fix the retry budget', '', ''])
+})
+
+test('age reads as a gradient from today to long ago', () => {
+  const hour = 3_600_000
+  expect(ageEmphasis(NOW - hour, NOW)).toEqual({ dim: false, bold: true })
+  expect(ageEmphasis(NOW - 3 * 24 * hour, NOW)).toEqual({ dim: false, bold: false })
+  expect(ageEmphasis(NOW - 30 * 24 * hour, NOW)).toEqual({ dim: true, bold: false })
+  expect(ageEmphasis(Number.NaN, NOW)).toEqual({ dim: true, bold: false })
+})
+
+test('a project keeps one colour and never borrows the unknown-client white', () => {
+  const first = projectColor('api-gateway')
+  expect(first).toBeDefined()
+  expect(projectColor('api-gateway')).toBe(first)
+  expect(projectColor('billing-svc')).toBeDefined()
+  // A missing project is left uncoloured rather than given a hue that means nothing.
+  expect(projectColor('-')).toBeUndefined()
+  expect(projectColor('')).toBeUndefined()
+  for (const name of ['a', 'infra', 'web-console', 'search-svc', 'x'.repeat(40)]) {
+    expect(projectColor(name)).not.toBe('white')
+  }
 })
