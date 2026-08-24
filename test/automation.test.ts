@@ -33,4 +33,24 @@ test('Release Please is configured for conventional releases from main', () => {
   expect(workflow).toContain('branches: [main]')
   expect(config.packages['.']?.['package-name']).toBe('nekyia')
   expect(config.packages['.']?.['release-type']).toBe('node')
+  expect(config.packages['.']?.['extra-files']).toContain('README.md')
+})
+
+test('the README install block tracks the released version', () => {
+  const pkg = JSON.parse(read('package.json')) as { version: string }
+  const block = read('README.md').match(
+    /<!-- x-release-please-start-version -->\n([\s\S]*?)<!-- x-release-please-end -->/,
+  )?.[1]
+  expect(block).toBeDefined()
+
+  const lines = block!.split('\n')
+  const versions = lines.flatMap(line => line.match(/\d+\.\d+\.\d+/g) ?? [])
+  expect(versions.length).toBeGreaterThan(0)
+  for (const version of versions) expect(version).toBe(pkg.version)
+
+  // The generic updater rewrites one version per line, so a second version on
+  // any line would survive a release and leave a stale reference behind.
+  for (const line of lines) {
+    expect((line.match(/\d+\.\d+\.\d+/g) ?? []).length).toBeLessThanOrEqual(1)
+  }
 })
