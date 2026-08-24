@@ -38,6 +38,55 @@ const adapters = [buildAdapter(validateManifest({
 const opts = { cwd: '/root/proj', now: NOW }
 const tick = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms))
 
+test('the picker never renders taller than the terminal', async () => {
+  const db = IndexDb.open(':memory:')
+  for (let i = 0; i < 40; i++) {
+    seed(db, {
+      uid: `claude:${i}`,
+      nativeId: String(i),
+      title: `session ${i} ${'a long title that wraps across the terminal width '.repeat(3)}`,
+    })
+  }
+  // A files-touched block plus a wrapping title is what used to push the preview
+  // past the height the list had already been sized against.
+  const heavy = seed(db, { uid: 'claude:files', nativeId: 'files' })
+  db.upsertDoc({
+    ref: heavy,
+    prompts: ['a first prompt line'],
+    prose: [],
+    files: Array.from({ length: 6 }, (_, i) => `/root/proj/src/deeply/nested/module/file-${i}.ts`),
+    truncated: false,
+  })
+
+  for (const rows of [8, 12, 16, 20, 24, 30, 40]) {
+    const view = render(
+      <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={rows} />,
+    )
+    await tick()
+    const frame = view.lastFrame()!
+    expect(frame.split('\n').length).toBeLessThanOrEqual(rows)
+    view.unmount()
+  }
+})
+
+test('a resize relays out instead of leaving the previous frame behind', async () => {
+  const db = IndexDb.open(':memory:')
+  for (let i = 0; i < 30; i++) seed(db, { uid: `claude:${i}`, nativeId: String(i) })
+
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={40} />,
+  )
+  await tick()
+  expect(view.lastFrame()!.split('\n').length).toBeLessThanOrEqual(40)
+
+  view.rerender(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={14} />,
+  )
+  await tick()
+  expect(view.lastFrame()!.split('\n').length).toBeLessThanOrEqual(14)
+  view.unmount()
+})
+
 test('the picker lists a session and shows a deterministic preview', () => {
   const db = IndexDb.open(':memory:')
   seed(db)

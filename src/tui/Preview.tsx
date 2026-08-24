@@ -35,7 +35,18 @@ function previewData(db: IndexDb, uid: string): { files: string[]; first: string
   }
 }
 
-export function Preview({ row, db, now }: { row: Row | undefined; db: IndexDb; now: number }) {
+/**
+ * Every line is single-line by construction and the file list is sliced to the
+ * caller's budget, so the box never overflows and Ink is never asked to clip
+ * wrapped text, which merges the clipped tail into the line above it.
+ */
+export function Preview({ row, db, now, maxLines = 12 }: {
+  row: Row | undefined
+  db: IndexDb
+  now: number
+  /** Content lines this preview may occupy, borders excluded. */
+  maxLines?: number
+}) {
   if (!row) return <Box><Text dimColor>no session selected</Text></Box>
 
   const { files, first } = previewData(db, row.uid)
@@ -47,22 +58,31 @@ export function Preview({ row, db, now }: { row: Row | undefined; db: IndexDb; n
     ? Math.floor(row.turns)
     : 0
 
+  // title + meta, plus each optional single-line row, then the blank+text of the
+  // first prompt; whatever is left is what the files block may use.
+  const spent = 2
+    + (row.tier !== 'resume' ? 1 : 0)
+    + (row.missing ? 1 : 0)
+    + (first ? 2 : 0)
+  const fileBudget = Math.max(0, Math.min(files.length, maxLines - spent - 2))
+  const shownFiles = fileBudget > 0 ? files.slice(0, fileBudget) : []
+
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Text bold>{title}</Text>
-      <Text dimColor>
+      <Text bold wrap="truncate-end">{title}</Text>
+      <Text dimColor wrap="truncate-end">
         {client} - {cwd}{branch ? ` - ${branch}` : ''} - {relTime(row.endedAt, now)} ago
         {turns ? ` - ${turns} turns` : ''}
       </Text>
       {row.tier !== 'resume'
-        ? <Text color="yellow">{client} cannot resume by id; enter starts a new briefed session</Text>
+        ? <Text color="yellow" wrap="truncate-end">{client} cannot resume by id; enter starts a new briefed session</Text>
         : null}
-      {row.missing ? <Text color="red">source transcript no longer on disk</Text> : null}
+      {row.missing ? <Text color="red" wrap="truncate-end">source transcript no longer on disk</Text> : null}
       {first ? <Box marginTop={1}><Text wrap="truncate-end">{first}</Text></Box> : null}
-      {files.length
+      {shownFiles.length
         ? <Box flexDirection="column" marginTop={1}>
             <Text dimColor>files touched</Text>
-            {files.map((file, index) => <Text key={`${index}:${file}`} dimColor>  {file}</Text>)}
+            {shownFiles.map((file, index) => <Text key={`${index}:${file}`} dimColor wrap="truncate-end">  {file}</Text>)}
           </Box>
         : null}
     </Box>
