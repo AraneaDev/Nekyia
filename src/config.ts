@@ -198,7 +198,10 @@ function ensureSafeDirectory(directory: string): void {
       }
       const created = lstatSync(cursor)
       if (!created.isDirectory() || created.isSymbolicLink()) {
-        throw new Error('config path contains an unsafe directory')
+        // Reaching here means the path was replaced between mkdir and lstat.
+        // The ENOENT that led here was expected and handled, but it is kept as
+        // the cause so the sequence is still legible when this fires.
+        throw new Error('config path contains an unsafe directory', { cause: error })
       }
     }
   }

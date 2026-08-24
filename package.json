@@ -24,6 +24,7 @@
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/bun": "latest",
     "@types/react": "^19.2.18",
     "eslint": "^10.9.1",

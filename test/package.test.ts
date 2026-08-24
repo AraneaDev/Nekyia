@@ -63,7 +63,7 @@ test('the package contains only publishable runtime material', () => {
   expect(pkg.engines?.bun).toBe('>=1.1.0')
   expect(Object.keys(pkg.dependencies ?? {}).sort()).toEqual(['ink', 'react'])
   expect(Object.keys(pkg.devDependencies ?? {}).sort()).toEqual([
-    '@types/bun', '@types/react', 'eslint', 'eslint-plugin-jsdoc',
+    '@eslint/js', '@types/bun', '@types/react', 'eslint', 'eslint-plugin-jsdoc',
     'ink-testing-library', 'typescript', 'typescript-eslint',
   ])
 })
