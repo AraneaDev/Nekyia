@@ -7,6 +7,7 @@ import type { IndexDb } from '../core/db'
 import { shellQuote } from '../core/resume'
 import type { ExecPlan } from '../types'
 import { boundedDisplayText, List } from './List'
+import { projectName } from '../render'
 import { Preview } from './Preview'
 import { useSessions } from './useSessions'
 import { createHostClipboard, type ClipboardLike } from './clipboard'
@@ -30,21 +31,21 @@ function EmptyState({ searching, narrowed }: { searching: boolean; narrowed: boo
       <Text>{searching ? 'Nothing came up.' : 'No sessions indexed yet.'}</Text>
       <Text dimColor wrap="truncate-end">
         {searching
-          ? <>Try fewer words{narrowed ? <>, or press <Text color="cyan">tab</Text> to search every directory</> : null}.</>
+          ? <>Try fewer words{narrowed ? <>, or press <Text color="cyan">tab</Text> to search everywhere</> : null}.</>
           : <>Run <Text color="cyan">nekyia index</Text> to read the histories your agent CLIs already keep.</>}
       </Text>
     </Box>
   )
 }
 
-function SparseHint() {
+function SparseHint({ project }: { project: string }) {
   return (
     <Box marginTop={1} flexDirection="column" flexShrink={0}>
       <Text dimColor wrap="truncate-end">
-        Only this directory is being searched.
+        Only {project} is being searched.
       </Text>
       <Text dimColor wrap="truncate-end">
-        Press <Text color="cyan">tab</Text> to search every directory.
+        Press <Text color="cyan">tab</Text> to search everywhere.
       </Text>
     </Box>
   )
@@ -377,13 +378,15 @@ export function App({
   // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,
   // decides who yields space. The list takes the slack the preview leaves; both
   // clip rather than pushing the frame past the last row and scrolling the top away.
-  const scope = sessions.scope === 'cwd' ? 'this directory' : 'everywhere'
+  // Name what is being filtered. "this directory" left the reader guessing
+  // which one, and launching from a parent made it look like it did nothing.
+  const scope = sessions.scope ? projectName(sessions.scope) : 'everywhere'
   const context = [`${sessions.rows.length} sessions`, scope, shownClient, shownNote]
     .filter(Boolean).join(' · ')
   // The first key names what enter does to the row under the cursor, so the
   // hint matches the outcome instead of always promising a resume.
   const enterLabel = selectedRow && selectedRow.tier !== 'resume' ? 'brief' : 'resume'
-  const narrowed = sessions.scope === 'cwd'
+  const narrowed = sessions.scope !== null
   const empty = sessions.rows.length === 0
   // A directory with almost nothing in it is the first thing a new user sees,
   // so it points at the key that widens the search rather than sitting blank.
@@ -435,7 +438,7 @@ export function App({
           </Box>
         </>
       ) : null}
-      {sparse ? <SparseHint /> : null}
+      {sparse ? <SparseHint project={scope} /> : null}
       <Box flexShrink={0} marginTop={1}>
         <Text wrap="truncate-end">
           {keys.map(([key, label], index) => (
