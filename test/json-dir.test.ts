@@ -300,7 +300,11 @@ test('malformed or missing files are localized and deterministic', async () => {
     '2026-08-05T09-00-00.000Z',
     '2026-08-05T09-00-01.000Z',
   ])
-  expect(result.diagnostics.length).toBeGreaterThanOrEqual(3)
+  // Malformed content is still reported, and each complaint names the chat it
+  // came from. Files that are merely absent are not a fault and stay silent.
+  expect(result.diagnostics.length).toBeGreaterThanOrEqual(2)
+  expect(result.diagnostics.some((item) => item.message.includes('chat-meta.json'))).toBe(true)
+  expect(result.diagnostics.every((item) => !item.message.includes('missing'))).toBe(true)
   const bad = result.refs.find((ref) => ref.nativeId.endsWith('01.000Z'))!
   const doc = await jsonDir.hydrate(manifest(root), root, bad, DEFAULT_CONFIG)
   expect(doc.prompts).toEqual([])
@@ -414,4 +418,39 @@ test('deduplicates repeated native ids by completeness then recency', async () =
   expect(result.refs).toHaveLength(1)
   expect(result.refs[0]!.cwd).toBe('/chosen')
   expect(result.diagnostics.some((item) => item.message.includes('duplicate'))).toBe(true)
+})
+
+test('a chat directory with no messages file is skipped without a complaint', async () => {
+  const root = tempRoot()
+  putChat(root, 'empty-chat', null)
+  const { refs, diagnostics } = await jsonDir.discover(manifest(root), root)
+
+  // An abandoned chat has nothing to index. Reporting it would mark the client
+  // non-authoritative, which switches off missing-session pruning for a store
+  // that is otherwise perfectly readable.
+  expect(refs).toEqual([])
+  expect(diagnostics).toEqual([])
+})
+
+test('a chat missing only its run state is still indexed, and stays quiet', async () => {
+  const root = tempRoot()
+  putChat(root, 'no-run-state', [{ id: 'u', variant: 'user', content: 'hello' }], null)
+  const { refs, diagnostics } = await jsonDir.discover(manifest(root), root)
+
+  expect(refs).toHaveLength(1)
+  expect(diagnostics).toEqual([])
+})
+
+test('a messages file reached through a symlink is still refused, and says so', async () => {
+  const root = tempRoot()
+  const outside = tempRoot()
+  writeFileSync(join(outside, 'real-messages.json'), JSON.stringify([]))
+  const dir = putChat(root, 'symlinked', null)
+  symlinkSync(join(outside, 'real-messages.json'), join(dir, 'chat-messages.json'))
+
+  const { refs, diagnostics } = await jsonDir.discover(manifest(root), root)
+  expect(refs).toEqual([])
+  expect(diagnostics).toHaveLength(1)
+  expect(diagnostics[0]!.level).toBe('warn')
+  expect(diagnostics[0]!.message).toContain('unsafe')
 })
