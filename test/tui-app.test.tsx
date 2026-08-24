@@ -6,7 +6,10 @@ import { mountPicker, runPick, type PickDependencies } from '../src/commands/pic
 import { buildAdapter, type Adapter } from '../src/core/adapter'
 import { IndexDb } from '../src/core/db'
 import { validateManifest } from '../src/manifests/load'
-import { App, safeCommandForClipboard, type CommandCopyWork } from '../src/tui/App'
+import {
+  App, listPaneColumns, previewLines, safeCommandForClipboard, SIDE_BY_SIDE_MIN_COLUMNS,
+  type CommandCopyWork,
+} from '../src/tui/App'
 import { createHostClipboard, type ClipboardRuntime } from '../src/tui/clipboard'
 import type { ExecPlan, SessionRef } from '../src/types'
 
@@ -67,6 +70,41 @@ test('the picker never renders taller than the terminal', async () => {
     expect(frame.split('\n').length).toBeLessThanOrEqual(rows)
     view.unmount()
   }
+})
+
+test('a wide terminal puts the preview beside the list and fills the width', async () => {
+  const db = IndexDb.open(':memory:')
+  for (let i = 0; i < 30; i++) {
+    seed(db, {
+      uid: `claude:${i}`,
+      nativeId: String(i),
+      title: `session ${i} ${'x'.repeat(200)}`,
+    })
+  }
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} columns={150} />,
+  )
+  await tick()
+  const lines = view.lastFrame()!.split('\n')
+
+  // The preview border shares a line with list rows only when they sit side by side.
+  const beside = lines.filter((line) => /^\*\s+claude/.test(line) && line.includes('│'))
+  expect(beside.length).toBeGreaterThan(0)
+  expect(lines.length).toBeLessThanOrEqual(30)
+  view.unmount()
+})
+
+test('a narrow terminal stacks the preview under the list', async () => {
+  const db = IndexDb.open(':memory:')
+  for (let i = 0; i < 30; i++) seed(db, { uid: `claude:${i}`, nativeId: String(i) })
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} columns={80} />,
+  )
+  await tick()
+  const lines = view.lastFrame()!.split('\n')
+  expect(lines.filter((line) => /^\*\s+claude/.test(line) && line.includes('│')).length).toBe(0)
+  expect(lines.length).toBeLessThanOrEqual(24)
+  view.unmount()
 })
 
 test('a resize relays out instead of leaving the previous frame behind', async () => {
@@ -606,4 +644,58 @@ test('runPick closes the database and never checks a plan when Ink exit fails', 
   })
   expect(code).toBe(1)
   expect(events).toEqual(['wait', 'unmount', 'close', 'error:picker failed: Ink failed  [2J'])
+})
+
+test('pane widths track the terminal instead of a fixed title column', () => {
+  // The list keeps a readable minimum, always leaves room for the preview, and
+  // grows with the terminal rather than stopping at the old 92 column row.
+  expect(listPaneColumns(150)).toBe(83)
+  expect(listPaneColumns(200)).toBe(110)
+  expect(listPaneColumns(SIDE_BY_SIDE_MIN_COLUMNS)).toBe(55)
+  for (const columns of [100, 120, 150, 200, 400]) {
+    expect(listPaneColumns(columns)).toBeLessThanOrEqual(columns - 40)
+    expect(listPaneColumns(columns)).toBeGreaterThanOrEqual(40)
+  }
+})
+
+test('the preview budget never outgrows the terminal', () => {
+  for (const rows of [4, 8, 12, 24, 40, 100]) {
+    const lines = previewLines(rows)
+    expect(lines).toBeGreaterThanOrEqual(2)
+    expect(lines).toBeLessThanOrEqual(Math.max(2, rows))
+  }
+})
+
+test('the preview drops a first prompt that only restates the title', async () => {
+  const db = IndexDb.open(':memory:')
+  // Longer than the 120 columns the prompt is bounded to and shorter than the
+  // 160 the title gets, so comparing the bounded forms would miss the match.
+  const shared = `resume the release work ${'and keep going '.repeat(9)}`.trim()
+  expect(shared.length).toBeGreaterThan(120)
+  const ref = seed(db, { uid: 'claude:dup', nativeId: 'dup', title: shared })
+  db.upsertDoc({ ref, prompts: [shared], prose: [], files: [], truncated: false })
+
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  const opening = shared.slice(0, 40)
+  const echoed = view.lastFrame()!.split('\n').filter((line) => line.includes(opening))
+  // Once in the list row, once as the preview title, and nowhere else.
+  expect(echoed.length).toBe(2)
+  view.unmount()
+})
+
+test('the preview keeps a first prompt that differs from the title', async () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:diff', nativeId: 'diff', title: 'a short title' })
+  db.upsertDoc({
+    ref, prompts: ['an entirely different opening prompt'], prose: [], files: [], truncated: false,
+  })
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  expect(view.lastFrame()!).toContain('an entirely different opening prompt')
+  view.unmount()
 })

@@ -131,12 +131,22 @@ export interface ListRowProps {
   index: number
   active: boolean
   now: number
+  /** Columns available to this row, so the title fills the pane it is drawn in. */
+  columns: number
 }
 
-function DefaultListRow({ row, active, now }: ListRowProps) {
+/** glyph, client, age and project columns, with the single space after each. */
+export const ROW_FIXED_COLUMNS = 32
+
+/** Columns the title may use once the fixed columns are paid for. */
+export function titleColumns(columns: number): number {
+  return Math.max(8, naturalNumber(columns) - ROW_FIXED_COLUMNS)
+}
+
+function DefaultListRow({ row, active, now, columns }: ListRowProps) {
   const client = boundedDisplayText(row.client, 9) || '?'
   const project = boundedProjectName(row.cwd)
-  const title = boundedDisplayText(row.title ?? '(no title)', 60)
+  const title = boundedDisplayText(row.title ?? '(no title)', titleColumns(columns))
   return (
     <Text inverse={active} wrap="truncate-end">
       {tierGlyph(row.tier)}{' '}
@@ -149,11 +159,15 @@ function DefaultListRow({ row, active, now }: ListRowProps) {
   )
 }
 
-export function List({ rows, selected, height, now, rowComponent: RowComponent = DefaultListRow }: {
+export function List({
+  rows, selected, height, now, columns = 92, rowComponent: RowComponent = DefaultListRow,
+}: {
   rows: Row[]
   selected: number
   height: number
   now: number
+  /** Width of the pane holding the list; the title claims whatever the fixed columns leave. */
+  columns?: number
   /** Injectable row component for structural virtualization tests. */
   rowComponent?: React.ComponentType<ListRowProps>
 }) {
@@ -165,7 +179,12 @@ export function List({ rows, selected, height, now, rowComponent: RowComponent =
     <Box flexDirection="column" width="100%">
       {rows.slice(start, end).map((row, offset) => {
         const index = start + offset
-        return <RowComponent key={row.uid} row={row} index={index} active={index === active} now={now} />
+        return (
+          <RowComponent
+            key={row.uid} row={row} index={index}
+            active={index === active} now={now} columns={columns}
+          />
+        )
       })}
     </Box>
   )

@@ -111,19 +111,36 @@ export function terminalRows(rows: unknown, fallback = 24): number {
     : fallback
 }
 
-function useTerminalRows(injected?: number): number {
-  const [rows, setRows] = useState(() => terminalRows(injected ?? process.stdout.rows))
+interface TerminalSize { rows: number; columns: number }
+
+function useTerminalSize(rowsIn?: number, columnsIn?: number): TerminalSize {
+  const read = (): TerminalSize => ({
+    rows: terminalRows(rowsIn ?? process.stdout.rows),
+    columns: terminalRows(columnsIn ?? process.stdout.columns, 80),
+  })
+  const [size, setSize] = useState(read)
   useEffect(() => {
-    if (injected !== undefined) {
-      setRows(terminalRows(injected))
-      return
-    }
-    const update = () => setRows(terminalRows(process.stdout.rows))
+    const update = () => setSize((previous) => {
+      const next = read()
+      return previous.rows === next.rows && previous.columns === next.columns ? previous : next
+    })
     update()
+    if (rowsIn !== undefined && columnsIn !== undefined) return
     process.stdout.on('resize', update)
     return () => { process.stdout.off('resize', update) }
-  }, [injected])
-  return rows
+  }, [rowsIn, columnsIn])
+  return size
+}
+
+/**
+ * Below this the panes would be too narrow to read, so the preview goes back
+ * under the list.
+ */
+export const SIDE_BY_SIDE_MIN_COLUMNS = 100
+
+/** Columns given to the list when the preview sits beside it. */
+export function listPaneColumns(columns: number): number {
+  return Math.max(40, Math.min(columns - 40, Math.round(columns * 0.55)))
 }
 
 /**
@@ -158,16 +175,23 @@ export interface AppProps {
   clipboardFactory?: () => ClipboardLike | null
   /** Injectable terminal height; the live terminal is used when omitted. */
   rows?: number
+  /** Injectable terminal width; the live terminal is used when omitted. */
+  columns?: number
 }
 
 export function App({
   db, cfg, adapters, cwd, now, onExec, clipboard,
-  clipboardFactory = createHostClipboard, rows,
+  clipboardFactory = createHostClipboard, rows, columns,
 }: AppProps) {
   const { exit } = useApp()
-  const terminalHeight = useTerminalRows(rows)
+  const { rows: terminalHeight, columns: terminalWidth } = useTerminalSize(rows, columns)
   const listRef = useRef<DOMElement | null>(null)
-  const listHeight = useMeasuredHeight(listRef, Math.max(1, terminalHeight - CHROME_SEED))
+  const sideBySide = terminalWidth >= SIDE_BY_SIDE_MIN_COLUMNS
+  const listWidth = listPaneColumns(terminalWidth)
+  const listHeight = useMeasuredHeight(
+    listRef,
+    Math.max(1, terminalHeight - (sideBySide ? 4 : CHROME_SEED)),
+  )
   const sessions = useSessions(db, cfg, cwd)
   const [confirm, setConfirm] = useState<Confirmation | null>(null)
   const [note, setNote] = useState('')
@@ -344,26 +368,44 @@ export function App({
         <Text>{shownSearch}</Text>
         <Text dimColor>{shownSearch ? '' : 'type to search'}</Text>
       </Box>
-      <Box
-        ref={listRef}
-        marginTop={1}
-        flexGrow={1}
-        flexShrink={1}
-        minHeight={1}
-        overflow="hidden"
-      >
-        <List rows={sessions.rows} selected={sessions.selected} height={listHeight} now={now} />
-      </Box>
-      <Box marginTop={1} borderStyle="single" borderColor="gray" flexDirection="column" flexShrink={0}>
-        <Preview row={selectedRow} db={db} now={now} maxLines={previewLines(terminalHeight)} />
-      </Box>
+      {sideBySide ? (
+        <Box ref={listRef} marginTop={1} flexGrow={1} flexShrink={1} minHeight={1} flexDirection="row">
+          <Box width={listWidth} flexShrink={0} flexDirection="column" overflow="hidden">
+            <List
+              rows={sessions.rows} selected={sessions.selected}
+              height={listHeight} now={now} columns={listWidth}
+            />
+          </Box>
+          <Box
+            flexGrow={1} marginLeft={1} borderStyle="single" borderColor="gray"
+            flexDirection="column" overflow="hidden"
+          >
+            <Preview row={selectedRow} db={db} now={now} maxLines={Math.max(2, listHeight - 2)} />
+          </Box>
+        </Box>
+      ) : (
+        <>
+          <Box ref={listRef} marginTop={1} flexGrow={1} flexShrink={1} minHeight={1} overflow="hidden">
+            <List
+              rows={sessions.rows} selected={sessions.selected}
+              height={listHeight} now={now} columns={terminalWidth}
+            />
+          </Box>
+          <Box
+            marginTop={1} borderStyle="single" borderColor="gray"
+            flexDirection="column" flexShrink={0}
+          >
+            <Preview row={selectedRow} db={db} now={now} maxLines={previewLines(terminalHeight)} />
+          </Box>
+        </>
+      )}
       <Box flexShrink={0}>
-        <Text dimColor>
+        <Text dimColor wrap="truncate-end">
           {sessions.rows.length} sessions - {sessions.scope === 'cwd' ? 'this directory' : 'everywhere'}
           {shownClient ? ` - ${shownClient}` : ''}{shownNote ? ` - ${shownNote}` : ''}
         </Text>
       </Box>
-      <Box flexShrink={0}><Text dimColor>enter run - ctrl+p prompt - ctrl+y command - ctrl+f client - tab scope - esc quit</Text></Box>
+      <Box flexShrink={0}><Text dimColor wrap="truncate-end">enter run - ctrl+p prompt - ctrl+y command - ctrl+f client - tab scope - esc quit</Text></Box>
     </Box>
   )
 }

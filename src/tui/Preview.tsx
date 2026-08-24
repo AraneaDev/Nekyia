@@ -28,7 +28,7 @@ function previewData(db: IndexDb, uid: string): { files: string[]; first: string
     const text = db.raw().query(`
       SELECT substr(prompts, 1, ?) AS prompts FROM session_text WHERE uid = ?
     `).get(PROMPT_DB_CHARS, uid) as { prompts: string | null } | null
-    const first = safe(text?.prompts?.split(/\r?\n/u, 1)[0] ?? '')
+    const first = text?.prompts?.split(/\r?\n/u, 1)[0] ?? ''
     return { files, first }
   } catch {
     return { files: [], first: '' }
@@ -49,8 +49,14 @@ export function Preview({ row, db, now, maxLines = 12 }: {
 }) {
   if (!row) return <Box><Text dimColor>no session selected</Text></Box>
 
-  const { files, first } = previewData(db, row.uid)
+  const { files, first: firstPrompt } = previewData(db, row.uid)
   const title = safe(row.title, TITLE_COLUMNS) || '(no title)'
+  // Most clients derive the title from the opening prompt, so printing both
+  // spends a line restating what is already on screen. Compare the raw values:
+  // title and prompt are bounded to different widths, so comparing the bounded
+  // forms would call a long shared prefix a difference.
+  const rawTitle = typeof row.title === 'string' ? row.title : ''
+  const first = firstPrompt && firstPrompt !== rawTitle ? safe(firstPrompt) : ''
   const client = safe(row.client, 32) || 'unknown client'
   const cwd = safe(row.cwd) || '(unknown directory)'
   const branch = safe(row.gitBranch, 64)
