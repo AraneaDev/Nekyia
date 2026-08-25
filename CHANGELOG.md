@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.9](https://github.com/AraneaDev/Nekyia/compare/v0.0.8...v0.0.9) (2026-08-25)
+
+
+### Features
+
+* **cli:** ask which sessions touched one exact file ([ada4d96](https://github.com/AraneaDev/Nekyia/commit/ada4d9621221e3aaa6578564179f018f563f2176))
+* **picker:** open where the sessions are, and offer only the clients you have ([3bfb9a4](https://github.com/AraneaDev/Nekyia/commit/3bfb9a40d70bacf7744f41633dbc0d6c81b275ac))
+
+
+### Fixes
+
+* **codex:** recover the files a patch call touched ([e338348](https://github.com/AraneaDev/Nekyia/commit/e338348b740e44ba67d4001f995e5164f89b4d8d))
+
 ## [0.0.8](https://github.com/AraneaDev/Nekyia/compare/v0.0.7...v0.0.8) (2026-08-25)
 
 
