@@ -119,7 +119,7 @@ test('doctor does not create an absent index and reads an existing index summary
   const db = new Database(path, { create: true })
   db.exec(`
     CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
-    INSERT INTO meta VALUES ('schema_version', '1');
+    INSERT INTO meta VALUES ('schema_version', '2');
     CREATE TABLE session(uid TEXT PRIMARY KEY, truncated INTEGER NOT NULL, missing INTEGER NOT NULL);
     INSERT INTO session VALUES ('x:1', 1, 0), ('x:2', 0, 1);
   `)

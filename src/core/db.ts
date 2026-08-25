@@ -1,7 +1,7 @@
 import Database from 'bun:sqlite'
 import { lstatSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { SessionDoc, SessionRef } from '../types'
+import type { DialogueTurn, SessionDoc, SessionRef } from '../types'
 
 export interface StoredRef extends SessionRef {
   missing: boolean
@@ -12,7 +12,7 @@ export interface FtsHit {
   score: number
 }
 
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
 
 interface SessionRow {
   uid: string
@@ -103,10 +103,10 @@ export class IndexDb {
     }
   }
 
-  private static validateExistingSchema(db: Database): void {
+  private static validateSchema(db: Database, version: number): void {
     const stored = db.query("SELECT value FROM meta WHERE key = 'schema_version'")
       .get() as { value: string | null } | null
-    if (!stored || stored.value !== String(SCHEMA_VERSION)) {
+    if (!stored || stored.value !== String(version)) {
       throw new Error(`unsupported schema version: ${String(stored?.value ?? 'missing')}`)
     }
 
@@ -121,6 +121,7 @@ export class IndexDb {
       session_fts: ['title', 'prompts', 'prose'],
       session_file: ['uid', 'path'],
     }
+    if (version >= 2) expected.session_turn = ['uid', 'ordinal', 'role', 'text']
     for (const [table, columns] of Object.entries(expected)) {
       const object = db.query(
         "SELECT type FROM sqlite_master WHERE name = ? AND type = 'table'",
@@ -140,6 +141,10 @@ export class IndexDb {
       || !ftsSql.includes("content_rowid='rowid'")) {
       throw new Error('index search schema does not match')
     }
+  }
+
+  private static validateExistingSchema(db: Database): void {
+    IndexDb.validateSchema(db, SCHEMA_VERSION)
   }
 
   /** Opens a validated existing Nekyia index for mutation without migration or PRAGMA writes. */
@@ -204,6 +209,7 @@ export class IndexDb {
       if (!Number.isSafeInteger(version)) throw new Error(`invalid schema version: ${stored.value}`)
     }
     if (version > SCHEMA_VERSION) throw new Error(`unsupported schema version: ${version}`)
+    if (version > 0) IndexDb.validateSchema(this.db, version)
     if (version === SCHEMA_VERSION) return
 
     this.db.transaction(() => {
@@ -254,6 +260,14 @@ export class IndexDb {
         );
         CREATE INDEX IF NOT EXISTS session_file_uid_idx ON session_file(uid);
         CREATE INDEX IF NOT EXISTS session_file_path_idx ON session_file(path);
+        CREATE TABLE IF NOT EXISTS session_turn (
+          uid TEXT NOT NULL,
+          ordinal INTEGER NOT NULL,
+          role TEXT NOT NULL,
+          text TEXT NOT NULL,
+          PRIMARY KEY (uid, ordinal)
+        );
+        CREATE INDEX IF NOT EXISTS session_turn_uid_idx ON session_turn(uid);
       `)
       this.db.query('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)')
         .run('schema_version', String(SCHEMA_VERSION))
@@ -328,6 +342,18 @@ export class IndexDb {
     this.db.query('DELETE FROM session_file WHERE uid = ?').run(doc.ref.uid)
     const insertFile = this.db.query('INSERT INTO session_file (uid, path) VALUES (?, ?)')
     for (const path of new Set(doc.files)) insertFile.run(doc.ref.uid, path)
+
+    this.db.query('DELETE FROM session_turn WHERE uid = ?').run(doc.ref.uid)
+    const insertTurn = this.db.query(
+      'INSERT INTO session_turn (uid, ordinal, role, text) VALUES (?, ?, ?, ?)',
+    )
+    const dialogue = Array.isArray(doc.dialogue) ? doc.dialogue : []
+    let ordinal = 0
+    for (const turn of dialogue) {
+      if (!turn || (turn.role !== 'user' && turn.role !== 'assistant')
+        || typeof turn.text !== 'string' || turn.text.length === 0) continue
+      insertTurn.run(doc.ref.uid, ordinal++, turn.role, turn.text)
+    }
 
     this.db.query('UPDATE session SET hydrated = 1, truncated = ? WHERE uid = ?')
       .run(doc.truncated ? 1 : 0, doc.ref.uid)
@@ -406,6 +432,7 @@ export class IndexDb {
       `)
       const deleteText = this.db.query('DELETE FROM session_text WHERE uid = ?')
       const deleteFile = this.db.query('DELETE FROM session_file WHERE uid = ?')
+      const deleteTurn = this.db.query('DELETE FROM session_turn WHERE uid = ?')
       const deleteRef = this.db.query('DELETE FROM session WHERE uid = ?')
 
       for (const value of new Set(values)) {
@@ -415,6 +442,7 @@ export class IndexDb {
           deleteText.run(value)
         }
         deleteFile.run(value)
+        deleteTurn.run(value)
         deleteRef.run(value)
       }
     })(uids)

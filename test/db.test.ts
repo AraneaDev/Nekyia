@@ -44,6 +44,24 @@ test('files are stored as a separate facet', () => {
   const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r); db.upsertDoc(doc(r))
   expect(db.uidsTouchingFile('src/sse')).toEqual(['claude:abc']); db.close()
 })
+test('ordered dialogue is replaced and deleted with the session', () => {
+  const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
+  db.upsertDoc(doc(r, { dialogue: [
+    { role: 'user', text: 'first question' },
+    { role: 'assistant', text: 'first answer' },
+  ] }))
+  expect(db.raw().query('SELECT role, text FROM session_turn ORDER BY ordinal').all()).toEqual([
+    { role: 'user', text: 'first question' },
+    { role: 'assistant', text: 'first answer' },
+  ])
+  db.upsertDoc(doc(r, { dialogue: [{ role: 'user', text: 'replacement question' }] }))
+  expect(db.raw().query('SELECT role, text FROM session_turn ORDER BY ordinal').all()).toEqual([
+    { role: 'user', text: 'replacement question' },
+  ])
+  db.deleteSession(r.uid)
+  expect(db.raw().query('SELECT * FROM session_turn').all()).toEqual([])
+  db.close()
+})
 test('deleteSession removes the row, its text and its files', () => {
   const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r); db.upsertDoc(doc(r)); db.deleteSession('claude:abc')
   expect(db.allUids()).toEqual([]); expect(db.ftsSearch('reconnect')).toEqual([]); expect(db.uidsTouchingFile('src/sse')).toEqual([]); db.close()
@@ -127,14 +145,35 @@ test('open rejects a newer schema version without overwriting it', () => {
   try {
     const raw=new Database(path, { create: true })
     raw.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)')
-    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '2')
+    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '3')
     raw.close()
-    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 2')
+    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 3')
     const check=new Database(path)
-    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '2' })
+    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '3' })
     check.close()
   } finally {
     opened?.close(); rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('open migrates a valid version-one index without losing session data', () => {
+  const dir=mkdtempSync(join(tmpdir(), 'nekyia-db-')); const path=join(dir, 'index.db')
+  try {
+    const original=IndexDb.open(path); const r=ref(); original.upsertRef(r); original.upsertDoc(doc(r)); original.close()
+    const old=new Database(path)
+    old.exec("DROP TABLE session_turn; UPDATE meta SET value = '1' WHERE key = 'schema_version'")
+    old.close()
+
+    const migrated=IndexDb.open(path)
+    expect(migrated.getRef(r.uid)?.title).toBe(r.title)
+    expect(migrated.ftsSearch('obsoleteprompt').map((hit) => hit.uid)).toEqual([r.uid])
+    expect(migrated.raw().query("SELECT value FROM meta WHERE key = 'schema_version'").get())
+      .toEqual({ value: '2' })
+    expect(migrated.raw().query("SELECT name FROM sqlite_master WHERE name = 'session_turn'").get())
+      .toEqual({ name: 'session_turn' })
+    migrated.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })
 

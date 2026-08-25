@@ -9,7 +9,7 @@ import { validateManifest } from '../src/manifests/load'
 import {
   App, fitKeys, previewLines, safeCommandForClipboard, type CommandCopyWork,
 } from '../src/tui/App'
-import { shareLines } from '../src/tui/Preview'
+import { buildPreviewLines, shareLines } from '../src/tui/Preview'
 import { createHostClipboard, type ClipboardRuntime } from '../src/tui/clipboard'
 import type { ExecPlan, SessionRef } from '../src/types'
 
@@ -876,6 +876,36 @@ test('ctrl+o opens the history, scrolls it, and hands focus back', async () => {
   expect(closed).toContain('ctrl+o history')
   expect(closed).toContain('a long session')
   view.unmount()
+})
+
+test('full history preserves dialogue order and includes the title prompt', () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { title: 'opening question' })
+  db.upsertDoc({
+    ref,
+    prompts: ['opening question', 'follow-up question'],
+    prose: ['opening answer', 'follow-up answer'],
+    dialogue: [
+      { role: 'user', text: 'opening question' },
+      { role: 'assistant', text: 'opening answer' },
+      { role: 'user', text: 'follow-up question' },
+      { role: 'assistant', text: 'follow-up answer' },
+    ],
+    files: [],
+    truncated: false,
+  })
+  const lines = buildPreviewLines(db, { ...db.getRef(ref.uid)!, score: 0, collapsed: 0 }, {
+    full: true, maxLines: 100,
+  })
+  const dialogue = lines.filter((line) => line.label === 'asked' || line.label === 'replied')
+    .map((line) => [line.label, line.text])
+  expect(dialogue).toEqual([
+    ['asked', 'opening question'],
+    ['replied', 'opening answer'],
+    ['asked', 'follow-up question'],
+    ['replied', 'follow-up answer'],
+  ])
+  db.close()
 })
 
 test('scrolling stops at the end of the history instead of running past it', async () => {

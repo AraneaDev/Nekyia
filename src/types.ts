@@ -39,8 +39,15 @@ export interface SessionDoc {
   ref: SessionRef
   prompts: string[]
   prose: string[]
+  /** Ordered user and assistant text for transcript-style history views. */
+  dialogue?: DialogueTurn[]
   files: string[]
   truncated: boolean
+}
+
+export interface DialogueTurn {
+  role: 'user' | 'assistant'
+  text: string
 }
 
 export interface ExecPlan {

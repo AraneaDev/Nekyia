@@ -483,6 +483,10 @@ test('hydrates only Codex user input_text and assistant output_text', async () =
 
   expect(doc.prompts).toEqual(['rewrite the transport layer'])
   expect(doc.prose).toEqual(['Rewriting transport now.'])
+  expect(doc.dialogue).toEqual([
+    { role: 'user', text: 'rewrite the transport layer' },
+    { role: 'assistant', text: 'Rewriting transport now.' },
+  ])
   expect(doc.ref.turns).toBe(2)
 })
 

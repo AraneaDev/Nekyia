@@ -13,6 +13,8 @@ const PROMPT_DB_CHARS = 65_536
 const PROSE_DB_CHARS = 65_536
 const FILE_DB_CHARS = 2_048
 const BROWSE_DB_CHARS = 8_192
+const HISTORY_DB_CHARS = 1_048_576
+const HISTORY_TURN_LIMIT = 4_096
 
 function safe(value: string | null | undefined, columns = FIELD_COLUMNS): string {
   return boundedDisplayText(typeof value === 'string' ? value : '', columns)
@@ -25,7 +27,14 @@ function textLines(value: string | null | undefined): string[] {
     .filter(Boolean)
 }
 
-interface PreviewData { files: string[]; prompts: string[]; prose: string[] }
+interface PreviewTurn { role: 'user' | 'assistant'; text: string }
+interface PreviewData {
+  files: string[]
+  prompts: string[]
+  prose: string[]
+  dialogue: PreviewTurn[]
+  dialogueTruncated: boolean
+}
 
 function previewData(db: IndexDb, uid: string, full: boolean, maxLines: number): PreviewData {
   try {
@@ -45,9 +54,40 @@ function previewData(db: IndexDb, uid: string, full: boolean, maxLines: number):
       FROM session_text WHERE uid = ?
     `).get(textChars, full ? PROSE_DB_CHARS : BROWSE_DB_CHARS, uid) as
       { prompts: string | null; prose: string | null } | null
-    return { files, prompts: textLines(text?.prompts), prose: textLines(text?.prose) }
+    const stats = full
+      ? db.raw().query(`
+        SELECT COUNT(*) AS turns, COALESCE(SUM(length(text)), 0) AS chars
+        FROM session_turn WHERE uid = ?
+      `).get(uid) as { turns: number; chars: number }
+      : { turns: 0, chars: 0 }
+    const dialogue = full
+      ? (db.raw().query(`
+        WITH ordered AS (
+          SELECT role, text, ordinal,
+            COALESCE(SUM(length(text)) OVER (
+              ORDER BY ordinal ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+            ), 0) AS before_chars
+          FROM session_turn WHERE uid = ?
+        )
+        SELECT role, substr(text, 1, max(0, ? - before_chars)) AS text
+        FROM ordered
+        WHERE before_chars < ?
+        ORDER BY ordinal
+        LIMIT ?
+      `).all(uid, HISTORY_DB_CHARS, HISTORY_DB_CHARS, HISTORY_TURN_LIMIT) as PreviewTurn[])
+        .filter((turn): turn is PreviewTurn => (
+          (turn.role === 'user' || turn.role === 'assistant') && typeof turn.text === 'string'
+        ))
+      : []
+    return {
+      files,
+      prompts: textLines(text?.prompts),
+      prose: textLines(text?.prose),
+      dialogue,
+      dialogueTruncated: stats.turns > HISTORY_TURN_LIMIT || stats.chars > HISTORY_DB_CHARS,
+    }
   } catch {
-    return { files: [], prompts: [], prose: [] }
+    return { files: [], prompts: [], prose: [], dialogue: [], dialogueTruncated: false }
   }
 }
 
@@ -102,7 +142,9 @@ export function buildPreviewLines(
 ): PreviewLine[] {
   if (!row) return []
   const width = Math.max(12, columns - LABEL_COLUMNS)
-  const { files, prompts, prose } = previewData(db, row.uid, full, maxLines)
+  const { files, prompts, prose, dialogue, dialogueTruncated } = previewData(
+    db, row.uid, full, maxLines,
+  )
   const title = safe(row.title, TITLE_COLUMNS) || '(no title)'
   // The opening prompt usually is the title, so showing both spends a line
   // restating what is already on screen. Compare raw: the two are bounded to
@@ -143,6 +185,31 @@ export function buildPreviewLines(
   }
   if (row.missing) {
     head.push({ text: 'source transcript no longer on disk', color: 'red' })
+  }
+  if (full && dialogueTruncated) {
+    head.push({ text: 'history display capped; indexed dialogue continues', color: 'yellow' })
+  }
+
+  if (full && dialogue.length > 0) {
+    const out = [...head]
+    for (const turn of dialogue) {
+      const lines = textLines(turn.text)
+      if (lines.length === 0) continue
+      out.push({ text: '' })
+      lines.forEach((line, index) => out.push({
+        text: safe(line, width),
+        label: index === 0 ? (turn.role === 'user' ? 'asked' : 'replied') : '',
+        dim: turn.role === 'assistant',
+      }))
+    }
+    if (touched.length > 0) {
+      out.push({ text: '' })
+      touched.forEach((line, index) => out.push({
+        text: boundedPathTail(line, width),
+        label: index === 0 ? 'touched' : '',
+      }))
+    }
+    return out
   }
 
   const blocks = [
