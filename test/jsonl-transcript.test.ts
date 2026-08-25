@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
 import { jsonlTranscript } from '../src/formats/jsonl-transcript'
-import { collectPaths } from '../src/formats/paths'
+import { collectPatchPaths, collectPaths } from '../src/formats/paths'
 import { validateManifest } from '../src/manifests/load'
 
 const fixtures = join(import.meta.dir, 'fixtures')
@@ -97,6 +97,25 @@ test('collectPaths recursively finds path fields and ignores ordinary strings', 
     'My File.ts',
     'relative dir/file.ts',
   ])
+})
+
+test('collectPatchPaths accepts patch headers but not commands or patch content', () => {
+  expect(collectPatchPaths([
+    'const patch = "*** Begin Patch\\n*** Update File: /root/proj/src/escaped.ts\\n-old"',
+    'await tools.apply_patch(patch)',
+    '*** Add File: /root/proj/src/literal.ts',
+    '+SECRET_PATCH_CONTENT',
+    '*** Delete File: relative/old.ts',
+    'ordinary mention /root/proj/src/not-touched.ts',
+  ].join('\n')).sort()).toEqual([
+    '/root/proj/src/escaped.ts',
+    '/root/proj/src/literal.ts',
+    'relative/old.ts',
+  ])
+
+  expect(collectPatchPaths('*** Update File: /root/proj/src/no-call.ts')).toEqual([])
+  expect(collectPatchPaths('tools.apply_patch("*** Update File: not a filesystem target\\n")'))
+    .toEqual([])
 })
 
 test('discover rejects empty native IDs for every JSONL variant', async () => {
@@ -522,6 +541,22 @@ test('Codex hydration excludes developer and tool output while extracting tool p
       {
         type: 'response_item',
         payload: {
+          type: 'custom_tool_call',
+          name: 'exec',
+          input: [
+            'const patch = "*** Begin Patch\\n*** Update File: /root/proj/src/patched.ts\\n+PATCH_SECRET\\n*** End Patch";',
+            'await tools.apply_patch(patch);',
+            'ordinary mention /root/proj/src/not-touched.ts',
+          ].join('\n'),
+        },
+      },
+      {
+        type: 'response_item',
+        payload: { type: 'custom_tool_call_output', output: 'CUSTOM_TOOL_OUTPUT_SECRET' },
+      },
+      {
+        type: 'response_item',
+        payload: {
           type: 'message',
           role: 'user',
           content: [{ type: 'input_text', text: 'safe prompt' }],
@@ -549,8 +584,12 @@ test('Codex hydration excludes developer and tool output while extracting tool p
     expect(doc.prompts).toEqual(['safe prompt'])
     expect(doc.prose).toEqual(['safe prose'])
     expect(doc.files).toContain('/root/proj/src/tool.ts')
+    expect(doc.files).toContain('/root/proj/src/patched.ts')
+    expect(doc.files).not.toContain('/root/proj/src/not-touched.ts')
     expect(indexed).not.toContain('DEVELOPER_SECRET')
     expect(indexed).not.toContain('TOOL_OUTPUT_SECRET')
+    expect(indexed).not.toContain('PATCH_SECRET')
+    expect(indexed).not.toContain('CUSTOM_TOOL_OUTPUT_SECRET')
   })
 })
 

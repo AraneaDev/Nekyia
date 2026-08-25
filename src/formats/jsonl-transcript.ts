@@ -6,7 +6,7 @@ import type { Config } from '../config'
 import type { Manifest } from '../manifests/load'
 import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
 import type { Diagnostic, SessionDoc, SessionRef } from '../types'
-import { collectPaths } from './paths'
+import { collectPatchPaths, collectPaths } from './paths'
 import { userPromptText } from '../render'
 
 const HEAD_BYTES = 16 * 1024
@@ -816,6 +816,13 @@ function hydrateCodex(
       } catch {
         // Malformed tool arguments have no indexable content.
       }
+    }
+    return 0
+  }
+  if (payload.type === 'custom_tool_call') {
+    if (typeof payload.input === 'string') {
+      const paths = collectPatchPaths(payload.input)
+      addRecoveredPaths(files, paths.map((path) => ({ path })), onFilesTruncated)
     }
     return 0
   }

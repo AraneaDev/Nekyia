@@ -6,6 +6,8 @@ const PATH_KEYS = new Set([
   'notebookPath',
   'file',
 ])
+const MAX_PATCH_INPUT_CHARS = 1024 * 1024
+const MAX_PATCH_PATH_CHARS = 4096
 
 function isPlausiblePath(value: string): boolean {
   if (value.length <= 1 || /[\r\n]/.test(value)) return false
@@ -40,4 +42,26 @@ export function collectPaths(value: unknown, out = new Set<string>()): string[] 
 
   walk(value)
   return [...out]
+}
+
+/**
+ * Recovers only apply_patch file headers from a Codex custom tool call.
+ *
+ * Modern Codex rollouts record the orchestration call as source text rather
+ * than structured JSON arguments. Reading shell commands from that text would
+ * be ambiguous and unsafe, but apply_patch has a narrow line-oriented grammar.
+ * Both literal newlines and the escaped newlines used inside JavaScript string
+ * literals are accepted; all patch contents and ordinary tool prose are ignored.
+ */
+export function collectPatchPaths(input: string): string[] {
+  if (input.length > MAX_PATCH_INPUT_CHARS) return []
+  if (!/(?:^|\W)(?:tools\.)?apply_patch(?:\W|$)/u.test(input)) return []
+
+  const paths = new Set<string>()
+  for (const line of input.split(/\r?\n|(?:\\r)?\\n/u)) {
+    const match = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/u.exec(line)
+    const path = match?.[1]?.trim()
+    if (path && path.length <= MAX_PATCH_PATH_CHARS && isPlausiblePath(path)) paths.add(path)
+  }
+  return [...paths]
 }
