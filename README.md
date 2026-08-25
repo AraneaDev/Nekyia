@@ -39,6 +39,7 @@ a brief, not a resumed state.
 - **Deterministic Handovers**: start search-tier clients with every indexed user prompt, touched files, branch context, and bounded assistant prose
 - **Two-Phase Indexing**: discover cheap fingerprints first, then hydrate only sessions that changed
 - **Fast Local Search**: SQLite FTS5 combines weighted prompt relevance with recency decay
+- **Exact File History**: ask which sessions touched one file, resolved against each session's own directory
 - **Interactive and Scriptable**: use the virtualized Ink picker or plain, JSON-capable CLI commands
 - **Privacy Controls**: forget one session, prune deleted sources, or exclude whole directory globs
 - **Extensible Manifests**: describe another client locally and use the conservative sniffer to scaffold a draft
@@ -100,9 +101,12 @@ appeared in indexed tool input; it does not prove that the session modified the 
 `--json` adds `sourcePaths` to every row, so an agent can read the raw transcript
 itself instead of trusting the indexed summary.
 
-In the picker, `tab` widens to every directory, and pressing it again narrows to the
-project of the row under the cursor, so you can start anywhere and end up in one
-project. The count beside the search line always names what is being searched.
+The picker opens on the project you are standing in. Started from your home
+directory, from a filesystem root, or from somewhere nothing has been indexed under,
+it opens on the whole index instead, because a scoped list there would be empty.
+`tab` widens to every directory, and pressing it again narrows to the project of the
+row under the cursor, so you can start anywhere and end up in one project. The count
+beside the search line always names what is being searched.
 
 Typing filters as you go, and the matching span is lit in every title, so the list
 answers each keystroke rather than only shortening.
@@ -119,11 +123,12 @@ A query that matches nothing says what to try rather than leaving an empty scree
 
 ### 3. Read the history before you commit to it
 
-`ctrl+o` opens the session under the cursor and gives it the screen: what you asked,
-what came back, and which files moved. Arrow keys scroll a line, the page keys scroll
-a screen, and `esc` closes it again.
+`ctrl+o` opens the session under the cursor and gives it the screen: what you asked
+and what came back, in the order it was said, and which files moved. A long reply
+wraps rather than running off the right edge. Arrow keys scroll a line, the page keys
+scroll a screen, and `esc` closes it again.
 
-![Reading a session's history: the pane fills the screen with the prompts and replies, scrolled past the header](docs/media/inspect.svg)
+![Reading a session's history: the pane fills the screen with the conversation in the order it happened, scrolled past the header](docs/media/inspect.svg)
 
 ### 4. Resume or hand over
 
@@ -140,7 +145,7 @@ deterministic handover, and starts a new client session with that context.
 | `enter` | Resume the session, or start a briefed one for a search-tier client |
 | `ctrl+o` | Open the session's history, and close it again |
 | `tab` | Widen to everywhere, or narrow to the project under the cursor |
-| `ctrl+f` | Cycle the client filter |
+| `ctrl+f` | Cycle the clients your index actually holds |
 | `ctrl+p` / `ctrl+y` | Copy the opening prompt, or the command that would run |
 | `esc` | Close the history if it is open, otherwise quit |
 
@@ -159,7 +164,7 @@ gets the same interface rather than a broken one:
 | `nekyia last` | Launch the newest visible session in this directory |
 | `nekyia index [--rebuild]` | Refresh fingerprints and changed session content |
 | `nekyia show <uid>` | Print a deterministic handover as Markdown |
-| `nekyia doctor [--sniff]` | Report clients, paths, parse failures, caps, and unsupported stores |
+| `nekyia doctor [--sniff]` | Report clients, paths, size caps, unreadable transcripts, and unsupported stores |
 | `nekyia forget <uid>` | Remove one session and every searchable facet from the index |
 | `nekyia prune --missing` | Remove indexed sessions whose sources disappeared |
 | `nekyia exclude <glob>` | Add an index-time directory exclusion |
@@ -174,7 +179,7 @@ Run `nekyia --help` for search filters, sort modes, limits, and command-specific
 | Up / Down | Move through results |
 | Enter | Resume, or confirm a fresh briefed session |
 | Tab | Toggle this directory / everywhere |
-| Ctrl+F | Cycle the client filter |
+| Ctrl+F | Cycle the clients your index actually holds |
 | Ctrl+P | Copy the first indexed prompt |
 | Ctrl+Y | Copy the verified resume command when one exists |
 | Escape | Cancel confirmation or quit |
@@ -227,7 +232,9 @@ that retention explicitly:
 
 - `nekyia forget <uid>` purges one indexed session
 - `nekyia prune --missing` purges sessions whose source files disappeared
-- `nekyia exclude '/work/private/**'` adds an exclusion, followed by `nekyia index --rebuild` to remove existing matches
+- `nekyia exclude '/work/private'` adds an exclusion covering that directory and everything
+  under it, expanding a leading `~`, and `nekyia index --rebuild` then deletes what was
+  already indexed there
 
 Nekyia does not promise secret redaction or index encryption. Review `show`, `doctor`,
 and JSON output before pasting it into a public issue.

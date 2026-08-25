@@ -292,29 +292,29 @@
 <line x1="1116.4" y1="156.0" x2="1120.6" y2="156.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="1120.6" y1="156.0" x2="1124.8" y2="156.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <text x="16.0" y="178.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">asked</text>
-<text x="91.6" y="178.0" fill="#c9d1d9" textLength="394.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">walk me through where the budget is decremented</text>
-<text x="91.6" y="196.0" fill="#c9d1d9" textLength="268.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">why is it keyed by route at all?</text>
-<text x="91.6" y="214.0" fill="#c9d1d9" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">show me what breaks if the key changes</text>
-<text x="91.6" y="232.0" fill="#c9d1d9" textLength="369.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">does the hedging path read the same counter?</text>
-<text x="91.6" y="250.0" fill="#c9d1d9" textLength="470.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">add a test that a noisy tenant cannot starve a quiet one</text>
-<text x="91.6" y="268.0" fill="#c9d1d9" textLength="462.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">what happens on the first request for an unseen tenant?</text>
-<text x="91.6" y="286.0" fill="#c9d1d9" textLength="394.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">make the default budget configurable per tenant</text>
-<text x="91.6" y="304.0" fill="#c9d1d9" textLength="386.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the integration test is flaky now, is that us?</text>
-<text x="91.6" y="322.0" fill="#c9d1d9" textLength="403.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">run it twenty times and tell me the failure rate</text>
-<text x="91.6" y="340.0" fill="#c9d1d9" textLength="420.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ok, pin the clock in that test instead of sleeping</text>
-<text x="91.6" y="358.0" fill="#c9d1d9" textLength="478.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">update the rate-limits doc to describe per-tenant budgets</text>
+<text x="91.6" y="178.0" fill="#c9d1d9" textLength="554.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the retry budget is shared across tenants, it should be per tenant</text>
+<text x="16.0" y="196.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">replied</text>
+<text x="91.6" y="196.0" fill="#c9d1d9" opacity="0.62" textLength="638.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">The budget lives on the client, so every tenant draws from the same counter.</text>
+<text x="16.0" y="214.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">asked</text>
+<text x="91.6" y="214.0" fill="#c9d1d9" textLength="394.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">walk me through where the budget is decremented</text>
+<text x="16.0" y="232.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">replied</text>
+<text x="91.6" y="232.0" fill="#c9d1d9" opacity="0.62" textLength="747.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Decremented in retry-budget.ts before the hedge fires, keyed by route rather than tenant.</text>
+<text x="16.0" y="250.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">asked</text>
+<text x="91.6" y="250.0" fill="#c9d1d9" textLength="268.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">why is it keyed by route at all?</text>
+<text x="16.0" y="268.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">replied</text>
+<text x="91.6" y="268.0" fill="#c9d1d9" opacity="0.62" textLength="705.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Moving the key to the tenant id fixes the sharing without touching the hedging path.</text>
+<text x="16.0" y="286.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">asked</text>
+<text x="91.6" y="286.0" fill="#c9d1d9" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">show me what breaks if the key changes</text>
+<text x="16.0" y="304.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">replied</text>
+<text x="91.6" y="304.0" fill="#c9d1d9" opacity="0.62" textLength="722.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Route was the original key because budgets predate tenancy; nothing depends on it now.</text>
+<text x="16.0" y="322.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">asked</text>
+<text x="91.6" y="322.0" fill="#c9d1d9" textLength="369.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">does the hedging path read the same counter?</text>
+<text x="16.0" y="340.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">replied</text>
+<text x="91.6" y="340.0" fill="#c9d1d9" opacity="0.62" textLength="739.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Changing the key alters two call sites and one test fixture, nothing in the wire format.</text>
+<text x="16.0" y="358.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">asked</text>
+<text x="91.6" y="358.0" fill="#c9d1d9" textLength="470.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">add a test that a noisy tenant cannot starve a quiet one</text>
 <text x="16.0" y="376.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">replied</text>
-<text x="91.6" y="376.0" fill="#c9d1d9" opacity="0.62" textLength="638.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">The budget lives on the client, so every tenant draws from the same counter.</text>
-<text x="91.6" y="394.0" fill="#c9d1d9" opacity="0.62" textLength="747.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Decremented in retry-budget.ts before the hedge fires, keyed by route rather than tenant.</text>
-<text x="91.6" y="412.0" fill="#c9d1d9" opacity="0.62" textLength="705.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Moving the key to the tenant id fixes the sharing without touching the hedging path.</text>
-<text x="91.6" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="722.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Route was the original key because budgets predate tenancy; nothing depends on it now.</text>
-<text x="91.6" y="448.0" fill="#c9d1d9" opacity="0.62" textLength="739.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Changing the key alters two call sites and one test fixture, nothing in the wire format.</text>
-<text x="91.6" y="466.0" fill="#c9d1d9" opacity="0.62" textLength="739.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">The hedging path reads the same counter, so it inherits the fix rather than needing one.</text>
-<text x="91.6" y="484.0" fill="#c9d1d9" opacity="0.62" textLength="722.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Added a test with one tenant spending its budget while another still gets its retries.</text>
-<text x="91.6" y="502.0" fill="#c9d1d9" opacity="0.62" textLength="739.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">An unseen tenant starts at the full default rather than at zero, which matches the docs.</text>
-<text x="91.6" y="520.0" fill="#c9d1d9" opacity="0.62" textLength="714.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Made the default overridable per tenant, falling back to the global value when unset.</text>
-<text x="91.6" y="538.0" fill="#c9d1d9" opacity="0.62" textLength="697.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">The flake predates this: the test slept 50ms and CI is slower than that under load.</text>
-<text x="91.6" y="556.0" fill="#c9d1d9" opacity="0.62" textLength="705.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Twenty runs, three failures, all the same sleep. Pinning the clock takes it to zero.</text>
+<text x="91.6" y="376.0" fill="#c9d1d9" opacity="0.62" textLength="739.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">The hedging path reads the same counter, so it inherits the fix rather than needing one.</text>
 <text x="16.0" y="610.0" fill="#c9d1d9" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">up/down</text>
 <text x="83.2" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">scroll</text>
 <text x="158.8" y="610.0" fill="#c9d1d9" textLength="75.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">pgup/pgdn</text>
