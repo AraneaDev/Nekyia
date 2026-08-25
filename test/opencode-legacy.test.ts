@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
@@ -47,7 +47,7 @@ test('validates the legacy manifest shape', () => {
 })
 
 function makeLegacyRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'nekyia-legacy-'))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-legacy-')))
   tempDirs.push(root)
   return root
 }
