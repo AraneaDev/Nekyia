@@ -13,7 +13,7 @@ import {
 } from 'node:fs'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { buildAdapter, type Adapter } from '../core/adapter'
+import { buildAdapter, originFor, type Adapter } from '../core/adapter'
 import { IndexDb } from '../core/db'
 import { sniffRoots, type SniffResult } from '../core/sniff'
 import { configDir, dataDir, indexPath, loadConfig, userManifestDir } from '../config'
@@ -24,7 +24,7 @@ import {
   type Manifest,
   type ManifestSource,
 } from '../manifests/load'
-import type { Diagnostic, Origin } from '../types'
+import type { Diagnostic } from '../types'
 
 /** Selects what doctor reports and in what shape. */
 export interface DoctorOptions {
@@ -81,14 +81,6 @@ function overrideManifest(manifest: Manifest, base: string | undefined): Manifes
     return null
   }
   return { ...manifest, roots: [candidate] }
-}
-
-/**
- * Mirrors the provenance mapping `buildAdapters` applies, so a client wired up
- * here reports the same origin it would when the whole set is built at once.
- */
-function originFor(source: ManifestSource | undefined): Origin {
-  return source?.kind === 'user' ? 'user-manifest' : 'manifest'
 }
 
 function manifestAdapters(

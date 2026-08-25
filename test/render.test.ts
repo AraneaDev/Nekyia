@@ -24,8 +24,8 @@ test('row rendering is compact and includes tier and collapsed-count facets', ()
   const row = {
     uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/root/a-very-long-project-name',
     gitBranch: null, title: null, startedAt: NOW, endedAt: NOW - 5 * MIN, turns: 1,
-    parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: [],
-    fingerprint: 'f', missing: false, score: 1, collapsed: 2,
+    parentNativeId: null, tier: 'resume', origin: 'manifest',
+    missing: false, score: 1, collapsed: 2,
   } satisfies Row
   expect(projectName(null)).toBe('-')
   expect(projectName('/')).toBe('/')
@@ -76,7 +76,7 @@ test('a title carrying an escape sequence or a bidi override is neutralised', ()
     uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/root/nekyia',
     gitBranch: null, title: '\u001b[2J\u001b[Hwiped\u202edesrever', startedAt: NOW,
     endedAt: NOW - 5 * MIN, turns: 1, parentNativeId: null, tier: 'resume',
-    origin: 'manifest', sourcePaths: [], fingerprint: 'f', missing: false,
+    origin: 'manifest', missing: false,
     score: 1, collapsed: 0,
   } satisfies Row
   const line = formatRow(row, NOW)
@@ -92,8 +92,8 @@ test('a wide project name still occupies exactly sixteen terminal columns', () =
   const row = {
     uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/root/日本語プロジェクト名前',
     gitBranch: null, title: 'x', startedAt: NOW, endedAt: NOW - 5 * MIN, turns: 1,
-    parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: [],
-    fingerprint: 'f', missing: false, score: 1, collapsed: 0,
+    parentNativeId: null, tier: 'resume', origin: 'manifest',
+    missing: false, score: 1, collapsed: 0,
   } satisfies Row
   const line = formatRow(row, NOW)
   // The glyph, client and age columns with their separators cost twenty columns.
@@ -113,8 +113,8 @@ test('an unbounded title is cut to the title column', () => {
   const row = {
     uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/root/nekyia',
     gitBranch: null, title: 'a'.repeat(5_000), startedAt: NOW, endedAt: NOW - 5 * MIN,
-    turns: 1, parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: [],
-    fingerprint: 'f', missing: false, score: 3, collapsed: 0,
+    turns: 1, parentNativeId: null, tier: 'resume', origin: 'manifest',
+    missing: false, score: 3, collapsed: 0,
   } satisfies Row
   expect(formatRow(row, NOW)).toContain('a'.repeat(120))
   expect(formatRow(row, NOW)).not.toContain('a'.repeat(121))

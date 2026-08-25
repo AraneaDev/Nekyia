@@ -40,13 +40,14 @@ function row(i: number): Row {
     uid: `claude:${i}`, client: 'claude', nativeId: String(i), cwd: '/root/proj',
     gitBranch: 'main', title: `session ${i}`, startedAt: 0, endedAt: NOW,
     turns: 1, parentNativeId: null, tier: 'resume', origin: 'manifest',
-    sourcePaths: [], fingerprint: '', missing: false, score: 0, collapsed: 0,
+    missing: false, score: 0, collapsed: 0,
   }
 }
 
 function seed(db: IndexDb, over: Partial<SessionRef>): void {
   const ref: SessionRef = {
     ...row(0),
+    sourcePaths: [],
     fingerprint: 'f',
     ...over,
   }
@@ -275,13 +276,12 @@ test('useSessions clamps selection after filtering and move is stable and empty-
 test('equivalent config identities do not rerun the query', () => {
   const db = IndexDb.open(':memory:')
   seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
-  const raw = db.raw()
-  const originalQuery = raw.query.bind(raw)
+  const originalSearchRefs = db.searchRefs.bind(db)
   let sessionSelects = 0
-  raw.query = ((sql: string) => {
-    if (sql === 'SELECT * FROM session') sessionSelects++
-    return originalQuery(sql)
-  }) as typeof raw.query
+  db.searchRefs = (() => {
+    sessionSelects++
+    return originalSearchRefs()
+  }) as typeof db.searchRefs
 
   let rerender: (() => void) | undefined
   function Harness() {

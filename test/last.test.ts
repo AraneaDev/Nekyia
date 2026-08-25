@@ -9,8 +9,8 @@ function row(over: Partial<Row> = {}): Row {
   return {
     uid: 'claude:new', client: 'claude', nativeId: 'new', cwd: '/work/project',
     gitBranch: 'main', title: 'latest', startedAt: 1, endedAt: 20, turns: 2,
-    parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: [],
-    fingerprint: 'fp', missing: false, score: 20, collapsed: 0,
+    parentNativeId: null, tier: 'resume', origin: 'manifest',
+    missing: false, score: 20, collapsed: 0,
     ...over,
   }
 }
