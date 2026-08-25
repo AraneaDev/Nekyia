@@ -44,7 +44,8 @@ export const DEFAULT_CONFIG: Config = {
 }
 
 const MAX_CONFIG_BYTES = 1024 * 1024
-const MAX_CONFIG_ITEMS = 256
+/** Upper bound on the entries of any config list, enforced on every write. */
+export const MAX_CONFIG_ITEMS = 256
 const MAX_CONFIG_STRING = 4096
 const CONFIG_FIELDS = new Set([
   'exclude', 'halfLifeDays', 'maxFileBytes', 'hiddenClients', 'showSniffed',
@@ -286,26 +287,6 @@ function loadConfigForUpdate(): Config {
   }
 }
 
-async function acquireRecoveryGuard(directory: string): Promise<string> {
-  const guard = join(directory, '.config.lock.recovery')
-  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
-    try {
-      mkdirSync(guard, { mode: 0o700 })
-      return guard
-    } catch (error) {
-      if (errorCode(error) !== 'EEXIST') throw error
-      if (attempt + 1 < LOCK_ATTEMPTS) await Bun.sleep(LOCK_WAIT_MS)
-    }
-  }
-  // Recovery guards are intentionally never broken: a crashed guard causes a
-  // bounded failure instead of risking deletion of a live owner's lock.
-  throw new Error('config recovery is busy')
-}
-
-function releaseRecoveryGuard(guard: string): void {
-  rmdirSync(guard)
-}
-
 function readLockOwner(path: string): { token: string; pid: number; mtimeMs: number } {
   let fd: number | undefined
   try {
@@ -430,6 +411,126 @@ function removeQuarantinedLock(path: string, dev: number, ino: number): void {
   rmdirSync(path)
 }
 
+/**
+ * Reports whether the recovery guard may be broken, tolerating an owner file
+ * that is still being written.
+ *
+ * Unlike the config lock, the guard is created outside any other lock, so a
+ * contender can observe an acquisition in progress: the owner file exists from
+ * the moment it is created and is only written a syscall later. An unreadable
+ * owner therefore says nothing about liveness, and only the directory's own age
+ * can decide. A guard being acquired right now is milliseconds old, never
+ * LOCK_STALE_MS, so this cannot report a live guard as stale. The unsafe-path
+ * checks are rethrown untouched: a symlink or a non-directory is never broken.
+ */
+function inspectRecoveryGuard(path: string): { dev: number; ino: number; stale: boolean } {
+  try {
+    return inspectConfigLock(path)
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') throw error
+    const info = lstatSync(path)
+    if (!info.isDirectory() || info.isSymbolicLink()) throw error
+    return {
+      dev: info.dev,
+      ino: info.ino,
+      stale: Date.now() - info.mtimeMs > LOCK_STALE_MS,
+    }
+  }
+}
+
+/**
+ * Removes a quarantined stale guard, including one whose owner file was
+ * created but never written.
+ *
+ * This is removeQuarantinedLock's counterpart for the guard, and keeps every
+ * one of its defences: the inode is re-verified after the rename, an
+ * unexpected entry aborts, and the owner is opened O_NOFOLLOW and confirmed to
+ * be a bounded regular file before it is unlinked. Only the demand that the
+ * owner parse is dropped, because a guard stranded mid-creation must stay
+ * recoverable.
+ */
+function removeStaleGuard(path: string, dev: number, ino: number): void {
+  const info = lstatSync(path)
+  if (!info.isDirectory() || info.isSymbolicLink() || info.dev !== dev || info.ino !== ino) {
+    throw new Error('stale config recovery guard ownership changed')
+  }
+  const entries = readdirSync(path)
+  if (entries.length === 1 && entries[0] === LOCK_OWNER_FILE) {
+    const ownerPath = join(path, LOCK_OWNER_FILE)
+    const fd = openSync(ownerPath, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const ownerInfo = fstatSync(fd)
+      if (!ownerInfo.isFile() || ownerInfo.size > 1_024) {
+        throw new Error('stale config recovery guard owner is unsafe')
+      }
+    } finally {
+      closeSync(fd)
+    }
+    unlinkSync(ownerPath)
+  } else if (entries.length !== 0) {
+    throw new Error('stale config recovery guard contains unexpected entries')
+  }
+  rmdirSync(path)
+}
+
+/**
+ * Takes the short-lived guard that serializes config lock creation, recovery
+ * and release.
+ *
+ * The guard is a directory, so claiming it is atomic, and it records its owner
+ * exactly as the config lock does. That record is what tells a guard stranded
+ * by a hard kill apart from one a live process is holding: it is broken only
+ * when it is both older than LOCK_STALE_MS and owned by a pid that no longer
+ * exists. A guard that may still be live is never broken, because deleting one
+ * would let a contender go on to delete a live owner's lock.
+ */
+async function acquireRecoveryGuard(directory: string): Promise<ConfigLock> {
+  const path = join(directory, '.config.lock.recovery')
+  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
+    try {
+      return createConfigLock(path)
+    } catch (error) {
+      if (errorCode(error) !== 'EEXIST') throw error
+    }
+    let retryNow = false
+    try {
+      const existing = inspectRecoveryGuard(path)
+      if (existing.stale) {
+        // Quarantine by rename first, exactly as the config lock does: the
+        // removal re-verifies the inode it inspected, so a guard created in
+        // the meantime is never the one deleted.
+        const quarantine = join(directory, `.config.lock.recovery.stale.${randomUUID()}`)
+        renameSync(path, quarantine)
+        removeStaleGuard(quarantine, existing.dev, existing.ino)
+        retryNow = true
+      }
+    } catch (error) {
+      // The guard was released between the failed creation and the inspection.
+      // Creating it is the only way to take it, so go straight to the retry.
+      if (errorCode(error) !== 'ENOENT') throw error
+      retryNow = true
+    }
+    if (!retryNow && attempt + 1 < LOCK_ATTEMPTS) await Bun.sleep(LOCK_WAIT_MS)
+  }
+  // Naming the guard keeps the failure actionable: this is the one path that
+  // needs a human to look at the directory.
+  throw new Error(`config recovery is busy: ${path}`)
+}
+
+function releaseRecoveryGuard(guard: ConfigLock): void {
+  const info = lstatSync(guard.directory)
+  if (!info.isDirectory() || info.isSymbolicLink()
+    || info.dev !== guard.dev || info.ino !== guard.ino) {
+    throw new Error('config recovery guard ownership changed before release')
+  }
+  const owner = readLockOwner(guard.ownerPath)
+  if (owner.token !== guard.token) {
+    throw new Error('config recovery guard token changed before release')
+  }
+  unlinkSync(guard.ownerPath)
+  rmdirSync(guard.directory)
+}
+
 async function acquireConfigLock(directory: string): Promise<ConfigLock> {
   const path = join(directory, '.config.lock')
   for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
@@ -499,8 +600,30 @@ export async function updateConfig(
   }
 }
 
+const compiledExcludes = new WeakMap<string[], { patterns: string[]; globs: Glob[] }>()
+
+/**
+ * Compiles a config's exclusion patterns once instead of once per session.
+ *
+ * Discovery asks about every ref it sees, so building a Glob per pattern per
+ * ref re-parses the same patterns thousands of times in one index run. The
+ * cache is keyed on the config's own array and still compares its contents,
+ * so neither a replaced config nor one mutated in place is served stale globs.
+ */
+function excludeGlobs(patterns: string[]): Glob[] {
+  const cached = compiledExcludes.get(patterns)
+  if (cached
+    && cached.patterns.length === patterns.length
+    && cached.patterns.every((pattern, index) => pattern === patterns[index])) {
+    return cached.globs
+  }
+  const globs = patterns.map((pattern) => new Glob(pattern))
+  compiledExcludes.set(patterns, { patterns: [...patterns], globs })
+  return globs
+}
+
 /** Reports whether a directory is covered by a user exclusion, so it never reaches the index. */
 export function isExcluded(cwd: string | null, config: Config): boolean {
   if (!cwd) return false
-  return config.exclude.some((pattern) => new Glob(pattern).match(cwd))
+  return excludeGlobs(config.exclude).some((glob) => glob.match(cwd))
 }

@@ -1,6 +1,8 @@
 import { lstatSync } from 'node:fs'
-import { indexPath, updateConfig, type Config } from '../config'
+import { join } from 'node:path'
+import { MAX_CONFIG_ITEMS, indexPath, updateConfig, type Config } from '../config'
 import { IndexDb } from '../core/db'
+import { expandRoot } from '../manifests/load'
 import { isSafeClientId, parseUid } from '../types'
 
 /** Narrows what prune removes. With neither field set, prune deletes nothing rather than everything. */
@@ -12,6 +14,8 @@ export interface PruneOptions {
 const MAX_UID = 4_096
 const MAX_GLOB = 4_096
 const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+/** Everything Bun's Glob treats as a pattern rather than a literal path character. */
+const GLOB_META = /[*?[\]{}!\\]/
 
 function validUid(uid: string): boolean {
   if (uid.length === 0 || uid.length > MAX_UID || UNSAFE_TEXT.test(uid)) return false
@@ -86,12 +90,32 @@ export function pruneIn(db: IndexDb, opts: PruneOptions): number {
   return rows.length
 }
 
-/** Returns a copy of the config with one directory exclusion added, rejecting a glob that is malformed or unbounded. */
+/** Returns a copy of the config with one directory exclusion added, rejecting a glob that is malformed, unbounded, or one entry too many. */
 export function addExclude(cfg: Config, glob: string): Config {
   if (!validGlob(glob)) throw new Error('exclusion glob is invalid or too long')
   const exclude = [...cfg.exclude]
   if (!exclude.includes(glob)) exclude.push(glob)
+  // A bare directory expands to two entries, so the item cap is checked on
+  // every single addition rather than left to the write to discover.
+  if (exclude.length > MAX_CONFIG_ITEMS) throw new Error('too many exclusions')
   return { ...cfg, exclude, hiddenClients: [...cfg.hiddenClients] }
+}
+
+/**
+ * Turns one user-supplied exclusion into the patterns actually stored.
+ *
+ * A leading `~/` is expanded, because Glob matches an absolute cwd literally
+ * and would never see a tilde. A pattern without glob syntax is a directory,
+ * and `nekyia exclude <dir>` promises the directory and everything beneath it,
+ * which Glob's whole-path matching only delivers as two separate patterns.
+ */
+export function excludePatterns(glob: string): string[] {
+  const expanded = expandRoot(glob)
+  if (GLOB_META.test(expanded)) return [expanded]
+  // A trailing slash would otherwise produce a doubled separator that matches
+  // neither the directory nor its children.
+  const directory = expanded.replace(/\/+$/, '') || '/'
+  return [directory, join(directory, '**')]
 }
 
 /** Purges one session from the index, reporting plainly when the uid is unknown. */
@@ -144,7 +168,7 @@ export async function runPrune(opts: PruneOptions): Promise<number> {
   }
 }
 
-/** Adds an index-time directory exclusion. Existing matches stay until the index is rebuilt, and the command says so. */
+/** Adds an index-time directory exclusion. Existing matches stay until the index is refreshed, and the command says so. */
 export async function runExclude(glob?: string): Promise<number> {
   if (!glob) {
     console.error('usage: nekyia exclude <glob>')
@@ -154,12 +178,19 @@ export async function runExclude(glob?: string): Promise<number> {
     console.error('error: exclusion glob is invalid or too long')
     return 2
   }
+  const patterns = excludePatterns(glob)
+  // Expansion can push a pattern past the bound the raw argument respected.
+  if (!patterns.every(validGlob)) {
+    console.error('error: exclusion glob is invalid or too long')
+    return 2
+  }
   let duplicate = false
   await updateConfig((current) => {
-    duplicate = current.exclude.includes(glob)
-    return addExclude(current, glob)
+    duplicate = patterns.every((pattern) => current.exclude.includes(pattern))
+    return patterns.reduce((config, pattern) => addExclude(config, pattern), current)
   })
-  console.error(duplicate ? `already excluded ${glob}` : `excluded ${glob}`)
+  const stored = patterns.join(' and ')
+  console.error(duplicate ? `already excluded ${stored}` : `excluded ${stored}`)
   console.error('Exclusions apply at index time. Run "nekyia index --rebuild" to drop what is already indexed.')
   return 0
 }

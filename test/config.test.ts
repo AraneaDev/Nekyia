@@ -113,6 +113,26 @@ test('isExcluded matches a glob prefix', () => {
   expect(isExcluded('/root/public/thing', c)).toBe(false)
 })
 
+test('the pair stored for a bare directory covers the directory and its children', () => {
+  const c = { ...DEFAULT_CONFIG, exclude: ['/home/u/secret', '/home/u/secret/**'] }
+  expect(isExcluded('/home/u/secret', c)).toBe(true)
+  expect(isExcluded('/home/u/secret/project', c)).toBe(true)
+  expect(isExcluded('/home/u/secretive', c)).toBe(false)
+})
+
+test('compiled exclusions are never served stale, even when the array is mutated in place', () => {
+  const exclude = ['/root/secret/**']
+  const c = { ...DEFAULT_CONFIG, exclude }
+  expect(isExcluded('/root/secret/thing', c)).toBe(true)
+  exclude[0] = '/root/other/**'
+  expect(isExcluded('/root/secret/thing', c)).toBe(false)
+  expect(isExcluded('/root/other/thing', c)).toBe(true)
+  exclude.push('/root/secret/**')
+  expect(isExcluded('/root/secret/thing', c)).toBe(true)
+  exclude.length = 0
+  expect(isExcluded('/root/other/thing', c)).toBe(false)
+})
+
 test('isExcluded is false for a null cwd', () => {
   const c = { ...DEFAULT_CONFIG, exclude: ['/root/**'] }
   expect(isExcluded(null, c)).toBe(false)
