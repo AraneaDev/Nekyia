@@ -8,7 +8,7 @@ import {
   updateConfig,
   DEFAULT_CONFIG,
 } from '../src/config'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -16,7 +16,7 @@ let tmp: string
 const saved = { ...process.env }
 
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), 'nekyia-'))
+  tmp = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-')))
   process.env.XDG_CONFIG_HOME = join(tmp, 'config')
   process.env.XDG_DATA_HOME = join(tmp, 'data')
 })
