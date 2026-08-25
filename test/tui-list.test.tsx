@@ -18,6 +18,7 @@ import {
   type DisplayWork,
   type ListRowProps,
   visibleWindow,
+  wrappedDisplayLines,
 } from '../src/tui/List'
 import { useSessions, type SessionsState } from '../src/tui/useSessions'
 import type { SessionRef } from '../src/types'
@@ -187,6 +188,15 @@ test('the display bound keeps whole Unicode graphemes at the column edge', () =>
   const output = boundedDisplayText(family.repeat(100), 10)
   expect(output).toBe(family.repeat(5))
   expect(Bun.stringWidth(output)).toBe(10)
+})
+
+test('history wrapping preserves the sanitized tail across terminal rows', () => {
+  const source = `first ${'word '.repeat(20)}last\u001b[2J`
+  const lines = wrappedDisplayLines(source, 18)
+  expect(lines.length).toBeGreaterThan(1)
+  expect(lines.every((line) => Bun.stringWidth(line) <= 18)).toBe(true)
+  expect(lines.join('')).toBe(source.replace('\u001b', ' '))
+  expect(lines.join('')).toContain('last')
 })
 
 test('bidi formatting controls are stripped from every untrusted display field', () => {

@@ -124,6 +124,33 @@ export function boundedDisplayText(
   return result
 }
 
+/**
+ * Sanitizes and wraps a complete bounded history line without discarding its
+ * tail. Callers must enforce their own total input budget before using this;
+ * unlike list-row truncation, history needs every indexed character.
+ */
+export function wrappedDisplayLines(value: string, maxColumns: number): string[] {
+  const columns = displayColumns(maxColumns)
+  if (columns === 0 || value.length === 0) return []
+  const safe = sanitizeDisplaySample(value)
+  const lines: string[] = []
+  let pieces: string[] = []
+  let width = 0
+
+  for (const part of GRAPHEMES.segment(safe)) {
+    const partWidth = Bun.stringWidth(part.segment)
+    if (pieces.length > 0 && width + partWidth > columns) {
+      lines.push(pieces.join(''))
+      pieces = []
+      width = 0
+    }
+    pieces.push(part.segment)
+    width += partWidth
+  }
+  if (pieces.length > 0) lines.push(pieces.join(''))
+  return lines
+}
+
 function padColumns(value: string, columns: number): string {
   return value + ' '.repeat(Math.max(0, columns - Bun.stringWidth(value)))
 }

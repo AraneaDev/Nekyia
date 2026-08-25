@@ -3,7 +3,7 @@ import { Box, Text } from 'ink'
 import type { IndexDb } from '../core/db'
 import type { Row } from '../core/query'
 import { relTime } from '../render'
-import { boundedDisplayText, boundedPathTail } from './List'
+import { boundedDisplayText, boundedPathTail, wrappedDisplayLines } from './List'
 
 const FIELD_COLUMNS = 120
 /** Width of the hanging label column in the preview. */
@@ -193,11 +193,11 @@ export function buildPreviewLines(
   if (full && dialogue.length > 0) {
     const out = [...head]
     for (const turn of dialogue) {
-      const lines = textLines(turn.text)
+      const lines = textLines(turn.text).flatMap((line) => wrappedDisplayLines(line, width))
       if (lines.length === 0) continue
       out.push({ text: '' })
       lines.forEach((line, index) => out.push({
-        text: safe(line, width),
+        text: line,
         label: index === 0 ? (turn.role === 'user' ? 'asked' : 'replied') : '',
         dim: turn.role === 'assistant',
       }))

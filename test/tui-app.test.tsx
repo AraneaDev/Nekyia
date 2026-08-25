@@ -908,6 +908,32 @@ test('full history preserves dialogue order and includes the title prompt', () =
   db.close()
 })
 
+test('full history wraps long dialogue instead of truncating its tail', () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { title: 'long dialogue' })
+  const answer = `${'abcdefghij '.repeat(20)}visible tail`
+  db.upsertDoc({
+    ref,
+    prompts: ['long dialogue'],
+    prose: [answer],
+    dialogue: [
+      { role: 'user', text: 'long dialogue' },
+      { role: 'assistant', text: answer },
+    ],
+    files: [],
+    truncated: false,
+  })
+  const lines = buildPreviewLines(db, { ...db.getRef(ref.uid)!, score: 0, collapsed: 0 }, {
+    columns: 40, full: true, maxLines: 100,
+  })
+  const reply = lines.filter((line) => line.label === 'replied' || line.label === '')
+    .map((line) => line.text).join('')
+  expect(lines.filter((line) => line.label === 'replied' || line.label === '').length)
+    .toBeGreaterThan(1)
+  expect(reply).toContain('visible tail')
+  db.close()
+})
+
 test('scrolling stops at the end of the history instead of running past it', async () => {
   const db = IndexDb.open(':memory:')
   const ref = seed(db, { uid: 'claude:short', nativeId: 'short', title: 'a short session' })
