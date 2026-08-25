@@ -10,6 +10,7 @@ import { collectPaths } from './paths'
 import { userPromptText } from '../render'
 
 const HEAD_BYTES = 16 * 1024
+const CODEX_HEAD_BYTES = 64 * 1024
 const MAX_ROW_CHARS = 4 * 1024 * 1024
 const INJECTED_INPUT_PREFIXES = [
   '<recommended_plugins>',
@@ -99,6 +100,18 @@ function codexInputText(value: unknown): string {
   return textOfType(value, 'input_text', (text) => !isInjectedInput(text))
 }
 
+/**
+ * Codex keeps worker rollouts beside user-facing sessions. They are useful to
+ * the parent agent, but cannot be meaningfully resumed by a person and swamp a
+ * session picker. Newer Codex versions label them directly; SDK-launched exec
+ * workers use the older string source plus a distinct originator.
+ */
+function isCodexWorkerMetadata(payload: JsonObject): boolean {
+  const source = payload.source
+  return (isObject(source) && Object.hasOwn(source, 'subagent'))
+    || (source === 'exec' && payload.originator === 'codex_sdk_ts')
+}
+
 function parsedTimestamp(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
@@ -114,6 +127,13 @@ function nativeIdFromFilename(path: string): string {
   return name.slice(0, name.length - extname(name).length)
 }
 
+function codexIdFromFilename(path: string): string | null {
+  const match = basename(path).match(
+    /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i,
+  )
+  return match?.[1] ?? null
+}
+
 function warn(client: string, path: string | null, error: unknown): Diagnostic {
   return {
     client,
@@ -123,8 +143,8 @@ function warn(client: string, path: string | null, error: unknown): Diagnostic {
   }
 }
 
-async function readHead(path: string): Promise<string> {
-  return Bun.file(path).slice(0, HEAD_BYTES).text()
+async function readHead(path: string, maxBytes = HEAD_BYTES): Promise<string> {
+  return Bun.file(path).slice(0, maxBytes).text()
 }
 
 function parseHead(text: string): {
@@ -237,6 +257,7 @@ function discoverCodex(
   path: string,
   stat: { size: number; mtime: Date },
   rows: JsonObject[],
+  headTruncated: boolean,
 ): SessionRef | null {
   let nativeId: string | null = null
   let cwd: string | null = null
@@ -246,10 +267,22 @@ function discoverCodex(
 
   for (const row of rows) {
     const payload = isObject(row.payload) ? row.payload : undefined
-    if (!hasMetadata && row.type === 'session_meta' && payload
-      && typeof payload.session_id === 'string' && payload.session_id.length > 0) {
-        nativeId = payload.session_id
-      if (typeof payload.cwd === 'string') cwd = payload.cwd
+    if (!hasMetadata && row.type === 'session_meta' && payload) {
+      if (isCodexWorkerMetadata(payload)) return null
+      const id = typeof payload.session_id === 'string' && payload.session_id.length > 0
+        ? payload.session_id
+        : typeof payload.id === 'string' && payload.id.length > 0
+          ? payload.id
+          : null
+      if (id !== null) {
+        nativeId = id
+        if (typeof payload.cwd === 'string') cwd = payload.cwd
+        startedAt = parsedTimestamp(row.timestamp) ?? startedAt
+        hasMetadata = true
+      }
+    } else if (!hasMetadata && typeof row.id === 'string' && row.id.length > 0) {
+      nativeId = row.id
+      if (typeof row.cwd === 'string') cwd = row.cwd
       startedAt = parsedTimestamp(row.timestamp) ?? startedAt
       hasMetadata = true
     }
@@ -257,8 +290,13 @@ function discoverCodex(
       && payload.role === 'user') {
       const text = codexInputText(payload.content)
       if (text) title = firstLine(text)
+    } else if (title === null && row.type === 'message' && row.role === 'user') {
+      const text = codexInputText(row.content)
+      if (text) title = firstLine(text)
     }
   }
+
+  if (nativeId === null && headTruncated) nativeId = codexIdFromFilename(path)
 
   return nativeId === null
     ? null
@@ -639,8 +677,9 @@ function hydrateCodex(
   prose: string[],
   files: Set<string>,
 ): number {
-  if (row.type !== 'response_item') return 0
-  const payload = isObject(row.payload) ? row.payload : undefined
+  const payload = row.type === 'response_item'
+    ? isObject(row.payload) ? row.payload : undefined
+    : row
   if (!payload) return 0
 
   if (payload.type === 'function_call') {
@@ -707,7 +746,8 @@ export const jsonlTranscript: FormatModule = {
         try {
           const file = Bun.file(path)
           const stat = await file.stat()
-          const parsed = parseHead(await readHead(path))
+          const headBytes = manifest.jsonl.variant === 'codex' ? CODEX_HEAD_BYTES : HEAD_BYTES
+          const parsed = parseHead(await readHead(path, headBytes))
           if (parsed.malformed) diagnostics.push(warn(manifest.id, path, 'malformed JSONL row'))
           const ref = manifest.jsonl.variant === 'claude'
             ? discoverClaude(
@@ -721,7 +761,13 @@ export const jsonlTranscript: FormatModule = {
                 && stat.size > HEAD_BYTES,
             )
             : manifest.jsonl.variant === 'codex'
-              ? discoverCodex(manifest, path, stat, parsed.rows)
+              ? discoverCodex(
+                manifest,
+                path,
+                stat,
+                parsed.rows,
+                parsed.incompleteFinalLine && stat.size > headBytes,
+              )
               : discoverGeneric(manifest, path, stat, parsed.rows)
           if (ref) refs.push(ref)
         } catch (error) {

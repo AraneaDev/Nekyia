@@ -359,6 +359,124 @@ test('discovers Codex metadata and title', async () => {
   })
 })
 
+test('discovers modern Codex metadata larger than the ordinary JSONL head', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'sessions', '2026', '08', '25')
+    mkdirSync(directory, { recursive: true })
+    const id = '11111111-2222-4333-8444-555555555555'
+    writeJsonl(join(directory, `rollout-2026-08-25T10-00-00-${id}.jsonl`), [
+      {
+        timestamp: '2026-08-25T10:00:00.000Z',
+        type: 'session_meta',
+        payload: { id, cwd: '/root/modern', base_instructions: 'x'.repeat(20 * 1024) },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message', role: 'user',
+          content: [{ type: 'input_text', text: 'modern prompt' }],
+        },
+      },
+    ])
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(codex, root)
+    expect(diagnostics).toEqual([])
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({
+      nativeId: id,
+      cwd: '/root/modern',
+      title: 'modern prompt',
+    })
+  })
+})
+
+test('Codex discovery omits subagents and SDK workers but keeps user exec sessions', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'sessions', '2026', '08', '25')
+    mkdirSync(directory, { recursive: true })
+    const put = (id: string, metadata: Record<string, unknown>) => writeJsonl(
+      join(directory, `rollout-2026-08-25T10-00-00-${id}.jsonl`),
+      [
+        { type: 'session_meta', payload: { id, cwd: '/root/project', ...metadata } },
+        {
+          type: 'response_item',
+          payload: {
+            type: 'message', role: 'user',
+            content: [{ type: 'input_text', text: `prompt ${id}` }],
+          },
+        },
+      ],
+    )
+    put('11111111-1111-4111-8111-111111111111', {
+      source: { subagent: { thread_spawn: { parent_thread_id: 'parent', depth: 1 } } },
+      originator: 'codex-tui',
+    })
+    put('22222222-2222-4222-8222-222222222222', {
+      source: 'exec', originator: 'codex_sdk_ts',
+    })
+    put('33333333-3333-4333-8333-333333333333', {
+      source: 'exec', originator: 'codex_exec',
+    })
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(codex, root)
+    expect(diagnostics).toEqual([])
+    expect(refs.map((ref) => ref.nativeId)).toEqual([
+      '33333333-3333-4333-8333-333333333333',
+    ])
+  })
+})
+
+test('discovers oversized Codex metadata from the rollout filename', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'sessions', '2026', '08', '25')
+    mkdirSync(directory, { recursive: true })
+    const id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+    writeJsonl(join(directory, `rollout-2026-08-25T10-00-00-${id}.jsonl`), [{
+      timestamp: '2026-08-25T10:00:00.000Z',
+      type: 'session_meta',
+      payload: { id, cwd: '/root/oversized', base_instructions: 'x'.repeat(70 * 1024) },
+    }])
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(codex, root)
+    expect(diagnostics).toEqual([])
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({ nativeId: id, cwd: null, title: null })
+  })
+})
+
+test('supports legacy top-level Codex metadata and messages', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'sessions', '2025', '09', '01')
+    mkdirSync(directory, { recursive: true })
+    const path = join(
+      directory,
+      'rollout-2025-09-01T10-00-00-fec42b36-90a3-4371-a7df-4cd049ee4ef4.jsonl',
+    )
+    writeJsonl(path, [
+      { id: 'legacy-session-id', timestamp: '2025-09-01T10:00:00.000Z', instructions: 'old' },
+      {
+        id: 'message-id', type: 'message', role: 'user',
+        content: [{ type: 'input_text', text: 'legacy prompt' }],
+      },
+      {
+        id: 'answer-id', type: 'message', role: 'assistant',
+        content: [{ type: 'output_text', text: 'legacy answer' }],
+      },
+    ])
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(codex, root)
+    const doc = await jsonlTranscript.hydrate(codex, root, refs[0]!, DEFAULT_CONFIG)
+    expect(diagnostics).toEqual([])
+    expect(refs[0]).toMatchObject({
+      nativeId: 'legacy-session-id',
+      title: 'legacy prompt',
+      startedAt: Date.parse('2025-09-01T10:00:00.000Z'),
+    })
+    expect(doc.prompts).toEqual(['legacy prompt'])
+    expect(doc.prose).toEqual(['legacy answer'])
+  })
+})
+
 test('hydrates only Codex user input_text and assistant output_text', async () => {
   const { refs } = await jsonlTranscript.discover(codex, join(fixtures, 'codex'))
   const doc = await jsonlTranscript.hydrate(codex, '', refs[0]!, DEFAULT_CONFIG)
