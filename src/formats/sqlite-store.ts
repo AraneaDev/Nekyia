@@ -1,4 +1,4 @@
-import { Database } from 'bun:sqlite'
+import type { Database } from 'bun:sqlite'
 import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Config } from '../config'
@@ -7,6 +7,7 @@ import type { Diagnostic, SessionDoc, SessionRef } from '../types'
 import { makeUid } from '../types'
 import type { FormatModule } from './jsonl-transcript'
 import { collectPaths } from './paths'
+import { readReadonlySqlite } from './sqlite-readonly'
 
 type SqlRow = Record<string, unknown>
 const MAX_PROJECTED_JSON_BYTES = 4 * 1024 * 1024
@@ -273,23 +274,23 @@ export const sqliteStore: FormatModule = {
       return { refs, diagnostics }
     }
 
-    let db: Database
+    let rows: SqlRow[]
     try {
-      db = new Database(dbPath, { readonly: true })
-    } catch (error) {
-      diagnostics.push(diagnostic(
-        manifest.id,
-        'warn',
+      const result = readReadonlySqlite(
         dbPath,
-        `open failed: ${errorMessage(error)}`,
-      ))
-      return { refs, diagnostics }
-    }
-
-    try {
+        (db) => db.query(spec.sessions).all() as SqlRow[],
+      )
+      rows = result.value
+      if (result.immutableFallback) {
+        diagnostics.push(diagnostic(
+          manifest.id,
+          'warn',
+          dbPath,
+          'database locking unavailable; read a non-locking snapshot',
+        ))
+      }
       const stat = statSync(dbPath)
       const fingerprint = `${Math.floor(stat.mtimeMs)}:${stat.size}`
-      const rows = db.query(spec.sessions).all() as SqlRow[]
       for (const row of rows) {
         const nativeId = sensibleString(row.id)
         if (nativeId === null) continue
@@ -327,8 +328,6 @@ export const sqliteStore: FormatModule = {
         dbPath,
         `sessions query failed: ${errorMessage(error)}`,
       ))
-    } finally {
-      db.close()
     }
 
     return { refs, diagnostics }
@@ -336,26 +335,25 @@ export const sqliteStore: FormatModule = {
 
   async hydrate(manifest, root, ref, config: Config) {
     const spec = manifest.sqlite!
-    if (!spec.text) return emptyDoc(ref)
+    const textSql = spec.text
+    if (!textSql) return emptyDoc(ref)
     const dbPath = safeDatabasePath(root, spec.file)
     if (!dbPath) return emptyDoc(ref)
 
-    const prompts: string[] = []
-    const prose: string[] = []
-    const files = new Set<string>()
     const maxBytes = Number.isFinite(config.maxFileBytes)
       ? Math.max(0, Math.floor(config.maxFileBytes))
       : 0
-    let consumedBytes = 0
-    let truncated = false
-    const db = new Database(dbPath, { readonly: true })
-
-    try {
+    const result = readReadonlySqlite(dbPath, (db) => {
+      const prompts: string[] = []
+      const prose: string[] = []
+      const files = new Set<string>()
+      let consumedBytes = 0
+      let truncated = false
       const isStructured = spec.textShape === 'opencode-part'
         || spec.textShape === 'opencode-message-json'
       const query = isStructured
-        ? structuredProjection(spec.text, spec.textShape as 'opencode-part' | 'opencode-message-json')
-        : plainProjection(db, spec.text)
+        ? structuredProjection(textSql, spec.textShape as 'opencode-part' | 'opencode-message-json')
+        : plainProjection(db, textSql)
       // SQLite necessarily materializes each source row internally, but the outer
       // projection prevents private output from crossing into JavaScript. iterate()
       // also prevents the small projected rows from accumulating in an array.
@@ -387,10 +385,9 @@ export const sqliteStore: FormatModule = {
           }
         }
       }
-    } finally {
-      db.close()
-    }
+      return { ref, prompts, prose, files: [...files], truncated }
+    })
 
-    return { ref, prompts, prose, files: [...files], truncated }
+    return result.value
   },
 }

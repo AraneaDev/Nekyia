@@ -84,8 +84,17 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
       return 1
     }
     if (code !== 0) {
-      deps.error('no session index found; first-run indexing did not complete')
-      return code
+      let partialIndex = false
+      try {
+        partialIndex = !deps.needsConsent() && deps.indexExists(path)
+      } catch {
+        // The verification below reports a stable first-run error.
+      }
+      if (!partialIndex) {
+        deps.error('no session index found; first-run indexing did not complete')
+        return code
+      }
+      deps.error('indexing completed with errors; continuing with the available sessions')
     }
     try {
       if (deps.needsConsent() || !deps.indexExists(path)) {

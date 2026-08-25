@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
 import { parseCwd, parseSqlTime, sqliteStore } from '../src/formats/sqlite-store'
+import { readReadonlySqlite } from '../src/formats/sqlite-readonly'
 import { renderArgs, validateManifest } from '../src/manifests/load'
 import copilotManifest from '../src/manifests/builtin/copilot.json'
 
@@ -108,6 +109,32 @@ test('agy discover falls back to preview when title is empty', async () => {
   expect(refs[0]!.title).toBe('Autonomous Systems Improvement Framework')
   expect(refs[0]!.cwd).toBe('/root/proj')
   expect(refs[0]!.turns).toBe(50)
+})
+
+test('readonly SQLite retries an open-locking failure as an immutable snapshot', () => {
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-readonly-fallback-'))
+  tempDirs.push(root)
+  const path = join(root, 'sessions.db')
+  const db = new Database(path, { create: true })
+  db.exec('CREATE TABLE session(id TEXT)')
+  db.run("INSERT INTO session VALUES ('one')")
+  db.close()
+
+  const opened: string[] = []
+  const result = readReadonlySqlite(path, (source) => (
+    source.query('SELECT id FROM session').all()
+  ), {
+    open: (candidate, options) => {
+      opened.push(candidate)
+      if (opened.length === 1) throw new Error('unable to open database file')
+      return new Database(candidate, options)
+    },
+  })
+
+  expect(result.value).toEqual([{ id: 'one' }])
+  expect(result.immutableFallback).toBe(true)
+  expect(opened[0]).toBe(path)
+  expect(opened[1]).toContain('mode=ro&immutable=1')
 })
 
 test('a missing database yields a diagnostic, not a throw', async () => {
