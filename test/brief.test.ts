@@ -100,6 +100,97 @@ test('files have stable order and a deterministic forty-item limit', () => {
   db.close()
 })
 
+test('a file list cut by the forty-item cap says so without inventing a total', () => {
+  const db = IndexDb.open(':memory:')
+  const files = Array.from({ length: 60 }, (_, index) => `src/${String(index).padStart(2, '0')}.ts`)
+  seed(db, ['keep'], [], files)
+  const brief = buildBrief(db, 'claude:a')!
+  expect((brief.match(/^- src\//gm) ?? []).length).toBe(40)
+  expect(brief).toContain('- (more files omitted)')
+  // Past the cap the real total is unknown, so no count may be claimed.
+  expect(brief).not.toMatch(/- \(\d+ more files? omitted\)/)
+  db.close()
+})
+
+test('a budget that trims the file list counts what it left out', () => {
+  const db = IndexDb.open(':memory:')
+  const files = Array.from({ length: 12 }, (_, index) => `src/${String(index).padStart(2, '0')}.ts`)
+  seed(db, ['keep'], [], files)
+  const budget = buildBrief(db, 'claude:a')!.length - 40
+  const brief = buildBrief(db, 'claude:a', { maxChars: budget })!
+  const listed = (brief.match(/^- src\//gm) ?? []).length
+  expect(listed).toBeGreaterThan(0)
+  expect(listed).toBeLessThan(files.length)
+  expect(brief).toContain(`- (${files.length - listed} more files omitted)`)
+  expect(brief.length).toBeLessThanOrEqual(budget)
+  db.close()
+})
+
+test('a session tail dropped by the budget is announced rather than vanishing', () => {
+  const db = IndexDb.open(':memory:')
+  const files = Array.from({ length: 60 }, (_, index) => `src/${String(index).padStart(2, '0')}.ts`)
+  seed(db, ['keep this prompt'], ['I left the reconnect guard half written'], files)
+  const brief = buildBrief(db, 'claude:a', { maxChars: 500 })!
+  expect(brief).not.toContain('## Where it ended')
+  expect(brief).not.toContain('half written')
+  expect(brief).toContain('The end of the session was omitted to fit the character budget.')
+  expect(brief).toContain('- (more files omitted)')
+  expect(brief.length).toBeLessThanOrEqual(500)
+  db.close()
+})
+
+test('markers are budgeted like entries, so nothing is exceeded or quietly under-reported', () => {
+  const db = IndexDb.open(':memory:')
+  const files = Array.from({ length: 60 }, (_, index) => `src/${String(index).padStart(2, '0')}.ts`)
+  seed(db, ['keep this prompt'], ['the closing state'], files)
+  const notice = 'The end of the session was omitted to fit the character budget.'
+  const broken: string[] = []
+  for (let budget = 0; budget <= 1000; budget++) {
+    const brief = buildBrief(db, 'claude:a', { maxChars: budget })!
+    if (!brief.includes('keep this prompt')) broken.push(`${budget}: lost a prompt`)
+    // Retaining every prompt is the one licence to run past the budget.
+    if (brief.includes('could not be met without dropping user prompts')) continue
+    if (brief.length > budget) broken.push(`${budget}: ran to ${brief.length}`)
+    if (brief.includes('## Files touched') && !brief.includes('(more files omitted)')) {
+      broken.push(`${budget}: shortened the file list in silence`)
+    }
+    // Silence about the tail is allowed only when the notice itself cannot fit.
+    if (!brief.includes('## Where it ended') && !brief.includes(notice)
+      && brief.length + 2 + notice.length <= budget) {
+      broken.push(`${budget}: dropped the tail in silence`)
+    }
+  }
+  expect(broken).toEqual([])
+  db.close()
+})
+
+test('a marker is dropped rather than pushing the brief one character over', () => {
+  const db = IndexDb.open(':memory:')
+  const files = Array.from({ length: 60 }, (_, index) => `src/${String(index).padStart(2, '0')}.ts`)
+  seed(db, ['keep'], ['closing state'], files)
+
+  let fits = 0
+  while (buildBrief(db, 'claude:a', { maxChars: fits })!.includes('could not be met')) fits++
+  // The smallest budget the mandatory body fits is its own length exactly.
+  expect(buildBrief(db, 'claude:a', { maxChars: fits })!.length).toBe(fits)
+
+  let admits = fits
+  while (!buildBrief(db, 'claude:a', { maxChars: admits })!.includes('## Files touched')) admits++
+  const short = buildBrief(db, 'claude:a', { maxChars: admits - 1 })!
+  expect(short).not.toContain('## Files touched')
+  expect(short.length).toBeLessThanOrEqual(admits - 1)
+  const exact = buildBrief(db, 'claude:a', { maxChars: admits })!
+  expect(exact).toContain('- (more files omitted)')
+  expect(exact.length).toBeLessThanOrEqual(admits)
+
+  // The over-budget escape hatch still declares what it left out.
+  const zero = buildBrief(db, 'claude:a', { maxChars: 0 })!
+  expect(zero).toContain('could not be met without dropping user prompts')
+  expect(zero).toContain('- (more files omitted)')
+  expect(zero).toContain('The end of the session was omitted')
+  db.close()
+})
+
 test('invalid timestamps and terminal controls are rendered safely', () => {
   const db = IndexDb.open(':memory:')
   seed(db, ['prompt\u001b[2J\rreturn'], [], [], { endedAt: 8_640_000_000_000_001, title: 'title\n## injected' })
