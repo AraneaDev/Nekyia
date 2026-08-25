@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import React, { act, useEffect } from 'react'
+import { homedir } from 'node:os'
 import { renderToString, Text } from 'ink'
 import { render } from 'ink-testing-library'
 import { DEFAULT_CONFIG } from '../src/config'
@@ -234,6 +235,158 @@ test('useSessions composes text, scope and client filters and resets selection',
   // Pressing it again widens back to the whole index.
   withAct(() => state?.toggleScope())
   expect(state?.scope).toBeNull()
+  view.unmount()
+  db.close()
+})
+
+function mountSessions(db: IndexDb, cwd: string, cfg = DEFAULT_CONFIG) {
+  let state: SessionsState | undefined
+  function Harness() {
+    const current = useSessions(db, cfg, cwd)
+    useEffect(() => { state = current })
+    return null
+  }
+  const view = render(<Harness />)
+  return { view, read: () => state! }
+}
+
+test('the client cycle holds only clients the index has, and always offers all of them', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'opencode:one', client: 'opencode', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+
+  const { view, read } = mountSessions(db, '/root/proj')
+  // No entry for the built-in clients this machine has never used: every step
+  // lands on a filter that has something behind it.
+  expect(read().clientCycle).toEqual([undefined, 'claude', 'opencode'])
+
+  const seen: (string | undefined)[] = []
+  for (let press = 0; press < 4; press++) {
+    withAct(() => read().cycleClient())
+    seen.push(read().client)
+  }
+  // Undefined leads, so the way back to an unfiltered list is always one more
+  // press rather than a filter you cannot get out of.
+  expect(seen).toEqual(['claude', 'opencode', undefined, 'claude'])
+  expect(read().rows.map((item) => item.uid)).toEqual(['claude:one'])
+
+  view.unmount()
+  db.close()
+})
+
+test('a hidden client is left out of the cycle it could only ever show nothing for', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'codex:one', client: 'codex', nativeId: 'one', cwd: '/root/proj' })
+
+  const cfg = { ...DEFAULT_CONFIG, hiddenClients: ['codex'] }
+  const { view, read } = mountSessions(db, '/root/proj', cfg)
+  expect(read().clientCycle).toEqual([undefined, 'claude'])
+  view.unmount()
+  db.close()
+})
+
+test('an index with nothing in it still cycles instead of getting stuck', () => {
+  const db = IndexDb.open(':memory:')
+  const { view, read } = mountSessions(db, '/root/proj')
+  expect(read().clientCycle).toEqual([undefined])
+  withAct(() => read().cycleClient())
+  expect(read().client).toBeUndefined()
+  expect(read().rows).toEqual([])
+  view.unmount()
+  db.close()
+})
+
+test('a client filter the cycle no longer holds steps back to all clients', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+  const { view, read } = mountSessions(db, '/root/proj')
+  // The state a filter is left in when the sessions behind it are removed.
+  withAct(() => read().setClient('codex'))
+  expect(read().rows).toEqual([])
+  withAct(() => read().cycleClient())
+  expect(read().client).toBeUndefined()
+  expect(read().rows.map((item) => item.uid)).toEqual(['claude:one'])
+  view.unmount()
+  db.close()
+})
+
+test('the picker opens scoped to a project it has sessions for', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:two', nativeId: 'two', cwd: '/elsewhere' })
+  const { view, read } = mountSessions(db, '/root/proj')
+  expect(read().scope).toBe('/root/proj')
+  expect(read().rows.map((item) => item.uid)).toEqual(['claude:one'])
+  view.unmount()
+  db.close()
+})
+
+test('a subdirectory of a project it has sessions for opens scoped as well', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj/src/deep' })
+  const { view, read } = mountSessions(db, '/root/proj')
+  expect(read().scope).toBe('/root/proj')
+  expect(read().rows.map((item) => item.uid)).toEqual(['claude:one'])
+  view.unmount()
+  db.close()
+})
+
+test('the home directory opens on the whole index, sessions of its own or not', () => {
+  const db = IndexDb.open(':memory:')
+  const home = homedir()
+  seed(db, { uid: 'claude:home', nativeId: 'home', cwd: home })
+  seed(db, { uid: 'claude:proj', nativeId: 'proj', cwd: '/root/proj' })
+  // Scoping here would hide every project under it, and the home directory is
+  // where the fewest sessions are actually worked on.
+  const { view, read } = mountSessions(db, home)
+  expect(read().scope).toBeNull()
+  expect(read().rows.map((item) => item.uid).sort()).toEqual(['claude:home', 'claude:proj'])
+  view.unmount()
+  db.close()
+})
+
+test('a filesystem root opens on the whole index rather than on everything below it', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+  // Every session is under "/", so only the root rule can widen this one.
+  const { view, read } = mountSessions(db, '/')
+  expect(read().scope).toBeNull()
+  view.unmount()
+
+  // A Windows-shaped root reaches a POSIX build through a config or a test, and
+  // is recognised rather than treated as an ordinary directory.
+  const drive = mountSessions(db, 'C:\\')
+  expect(drive.read().scope).toBeNull()
+  drive.view.unmount()
+  db.close()
+})
+
+test('a directory with nothing indexed under it opens on the whole index', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+  // A fresh clone, or a project that has never been indexed: an empty picker is
+  // never the useful answer.
+  const { view, read } = mountSessions(db, '/root/unindexed')
+  expect(read().scope).toBeNull()
+  expect(read().rows.map((item) => item.uid)).toEqual(['claude:one'])
+
+  // Tab still narrows from there, to the project of the row under the cursor.
+  withAct(() => read().toggleScope())
+  expect(read().scope).toBe('/root/proj')
+  view.unmount()
+  db.close()
+})
+
+test('a directory whose only sessions are hidden opens on the whole index', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'codex:one', client: 'codex', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/elsewhere' })
+  // The starting scope is decided by the query the list runs, so a directory
+  // whose rows are all filtered out counts as having nothing indexed under it.
+  const cfg = { ...DEFAULT_CONFIG, hiddenClients: ['codex'] }
+  const { view, read } = mountSessions(db, '/root/proj', cfg)
+  expect(read().scope).toBeNull()
   view.unmount()
   db.close()
 })

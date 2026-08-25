@@ -793,10 +793,92 @@ test('the footer names its keys rather than drawing them', async () => {
   view.unmount()
 })
 
+test('ctrl+f steps only through the clients the index actually holds', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:one', nativeId: 'one', title: 'claude work' })
+  seed(db, { uid: 'codex:one', client: 'codex', nativeId: 'one', title: 'codex work' })
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  const header = () => view.lastFrame()!.split('\n', 1)[0]!
+  expect(header()).toContain('2 sessions · proj')
+
+  view.stdin.write('\u0006')
+  await tick()
+  expect(header()).toContain('1 session · proj · claude')
+  view.stdin.write('\u0006')
+  await tick()
+  expect(header()).toContain('1 session · proj · codex')
+
+  // Three presses is the whole cycle. It used to take seven, five of which
+  // filtered to a client this machine has never run.
+  view.stdin.write('\u0006')
+  await tick()
+  expect(header()).toContain('2 sessions · proj')
+  expect(header()).not.toContain('codex')
+  view.unmount()
+  db.close()
+})
+
+test('an index with no clients in it offers no client key to press', async () => {
+  const db = IndexDb.open(':memory:')
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  const frame = view.lastFrame()!
+  expect(frame).toContain('No sessions indexed yet')
+  // Nothing to cycle to, so the hint that promises the cycle is not offered.
+  expect(frame).not.toContain('ctrl+f')
+  expect(frame).toContain('esc quit')
+  // And pressing it anyway is a no-op rather than a crash.
+  view.stdin.write('\u0006')
+  await tick()
+  expect(view.lastFrame()!).toContain('No sessions indexed yet')
+  view.unmount()
+  db.close()
+})
+
+test('a launch directory with nothing indexed under it opens on the whole index', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', title: 'gateway work', cwd: '/work/api-gateway' })
+  seed(db, { uid: 'claude:b', nativeId: 'b', title: 'console work', cwd: '/work/web-console' })
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+      cwd="/work/never-indexed" now={NOW} rows={24} />,
+  )
+  // Truthful on the first frame: the header names what is being searched before
+  // anything has had a chance to lay out.
+  expect(view.lastFrame()!).toContain('everywhere')
+  await tick()
+  const frame = view.lastFrame()!
+  expect(frame).toContain('everywhere')
+  expect(frame).not.toContain('never-indexed')
+  expect(frame).toContain('gateway work')
+  expect(frame).toContain('console work')
+
+  // Tab still narrows from there, to the project of the row under the cursor.
+  view.stdin.write('\u001b[B')
+  await tick()
+  view.stdin.write('\t')
+  await tick()
+  const scoped = view.lastFrame()!
+  expect(scoped).toContain('web-console')
+  expect(scoped).toContain('console work')
+  expect(scoped).not.toContain('gateway work')
+  view.unmount()
+  db.close()
+})
+
 test('tab narrows to the project under the cursor and widens back', async () => {
   const db = IndexDb.open(':memory:')
   seed(db, { uid: 'claude:a', nativeId: 'a', title: 'gateway work', cwd: '/work/api-gateway' })
   seed(db, { uid: 'claude:b', nativeId: 'b', title: 'console work', cwd: '/work/web-console' })
+  // The launch directory has a session of its own, which is what makes the
+  // picker open scoped to it. Without one it would open on the whole index,
+  // and this test would never see the widening half of tab.
+  seed(db, { uid: 'claude:here', nativeId: 'here', title: 'local work', cwd: '/somewhere-else' })
   const view = render(
     <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
       cwd="/somewhere-else" now={NOW} rows={24} />,
@@ -804,6 +886,7 @@ test('tab narrows to the project under the cursor and widens back', async () => 
   await tick()
   // Launched outside either project, so the scope names where it actually is.
   expect(view.lastFrame()!).toContain('somewhere-else')
+  expect(view.lastFrame()!).not.toContain('gateway work')
 
   view.stdin.write('\t')
   await tick()

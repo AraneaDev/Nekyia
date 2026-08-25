@@ -602,6 +602,19 @@ export class IndexDb {
     return new Set(rows.map((row) => row.uid))
   }
 
+  /**
+   * Every client the index actually holds sessions for, in a stable order.
+   *
+   * The picker cycles through these rather than through the clients this build
+   * knows how to read, so stepping the filter never lands on one that can only
+   * ever come back empty. Sorted so the cycle is the same on every run.
+   */
+  indexedClients(): string[] {
+    const rows = this.db.query('SELECT DISTINCT client FROM session ORDER BY client')
+      .all() as Array<{ client: string }>
+    return rows.map((row) => row.client)
+  }
+
   allUids(): string[] {
     const rows = this.db.query('SELECT uid FROM session ORDER BY uid').all() as Array<{ uid: string }>
     return rows.map((row) => row.uid)
