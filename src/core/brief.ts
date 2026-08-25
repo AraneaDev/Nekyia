@@ -14,6 +14,10 @@ interface StoredText {
 const DEFAULT_MAX_CHARS = 40_000
 const FILE_LIMIT = 40
 const PROSE_OMITTED_LINE = 'The end of the session was omitted to fit the character budget.'
+/** Said when a size cap stopped indexing short of the whole session. */
+const SIZE_CAPPED_LINE = 'Part of this session was too large to index, so some replies are missing from this handover.'
+/** Said when the source itself could not be read or parsed, which no setting undoes. */
+const DEGRADED_LINE = 'Part of this session could not be read from its source, so some of it is missing from this handover.'
 
 /**
  * The marker that stands in for files the brief does not list, or null when the
@@ -52,12 +56,18 @@ function budgetOf(value: number | undefined): number {
 /**
  * Build a deterministic, model-free handover from the privacy-filtered index.
  *
- * The v1 index stores each text facet newline-delimited, so line boundaries are
+ * The index stores each text facet newline-delimited, so line boundaries are
  * not treated as trustworthy prompt/message boundaries here. Prompt text is
  * carried verbatim (apart from terminal controls); prose is trimmed by its
  * oldest stored lines first. Whatever the budget or the file cap leaves out is
  * announced by a marker line, because the receiving model acts on this text and
  * must never read a shortened list as a complete one.
+ *
+ * The same applies to what indexing itself never captured: a session a size cap
+ * cut short, or one whose source could not be read, says so in the header. Both
+ * lines sit in the mandatory body, so they are measured with it and are never
+ * the entries the budget drops. A handover that hides its own gaps is worse
+ * than a short one.
  */
 export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): string | null {
   const ref = db.getRef(uid)
@@ -102,6 +112,8 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
     if (ref.missing) {
       out.push('The original session source is currently unavailable; this handover uses its last indexed copy.')
     }
+    if (ref.truncated) out.push(SIZE_CAPPED_LINE)
+    if (ref.degraded) out.push(DEGRADED_LINE)
     if (overBudget) {
       out.push('The requested character budget could not be met without dropping user prompts, so all prompts were retained.')
     }

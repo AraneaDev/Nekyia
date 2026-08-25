@@ -127,11 +127,11 @@ test('open rejects a newer schema version without overwriting it', () => {
   try {
     const raw=new Database(path, { create: true })
     raw.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)')
-    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '2')
+    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '3')
     raw.close()
-    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 2')
+    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 3')
     const check=new Database(path)
-    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '2' })
+    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '3' })
     check.close()
   } finally {
     opened?.close(); rmSync(dir, { recursive: true, force: true })
@@ -150,4 +150,220 @@ test('uidsTouchingFile treats percent and underscore literally', () => {
   expect(db.uidsTouchingFile('100%real')).toEqual(['claude:percent'])
   expect(db.uidsTouchingFile('file_name')).toEqual(['claude:underscore'])
   db.close()
+})
+
+/**
+ * The schema exactly as version 1 shipped it, written out here rather than
+ * imported: a migration test that builds its fixture from the code under test
+ * would still pass if the ladder quietly changed what version 1 means.
+ */
+const V1_SCHEMA = `
+  CREATE TABLE meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
+  CREATE TABLE session (
+    uid TEXT PRIMARY KEY,
+    client TEXT NOT NULL,
+    native_id TEXT NOT NULL,
+    cwd TEXT,
+    git_branch TEXT,
+    title TEXT,
+    started_at INTEGER NOT NULL,
+    ended_at INTEGER NOT NULL,
+    turns INTEGER,
+    parent_native_id TEXT,
+    tier TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    source_paths TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    missing INTEGER NOT NULL DEFAULT 0,
+    truncated INTEGER NOT NULL DEFAULT 0,
+    hydrated INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX session_cwd_idx ON session(cwd);
+  CREATE INDEX session_ended_at_idx ON session(ended_at DESC);
+  CREATE TABLE session_text (
+    rowid INTEGER PRIMARY KEY,
+    uid TEXT UNIQUE NOT NULL,
+    title TEXT,
+    prompts TEXT,
+    prose TEXT
+  );
+  CREATE VIRTUAL TABLE session_fts USING fts5(
+    title,
+    prompts,
+    prose,
+    content='session_text',
+    content_rowid='rowid',
+    tokenize='porter unicode61'
+  );
+  CREATE TABLE session_file (
+    uid TEXT NOT NULL,
+    path TEXT NOT NULL
+  );
+  CREATE INDEX session_file_uid_idx ON session_file(uid);
+  CREATE INDEX session_file_path_idx ON session_file(path);
+`
+
+const V1_COLUMNS = [
+  'uid', 'client', 'native_id', 'cwd', 'git_branch', 'title', 'started_at', 'ended_at',
+  'turns', 'parent_native_id', 'tier', 'origin', 'source_paths', 'fingerprint', 'missing',
+  'truncated', 'hydrated',
+]
+
+function temporaryPath(): { dir: string; path: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'nekyia-migrate-'))
+  return { dir, path: join(dir, 'index.db') }
+}
+
+/** Writes a populated version 1 index by hand, the way a released Nekyia left one on disk. */
+function writeV1Index(path: string): void {
+  const raw = new Database(path, { create: true })
+  try {
+    raw.exec(V1_SCHEMA)
+    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '1')
+    raw.query(`
+      INSERT INTO session (
+        uid, client, native_id, cwd, git_branch, title, started_at, ended_at,
+        turns, parent_native_id, tier, origin, source_paths, fingerprint,
+        missing, truncated, hydrated
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'claude:old', 'claude', 'old', '/root/proj', 'main', 'An indexed v1 session',
+      1000, 2000, 7, null, 'resume', 'manifest', JSON.stringify(['/a.jsonl']), 'fp-v1',
+      1, 1, 1,
+    )
+    raw.query(
+      'INSERT INTO session_text (uid, title, prompts, prose) VALUES (?, ?, ?, ?)',
+    ).run('claude:old', 'An indexed v1 session', 'legacyprompt text', 'legacy prose')
+    raw.query(
+      'INSERT INTO session_fts(rowid, title, prompts, prose) VALUES (?, ?, ?, ?)',
+    ).run(1, 'An indexed v1 session', 'legacyprompt text', 'legacy prose')
+    raw.query('INSERT INTO session_file (uid, path) VALUES (?, ?)').run('claude:old', 'src/legacy.ts')
+  } finally {
+    raw.close()
+  }
+}
+
+function storedVersion(path: string): string | null {
+  const raw = new Database(path)
+  try {
+    const row = raw.query("SELECT value FROM meta WHERE key = 'schema_version'")
+      .get() as { value: string } | null
+    return row?.value ?? null
+  } finally {
+    raw.close()
+  }
+}
+
+function sessionColumns(path: string): string[] {
+  const raw = new Database(path)
+  try {
+    return (raw.query('PRAGMA table_info(session)').all() as Array<{ name: string }>)
+      .map((row) => row.name)
+  } finally {
+    raw.close()
+  }
+}
+
+test('a real version 1 index migrates to version 2 with every row intact', () => {
+  const { dir, path } = temporaryPath()
+  try {
+    writeV1Index(path)
+    expect(sessionColumns(path)).toEqual(V1_COLUMNS)
+
+    const db = IndexDb.open(path, false)
+    try {
+      expect(storedVersion(path)).toBe('2')
+      expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded'])
+
+      const stored = db.getRef('claude:old')!
+      expect(stored.title).toBe('An indexed v1 session')
+      expect(stored.cwd).toBe('/root/proj')
+      expect(stored.turns).toBe(7)
+      expect(stored.sourcePaths).toEqual(['/a.jsonl'])
+      expect(stored.fingerprint).toBe('fp-v1')
+      expect(stored.missing).toBe(true)
+      // The one flag version 1 had is carried over; the new one defaults to
+      // false, because a v1 index never recorded that cause separately.
+      expect(stored.truncated).toBe(true)
+      expect(stored.degraded).toBe(false)
+
+      expect(db.allUids()).toEqual(['claude:old'])
+      expect(db.ftsSearch('legacyprompt').map((hit) => hit.uid)).toEqual(['claude:old'])
+      expect(db.uidsTouchingFile('src/legacy')).toEqual(['claude:old'])
+      expect(db.schemaVersion()).toBe(2)
+    } finally {
+      db.close()
+    }
+
+    // The migrated file passes the strict validation the mutating commands do.
+    const writable = IndexDb.openExistingWritable(path)
+    writable.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a migrated index and a freshly created one have the same session columns', () => {
+  const migrated = temporaryPath()
+  const fresh = temporaryPath()
+  try {
+    writeV1Index(migrated.path)
+    IndexDb.open(migrated.path, false).close()
+    IndexDb.open(fresh.path).close()
+    expect(sessionColumns(migrated.path)).toEqual(sessionColumns(fresh.path))
+    expect(storedVersion(fresh.path)).toBe('2')
+  } finally {
+    rmSync(migrated.dir, { recursive: true, force: true })
+    rmSync(fresh.dir, { recursive: true, force: true })
+  }
+})
+
+test('a version 1 index stays usable by the commands that cannot migrate it', () => {
+  const { dir, path } = temporaryPath()
+  try {
+    writeV1Index(path)
+
+    // doctor and last open readonly: they must read the older index as it is.
+    const readonly = IndexDb.openReadonly(path)
+    try {
+      expect(readonly.schemaVersion()).toBe(1)
+      expect(readonly.searchRefs().map((row) => row.uid)).toEqual(['claude:old'])
+      expect(readonly.getRef('claude:old')?.degraded).toBe(false)
+    } finally {
+      readonly.close()
+    }
+    expect(storedVersion(path)).toBe('1')
+
+    // forget and prune open writable without migrating, and still delete.
+    const writable = IndexDb.openExistingWritable(path)
+    try {
+      writable.deleteSession('claude:old')
+      expect(writable.allUids()).toEqual([])
+    } finally {
+      writable.close()
+    }
+    expect(storedVersion(path)).toBe('1')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a migration step that fails leaves the version it started from', () => {
+  const { dir, path } = temporaryPath()
+  try {
+    // Stamped as version 1 but without the table the next step alters: the step
+    // must roll back whole rather than stamping a version the file lacks.
+    const raw = new Database(path, { create: true })
+    raw.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)')
+    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '1')
+    raw.close()
+
+    expect(() => IndexDb.open(path, false)).toThrow()
+    expect(storedVersion(path)).toBe('1')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

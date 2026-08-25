@@ -37,7 +37,9 @@ const MAX_TEXT = 4_096
 const MAX_DIAGNOSTICS = 512
 const MAX_ROOTS = 64
 const MAX_CONFIG_ITEMS = 256
-const MAX_SIZE_CAPPED_IDS = 200
+const MAX_LISTED_IDS = 200
+/** The schema version from which the index records a degraded read separately from a size cap. */
+const DEGRADED_SCHEMA_VERSION = 2
 const UNSAFE_DISPLAY = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
 
 function safeText(value: unknown, max = MAX_TEXT): string {
@@ -130,21 +132,37 @@ function installedRoots(manifest: Manifest): string[] {
   })
 }
 
+/**
+ * What the index says about itself, with the two ways content goes missing kept apart.
+ *
+ * `sizeCapped` is the one a setting can change; `degraded` is a source that
+ * could not be read or parsed, which no setting recovers. Reporting them as one
+ * number sent users after `maxFileBytes` for a corrupt transcript.
+ */
 interface IndexSummary {
   sessions: number
-  proseTruncated: number
+  sizeCapped: number
+  degraded: number
   missing: number
   sizeCappedSessions: string[]
   sizeCappedOverflow: boolean
+  degradedSessions: string[]
+  degradedOverflow: boolean
+  /** False for an index written before the two causes were recorded apart, which cannot answer for `degraded`. */
+  degradedTracked: boolean
 }
 
 function emptyIndexSummary(): IndexSummary {
   return {
     sessions: 0,
-    proseTruncated: 0,
+    sizeCapped: 0,
+    degraded: 0,
     missing: 0,
     sizeCappedSessions: [],
     sizeCappedOverflow: false,
+    degradedSessions: [],
+    degradedOverflow: false,
+    degradedTracked: true,
   }
 }
 
@@ -165,18 +183,34 @@ function readIndexSummary(path: string, diagnostics: Diagnostic[]): IndexSummary
   let db: IndexDb | null = null
   try {
     db = IndexDb.openReadonly(path)
-    const row = db.raw().query(
-      'SELECT COUNT(*) n, COALESCE(SUM(truncated), 0) t, COALESCE(SUM(missing), 0) m FROM session',
-    ).get() as { n: number; t: number; m: number }
+    // An index this build has not migrated yet has no degraded column at all,
+    // so it is asked only for what it can answer instead of being refused.
+    const degradedTracked = db.schemaVersion() >= DEGRADED_SCHEMA_VERSION
+    const row = db.raw().query(`
+      SELECT COUNT(*) n,
+        COALESCE(SUM(truncated), 0) t,
+        ${degradedTracked ? 'COALESCE(SUM(degraded), 0)' : '0'} d,
+        COALESCE(SUM(missing), 0) m
+      FROM session
+    `).get() as { n: number; t: number; d: number; m: number }
     const capped = db.raw().query(
       'SELECT uid FROM session WHERE truncated = 1 ORDER BY uid LIMIT ?',
-    ).all(MAX_SIZE_CAPPED_IDS + 1) as Array<{ uid: string }>
+    ).all(MAX_LISTED_IDS + 1) as Array<{ uid: string }>
+    const unreadable = degradedTracked
+      ? db.raw().query(
+        'SELECT uid FROM session WHERE degraded = 1 ORDER BY uid LIMIT ?',
+      ).all(MAX_LISTED_IDS + 1) as Array<{ uid: string }>
+      : []
     return {
       sessions: Number(row.n) || 0,
-      proseTruncated: Number(row.t) || 0,
+      sizeCapped: Number(row.t) || 0,
+      degraded: Number(row.d) || 0,
       missing: Number(row.m) || 0,
-      sizeCappedSessions: capped.slice(0, MAX_SIZE_CAPPED_IDS).map((item) => safeText(item.uid, 512)),
-      sizeCappedOverflow: capped.length > MAX_SIZE_CAPPED_IDS,
+      sizeCappedSessions: capped.slice(0, MAX_LISTED_IDS).map((item) => safeText(item.uid, 512)),
+      sizeCappedOverflow: capped.length > MAX_LISTED_IDS,
+      degradedSessions: unreadable.slice(0, MAX_LISTED_IDS).map((item) => safeText(item.uid, 512)),
+      degradedOverflow: unreadable.length > MAX_LISTED_IDS,
+      degradedTracked,
     }
   } catch (error) {
     diagnostics.push({
@@ -322,6 +356,9 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<number> {
     config: {
       exclude: safeList(cfg.exclude),
       halfLifeDays: cfg.halfLifeDays,
+      // The one setting a size-capped session can be recovered by, so it is
+      // reported beside the count that tells the user to consider raising it.
+      maxFileBytes: cfg.maxFileBytes,
       hiddenClients: safeList(cfg.hiddenClients),
     },
     clients,
@@ -373,6 +410,12 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<number> {
     console.log('  That is a test hook. Real history is NOT being read.')
   }
   console.log('')
+  console.log('config')
+  console.log(`  maxFileBytes   ${safeText(report.config.maxFileBytes)}`)
+  console.log(`  halfLifeDays   ${safeText(report.config.halfLifeDays)}`)
+  console.log(`  exclusions     ${report.config.exclude.length}`)
+  console.log(`  hidden clients ${report.config.hiddenClients.length}`)
+  console.log('')
   console.log('clients')
   for (const client of report.clients) {
     const status = client.installed ? `${String(client.sessions).padStart(5)} sessions` : '    not installed'
@@ -381,9 +424,26 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<number> {
   }
   console.log('')
   console.log('index')
-  console.log(`  ${index.sessions} sessions, ${index.proseTruncated} size-capped, ${index.missing} missing from disk`)
+  console.log(
+    `  ${index.sessions} sessions, ${index.sizeCapped} size-capped, `
+    + `${index.degraded} partly unreadable, ${index.missing} missing from disk`,
+  )
   for (const uid of index.sizeCappedSessions) console.log(`  size-capped: ${uid}`)
   if (index.sizeCappedOverflow) console.log('  additional size-capped sessions omitted')
+  for (const uid of index.degradedSessions) console.log(`  partly unreadable: ${uid}`)
+  if (index.degradedOverflow) console.log('  additional partly unreadable sessions omitted')
+  if (index.sizeCapped > 0) {
+    console.log(`  Size-capped sessions hit the ${safeText(report.config.maxFileBytes)} byte maxFileBytes limit.`)
+    console.log('  Raise it in the config and re-index to keep more of them.')
+  }
+  if (index.degraded > 0) {
+    console.log('  Partly unreadable sessions lost content to a source Nekyia could not read or parse.')
+    console.log('  No setting recovers that; the content is missing from the transcript itself.')
+  }
+  if (!index.degradedTracked) {
+    console.log('  This index predates the two being told apart, so size caps and unreadable')
+    console.log('  sources are both counted as size-capped. Re-index to separate them.')
+  }
   if (report.diagnostics.length) {
     console.log('')
     console.log('problems')

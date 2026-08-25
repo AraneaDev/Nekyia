@@ -9,6 +9,7 @@ function seed(
   prose: string[],
   files: string[] = [],
   over: Partial<SessionRef> = {},
+  lost: { truncated?: boolean; degraded?: boolean } = {},
 ) {
   const ref: SessionRef = {
     uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/root/proj', gitBranch: 'main',
@@ -17,8 +18,18 @@ function seed(
     origin: 'manifest', sourcePaths: ['/x'], fingerprint: 'f', ...over,
   }
   db.upsertRef(ref)
-  db.upsertDoc({ ref, prompts, prose, files, truncated: false })
+  db.upsertDoc({
+    ref,
+    prompts,
+    prose,
+    files,
+    truncated: lost.truncated ?? false,
+    degraded: lost.degraded ?? false,
+  })
 }
+
+const SIZE_CAPPED_LINE = 'Part of this session was too large to index, so some replies are missing from this handover.'
+const DEGRADED_LINE = 'Part of this session could not be read from its source, so some of it is missing from this handover.'
 
 test('the brief carries title, directory, branch, files and every prompt', () => {
   const db = IndexDb.open(':memory:')
@@ -234,4 +245,94 @@ test('large prose trimming uses a bounded number of renders', () => {
     db.close()
   }
   expect(joins).toBeLessThanOrEqual(8)
+})
+
+test('a complete session claims no gaps it does not have', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, ['keep'], ['closing state'])
+  const brief = buildBrief(db, 'claude:a')!
+  expect(brief).not.toContain(SIZE_CAPPED_LINE)
+  expect(brief).not.toContain(DEGRADED_LINE)
+  db.close()
+})
+
+test('a size cap and an unreadable source are disclosed, each in its own words', () => {
+  const capped = IndexDb.open(':memory:')
+  seed(capped, ['keep'], ['closing state'], [], {}, { truncated: true })
+  const cappedBrief = buildBrief(capped, 'claude:a')!
+  expect(cappedBrief).toContain(SIZE_CAPPED_LINE)
+  expect(cappedBrief).not.toContain(DEGRADED_LINE)
+  capped.close()
+
+  const unreadable = IndexDb.open(':memory:')
+  seed(unreadable, ['keep'], ['closing state'], [], {}, { degraded: true })
+  const unreadableBrief = buildBrief(unreadable, 'claude:a')!
+  expect(unreadableBrief).toContain(DEGRADED_LINE)
+  expect(unreadableBrief).not.toContain(SIZE_CAPPED_LINE)
+  unreadable.close()
+
+  const both = IndexDb.open(':memory:')
+  seed(both, ['keep'], ['closing state'], [], {}, { truncated: true, degraded: true })
+  const bothBrief = buildBrief(both, 'claude:a')!
+  expect(bothBrief).toContain(SIZE_CAPPED_LINE)
+  expect(bothBrief).toContain(DEGRADED_LINE)
+  both.close()
+})
+
+test('what indexing lost is stated at every budget, and never at the cost of the bound', () => {
+  const db = IndexDb.open(':memory:')
+  const files = Array.from({ length: 60 }, (_, index) => `src/${String(index).padStart(2, '0')}.ts`)
+  seed(db, ['keep this prompt'], ['the closing state'], files, {}, {
+    truncated: true,
+    degraded: true,
+  })
+  const broken: string[] = []
+  for (let budget = 0; budget <= 1000; budget++) {
+    const brief = buildBrief(db, 'claude:a', { maxChars: budget })!
+    // Both notices sit in the mandatory body, so no budget may drop either.
+    if (!brief.includes(SIZE_CAPPED_LINE)) broken.push(`${budget}: hid the size cap`)
+    if (!brief.includes(DEGRADED_LINE)) broken.push(`${budget}: hid the unreadable source`)
+    if (!brief.includes('keep this prompt')) broken.push(`${budget}: lost a prompt`)
+    // Retaining every prompt is the one licence to run past the budget.
+    if (brief.includes('could not be met without dropping user prompts')) continue
+    if (brief.length > budget) broken.push(`${budget}: ran to ${brief.length}`)
+  }
+  expect(broken).toEqual([])
+  db.close()
+})
+
+test('the disclosure lines are priced into the mandatory body, not paid for by the budget', () => {
+  const plain = IndexDb.open(':memory:')
+  seed(plain, ['keep'], ['closing state'])
+  const disclosing = IndexDb.open(':memory:')
+  seed(disclosing, ['keep'], ['closing state'], [], {}, { truncated: true, degraded: true })
+
+  const smallestFit = (db: IndexDb): number => {
+    let budget = 0
+    while (buildBrief(db, 'claude:a', { maxChars: budget })!.includes('could not be met')) budget++
+    return budget
+  }
+
+  const plainFit = smallestFit(plain)
+  const disclosingFit = smallestFit(disclosing)
+  // Two mandatory lines, each costing its own text plus one joining newline.
+  expect(disclosingFit - plainFit).toBe(2 + SIZE_CAPPED_LINE.length + DEGRADED_LINE.length)
+  // At exactly that budget the brief fits it to the character.
+  expect(buildBrief(disclosing, 'claude:a', { maxChars: disclosingFit })!.length).toBe(disclosingFit)
+
+  // One character short, the prompt-preserving escape hatch takes over, and it
+  // still states both gaps rather than hiding them to save room.
+  const short = buildBrief(disclosing, 'claude:a', { maxChars: disclosingFit - 1 })!
+  expect(short).toContain('could not be met without dropping user prompts')
+  expect(short).toContain(SIZE_CAPPED_LINE)
+  expect(short).toContain(DEGRADED_LINE)
+
+  // A zero budget is the same story.
+  const zero = buildBrief(disclosing, 'claude:a', { maxChars: 0 })!
+  expect(zero).toContain(SIZE_CAPPED_LINE)
+  expect(zero).toContain(DEGRADED_LINE)
+  expect(zero).toContain('keep')
+
+  plain.close()
+  disclosing.close()
 })

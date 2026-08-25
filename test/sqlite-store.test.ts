@@ -734,3 +734,33 @@ test('a session id that could never round-trip through a uid is refused, and say
     expect(entry.message).not.toContain('\u202e')
   }
 })
+
+test('a tool input that survives the size cap but will not parse degrades the document', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-sqlite-bad-input-'))
+  tempDirs.push(root)
+  const db = new Database(join(root, 'sessions.db'), { create: true })
+  db.exec(`
+    CREATE TABLE message(id TEXT, session_id TEXT, data TEXT);
+    CREATE TABLE part(message_id TEXT, session_id TEXT, time_created INTEGER, data TEXT);
+  `)
+  db.run('INSERT INTO message VALUES (?1, ?2, ?3)', ['m1', 'one', JSON.stringify({ role: 'assistant' })])
+  db.run('INSERT INTO part VALUES (?1, ?2, ?3, ?4)', [
+    'm1', 'one', 1, JSON.stringify({ type: 'tool', state: { input: '{not json', output: 'private' } }),
+  ])
+  db.close()
+  const text = 'SELECT m.data AS message_data, p.data AS part_data FROM part p JOIN message m ON m.id = p.message_id WHERE p.session_id = ?1 ORDER BY p.time_created'
+  const manifest = validateManifest({
+    schema: 1, id: 'bad-input', name: 'bad input', roots: [root],
+    format: 'sqlite-store', tier: 'search',
+    sqlite: {
+      file: 'sessions.db', sessions: "SELECT 'one' AS id",
+      text, textShape: 'opencode-part',
+    },
+  })
+  const { refs } = await sqliteStore.discover(manifest, root)
+  const doc = await sqliteStore.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
+  // Small enough to pass the projection's ceiling, so the loss is malformed
+  // content and not a cap: reporting it as size-capped would be a wrong fix.
+  expect(doc.truncated).toBe(false)
+  expect(doc.degraded).toBe(true)
+})

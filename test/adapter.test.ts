@@ -132,7 +132,10 @@ test('a throwing sidecar never escapes discovery or hydration', async () => {
   expect(discovered.refs).toHaveLength(1)
   expect(discovered.diagnostics.some((item) => item.message.includes('sidecar failed'))).toBe(true)
   expect(discovered.authoritative).toBeFalse()
-  expect((await adapter.hydrate(refs[0]!, DEFAULT_CONFIG)).truncated).toBe(true)
+  // A sidecar that throws is a failed read, not a size cap.
+  const doc = await adapter.hydrate(refs[0]!, DEFAULT_CONFIG)
+  expect(doc.truncated).toBe(false)
+  expect(doc.degraded).toBe(true)
 })
 
 test('multiple roots stay isolated and resolve duplicate ids by manifest order', async () => {
@@ -177,7 +180,7 @@ test('root selection uses containment, supports multiple source paths, and dedup
   const rejected = await adapter.hydrate({ ...refs[0]!, sourcePaths: [escape] }, DEFAULT_CONFIG)
   expect(rejected).toEqual({
     ref: { ...refs[0]!, sourcePaths: [escape] },
-    prompts: [], prose: [], files: [], truncated: true,
+    prompts: [], prose: [], files: [], truncated: false, degraded: true,
   })
 })
 
@@ -226,7 +229,9 @@ test('all source paths must belong to the same root before JSONL hydration', asy
   const { refs } = await adapter.discover()
   const ref = { ...refs[0]!, sourcePaths: [outside, inside] }
   const doc = await adapter.hydrate(ref, DEFAULT_CONFIG)
-  expect(doc.truncated).toBe(true)
+  // No root contains every source path, so nothing was read at all.
+  expect(doc.truncated).toBe(false)
+  expect(doc.degraded).toBe(true)
   expect([...doc.prompts, ...doc.prose].join('\n')).not.toContain('SECRET_OUTSIDE_ROOT')
 })
 
@@ -246,7 +251,7 @@ test('public adapter methods contain malicious getters', async () => {
   Object.defineProperty(hostileRef, 'sourcePaths', {
     get() { throw new Error('paths getter exploded') },
   })
-  expect((await adapter.hydrate(hostileRef, DEFAULT_CONFIG)).truncated).toBe(true)
+  expect((await adapter.hydrate(hostileRef, DEFAULT_CONFIG)).degraded).toBe(true)
 
   const hostilePlanRef = { ...refs[0]! }
   Object.defineProperty(hostilePlanRef, 'cwd', {

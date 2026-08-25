@@ -455,11 +455,12 @@ export const sqliteStore: FormatModule = {
       : 0
     let consumedBytes = 0
     let truncated = false
+    let degraded = false
     const db = new Database(dbPath, { readonly: true })
 
     try {
       if (spec.files) collectRecordedFiles(db, spec.files, ref.nativeId, files, () => { truncated = true })
-      if (!spec.text) return { ref, prompts, prose, files: [...files], truncated }
+      if (!spec.text) return { ref, prompts, prose, files: [...files], truncated, degraded }
       const isStructured = spec.textShape === 'opencode-part'
         || spec.textShape === 'opencode-message-json'
       const query = isStructured
@@ -490,7 +491,9 @@ export const sqliteStore: FormatModule = {
         if (row.projected_part_type === 'tool') {
           if (row.projected_input_oversized === 1) truncated = true
           const input = projectedInput(row.projected_input)
-          if (input === null && row.projected_input != null) truncated = true
+          // The projection nulls an oversized input, so a value that survived it
+          // and still would not parse is malformed rather than too large.
+          if (input === null && row.projected_input != null) degraded = true
           if (input !== null) {
             for (const path of collectPaths(input)) {
               // The same ceiling collectRecordedFiles enforces. Tool inputs are
@@ -509,6 +512,6 @@ export const sqliteStore: FormatModule = {
       db.close()
     }
 
-    return { ref, prompts, prose, files: [...files], truncated }
+    return { ref, prompts, prose, files: [...files], truncated, degraded }
   },
 }

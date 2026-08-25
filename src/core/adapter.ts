@@ -102,8 +102,15 @@ export function originFor(source: ManifestSource | undefined): Origin {
   return source?.kind === 'user' ? 'user-manifest' : 'manifest'
 }
 
-function emptyDoc(ref: SessionRef, truncated: boolean): SessionDoc {
-  return { ref, prompts: [], prose: [], files: [], truncated }
+/**
+ * The document for a session whose source could not be reached at all.
+ *
+ * Nothing was read, and no cap caused that, so the document is degraded rather
+ * than truncated: telling the user to raise `maxFileBytes` would send them
+ * after a setting that has nothing to do with it.
+ */
+function unreadDoc(ref: SessionRef): SessionDoc {
+  return { ref, prompts: [], prose: [], files: [], truncated: false, degraded: true }
 }
 
 function enrichRef(ref: SessionRef, entry: SidecarEntry | undefined): void {
@@ -244,9 +251,9 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
       try {
         root = rootForRef(roots, ref)
       } catch {
-        return emptyDoc(ref, true)
+        return unreadDoc(ref)
       }
-      if (root === null) return emptyDoc(ref, true)
+      if (root === null) return unreadDoc(ref)
 
       // A reader failure must reach hydrateAll: it skips the upsert and leaves the
       // previous fingerprint in place, so the session is retried on the next scan
@@ -266,7 +273,9 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
           }
         }
       } catch {
-        doc.truncated = true
+        // The sidecar carries prompts this document would otherwise have
+        // included. Losing it is a read failure, not a cap.
+        doc.degraded = true
       }
       return doc
     },
