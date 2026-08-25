@@ -1,4 +1,3 @@
-import Database from 'bun:sqlite'
 import { Glob } from 'bun'
 import { randomUUID } from 'node:crypto'
 import {
@@ -21,6 +20,7 @@ import { StringDecoder } from 'node:string_decoder'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { dataDir, indexPath } from '../config'
 import type { Adapter } from '../core/adapter'
+import { readReadonlySqlite } from '../formats/sqlite-readonly'
 import { expandRoot, type Manifest } from '../manifests/load'
 
 const CONSENT_FILE = 'consent-v1'
@@ -225,22 +225,18 @@ function sqliteEstimate(root: { path: string; real: string }, manifest: Manifest
   let failed = false
   const file = safeCandidate(root, manifest.sqlite.file)
   if (file) {
-    let db: Database | undefined
     try {
       const sql = manifest.sqlite.sessions.trim().replace(/;+\s*$/, '')
       if (sql.length === 0 || sql.length > 1_000_000 || sql.includes('\0')) throw new Error('unsafe SQL')
-      db = new Database(file, { readonly: true, create: false })
-      const row = db.query(`SELECT COUNT(*) AS count FROM (${sql}) AS nekyia_sessions`).get() as {
-        count?: unknown
-      } | null
+      const row = readReadonlySqlite(file, (db) => db.query(
+        `SELECT COUNT(*) AS count FROM (${sql}) AS nekyia_sessions`,
+      ).get() as { count?: unknown } | null).value
       if (!row || typeof row.count !== 'number' || !Number.isSafeInteger(row.count) || row.count < 0) {
         throw new Error('invalid count')
       }
       count += row.count
     } catch {
       failed = true
-    } finally {
-      try { db?.close() } catch {}
     }
   }
 

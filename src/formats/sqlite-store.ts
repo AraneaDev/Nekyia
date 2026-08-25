@@ -1,4 +1,4 @@
-import { Database } from 'bun:sqlite'
+import type { Database } from 'bun:sqlite'
 import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Config } from '../config'
@@ -6,6 +6,7 @@ import type { Diagnostic, SessionDoc, SessionRef } from '../types'
 import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
 import type { FormatModule } from './jsonl-transcript'
 import { collectPaths } from './paths'
+import { readReadonlySqlite } from './sqlite-readonly'
 
 type SqlRow = Record<string, unknown>
 const MAX_PROJECTED_JSON_BYTES = 4 * 1024 * 1024
@@ -366,24 +367,22 @@ export const sqliteStore: FormatModule = {
     }
     const dbPath = located.path
 
-    let db: Database
     try {
-      db = new Database(dbPath, { readonly: true })
-    } catch (error) {
-      diagnostics.push(diagnostic(
-        manifest.id,
-        'warn',
+      const result = readReadonlySqlite(
         dbPath,
-        `open failed: ${errorMessage(error)}`,
-      ))
-      return { refs, diagnostics }
-    }
-
-    try {
+        (db) => db.query(spec.sessions).all() as SqlRow[],
+      )
+      if (result.immutableFallback) {
+        diagnostics.push(diagnostic(
+          manifest.id,
+          'warn',
+          dbPath,
+          'database locking unavailable; read a non-locking snapshot',
+        ))
+      }
       const stat = statSync(dbPath)
       const fingerprint = `${Math.floor(stat.mtimeMs)}:${stat.size}`
-      const rows = db.query(spec.sessions).all() as SqlRow[]
-      for (const row of rows) {
+      for (const row of result.value) {
         const nativeId = sensibleString(row.id)
         if (nativeId === null) continue
         // The id is transcript content, so it can carry anything. One that
@@ -433,8 +432,6 @@ export const sqliteStore: FormatModule = {
         dbPath,
         `sessions query failed: ${errorMessage(error)}`,
       ))
-    } finally {
-      db.close()
     }
 
     return { refs, diagnostics }
@@ -447,18 +444,16 @@ export const sqliteStore: FormatModule = {
     if (located.kind !== 'ok') return emptyDoc(ref)
     const dbPath = located.path
 
-    const prompts: string[] = []
-    const prose: string[] = []
-    const files = new Set<string>()
     const maxBytes = Number.isFinite(config.maxFileBytes)
       ? Math.max(0, Math.floor(config.maxFileBytes))
       : 0
-    let consumedBytes = 0
-    let truncated = false
-    let degraded = false
-    const db = new Database(dbPath, { readonly: true })
-
-    try {
+    const result = readReadonlySqlite(dbPath, (db) => {
+      const prompts: string[] = []
+      const prose: string[] = []
+      const files = new Set<string>()
+      let consumedBytes = 0
+      let truncated = false
+      let degraded = false
       if (spec.files) collectRecordedFiles(db, spec.files, ref.nativeId, files, () => { truncated = true })
       if (!spec.text) return { ref, prompts, prose, files: [...files], truncated, degraded }
       const isStructured = spec.textShape === 'opencode-part'
@@ -508,10 +503,9 @@ export const sqliteStore: FormatModule = {
           }
         }
       }
-    } finally {
-      db.close()
-    }
+      return { ref, prompts, prose, files: [...files], truncated, degraded }
+    })
 
-    return { ref, prompts, prose, files: [...files], truncated, degraded }
+    return result.value
   },
 }
