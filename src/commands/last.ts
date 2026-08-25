@@ -5,7 +5,7 @@ import { buildBrief } from '../core/brief'
 import { IndexDb } from '../core/db'
 import { query, type QueryOpts, type Row } from '../core/query'
 import { checkPlan, runPlan, type RunResult } from '../core/resume'
-import { boundedDisplayText } from '../tui/List'
+import { boundedDisplayText } from '../tui/text'
 import type { Diagnostic, ExecPlan } from '../types'
 import { needsConsent } from './firstrun'
 

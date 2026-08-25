@@ -3,7 +3,7 @@ import { Box, Text } from 'ink'
 import type { IndexDb } from '../core/db'
 import type { Row } from '../core/query'
 import { relTime } from '../render'
-import { boundedDisplayText, boundedPathTail } from './List'
+import { boundedDisplayText, boundedPathTail } from './text'
 
 const FIELD_COLUMNS = 120
 /** Width of the hanging label column in the preview. */
