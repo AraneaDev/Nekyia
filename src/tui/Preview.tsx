@@ -99,6 +99,10 @@ export function buildPreviewLines(
   } = {},
 ): PreviewLine[] {
   if (!row) return []
+  // Block bodies hang off a label gutter and pay for it. Head lines carry no
+  // label, so nothing draws that gutter for them and charging them for it left
+  // the metadata line cut short with the width sitting empty beside it.
+  const headWidth = Math.max(12, columns)
   const width = Math.max(12, columns - LABEL_COLUMNS)
   const { files, prompts, prose } = previewData(db, row.uid)
   const title = safe(row.title, TITLE_COLUMNS) || '(no title)'
@@ -109,7 +113,7 @@ export function buildPreviewLines(
   const rawTitle = typeof row.title === 'string' ? row.title : ''
   const asked = prompts.filter((line, index) => !(index === 0 && line === rawTitle))
   const client = safe(row.client, 32) || 'unknown client'
-  const cwd = safe(row.cwd, width) || '(unknown directory)'
+  const cwd = safe(row.cwd, headWidth) || '(unknown directory)'
   const branch = safe(row.gitBranch, 64)
   const turns = typeof row.turns === 'number' && Number.isFinite(row.turns) && row.turns > 0
     ? Math.floor(row.turns)
@@ -123,19 +127,19 @@ export function buildPreviewLines(
   ))
 
   const head: PreviewLine[] = [
-    { text: safe(title, width), bold: true },
+    { text: safe(title, headWidth), bold: true },
     {
       text: safe(
         `${cwd}${branch ? ` · ${branch}` : ''} · ${relTime(row.endedAt, now)} ago`
         + `${turns ? ` · ${turns} turns` : ''}`,
-        width,
+        headWidth,
       ),
       dim: true,
     },
   ]
   if (row.tier !== 'resume') {
     head.push({
-      text: safe(`${client} cannot resume by id · enter starts a new briefed session`, width),
+      text: safe(`${client} cannot resume by id · enter starts a new briefed session`, headWidth),
       color: 'yellow',
     })
   }

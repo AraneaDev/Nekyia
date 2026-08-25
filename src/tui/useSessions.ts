@@ -10,9 +10,18 @@ import { query, type Row } from '../core/query'
  */
 export type Scope = string | null
 
+/**
+ * Rows the picker will show at once. One more than this is asked for, so an
+ * index that runs past the limit can be reported as such instead of being
+ * silently counted as exactly this many.
+ */
+export const SESSION_DISPLAY_LIMIT = 500
+
 /** The picker's search state and the actions that change it, kept out of the component so it can be tested directly. */
 export interface SessionsState {
   rows: Row[]
+  /** True when the search matched more sessions than `rows` can show. */
+  overflowed: boolean
   text: string
   setText: (text: string) => void
   scope: Scope
@@ -51,14 +60,23 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
     hiddenClients: JSON.parse(hiddenClientsKey) as string[],
   }), [cfg.halfLifeDays, cfg.showSniffed, hiddenClientsKey])
 
-  const rows = useMemo(
+  const found = useMemo(
     () => query(db, queryConfig, {
       text: text || undefined,
       cwd: scope ?? undefined,
       client,
-      limit: 500,
+      // Sessions whose transcript has vanished stay in the list. They cannot be
+      // launched, but hiding them turns "the file is gone" into "the session
+      // never existed"; the preview says which one it is in red.
+      includeMissing: true,
+      limit: SESSION_DISPLAY_LIMIT + 1,
     }),
     [db, queryConfig, text, scope, cwd, client],
+  )
+  const overflowed = found.length > SESSION_DISPLAY_LIMIT
+  const rows = useMemo(
+    () => (found.length > SESSION_DISPLAY_LIMIT ? found.slice(0, SESSION_DISPLAY_LIMIT) : found),
+    [found],
   )
 
   const rowCount = useRef(rows.length)
@@ -112,6 +130,7 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
 
   return {
     rows,
+    overflowed,
     text,
     setText,
     scope,

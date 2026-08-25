@@ -41,21 +41,34 @@ export function ageEmphasis(endedAt: number, now: number): { dim: boolean; bold:
   return { dim: true, bold: false }
 }
 
+/** Regex metacharacters, escaped so a typed query is matched as literal text. */
+const REGEX_META = /[.*+?^${}()|[\]\\]/gu
+
 /**
  * Splits a title around the query so the matching span can be lit. Matching is
  * case-insensitive on the first occurrence only: the point is to show the list
  * reacting to what was typed, not to mark up every letter.
+ *
+ * The search runs against the original title rather than a lowercased copy,
+ * because toLowerCase() does not preserve code-unit offsets: 'İ' is one unit
+ * and lowercases to two, so every offset after it drifts and the slices can cut
+ * a surrogate pair in half. A split pair lands in two Text nodes with different
+ * colours and renders as two replacement glyphs, which is a corrupted frame
+ * rather than a missed highlight. The `iu` flags fold case simply, so a few
+ * exotic pairs stop matching; a correct title with no highlight is the better
+ * of the two outcomes.
  */
 export function matchSpans(title: string, queryText: string): [string, string, string] {
-  const needle = queryText.trim().toLowerCase()
+  const needle = queryText.trim()
   if (!needle) return [title, '', '']
-  const at = title.toLowerCase().indexOf(needle)
-  if (at === -1) return [title, '', '']
-  return [title.slice(0, at), title.slice(at, at + needle.length), title.slice(at + needle.length)]
+  const hit = new RegExp(needle.replace(REGEX_META, '\\$&'), 'iu').exec(title)
+  if (!hit) return [title, '', '']
+  return [title.slice(0, hit.index), hit[0], title.slice(hit.index + hit[0].length)]
 }
 
 const DISPLAY_SCAN_FACTOR = 8
-const MAX_DISPLAY_COLUMNS = 512
+/** Ceiling on every width-derived allocation, so a nonsense terminal width cannot ask for an unbounded string. */
+export const MAX_DISPLAY_COLUMNS = 512
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/gu
 const BIDI_FORMAT = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f\ufeff]/gu
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
