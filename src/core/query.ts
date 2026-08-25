@@ -142,7 +142,7 @@ class Components {
 }
 
 /** Build chain membership from every row, including rows later removed by filters. */
-function chainComponents(rows: StoredRef[]): Components {
+function chainComponents(rows: readonly StoredRef[]): Components {
   const components = new Components(rows.length)
   const byNative = new Map<string, number[]>()
   for (let index = 0; index < rows.length; index++) {
@@ -173,7 +173,7 @@ function chainComponents(rows: StoredRef[]): Components {
   return components
 }
 
-function collapseChains(rows: Row[], allRows: StoredRef[], components: Components): Row[] {
+function collapseChains(rows: Row[], allRows: readonly StoredRef[], components: Components): Row[] {
   const indexByUid = new Map(allRows.map((row, index) => [row.uid, index]))
   const groups = new Map<number, Row[]>()
   for (const row of rows) {
@@ -201,7 +201,25 @@ function collapseChains(rows: Row[], allRows: StoredRef[], components: Component
   })
 }
 
-export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
+export type SessionSnapshot = readonly StoredRef[]
+
+const snapshotComponents = new WeakMap<SessionSnapshot, Components>()
+
+/** Read and prepare the stable session metadata used throughout one picker run. */
+export function readSessionSnapshot(db: IndexDb): SessionSnapshot {
+  const rows = (db.raw().query('SELECT * FROM session').all() as Parameters<typeof rowToRef>[0][])
+    .map(rowToRef)
+  snapshotComponents.set(rows, chainComponents(rows))
+  return rows
+}
+
+/** Query a caller-owned snapshot while still using the live FTS and file indexes. */
+export function querySnapshot(
+  db: IndexDb,
+  cfg: Config,
+  snapshot: SessionSnapshot,
+  opts: QueryOpts = {},
+): Row[] {
   const unsafeOpts = opts as Record<string, unknown>
   const text = typeof unsafeOpts.text === 'string' ? unsafeOpts.text.trim() : ''
   const hasText = text.length > 0
@@ -224,9 +242,8 @@ export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
     ? unsafeOpts.file
     : null
   const fileUids = file ? new Set(db.uidsTouchingFile(file)) : null
-  const allRows = (db.raw().query('SELECT * FROM session').all() as Parameters<typeof rowToRef>[0][])
-    .map(rowToRef)
-  const components = chainComponents(allRows)
+  const allRows = snapshot
+  const components = snapshotComponents.get(snapshot) ?? chainComponents(allRows)
 
   const config = cfg as unknown as Record<string, unknown>
   const hiddenClients = new Set(
@@ -275,4 +292,13 @@ export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
   if (typeof unsafeOpts.limit !== 'number' || !Number.isFinite(unsafeOpts.limit)) return collapsed
   const limit = Math.max(0, Math.floor(unsafeOpts.limit))
   return collapsed.slice(0, limit)
+}
+
+export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
+  const candidate = (opts as Record<string, unknown>).text
+  if (typeof candidate === 'string') {
+    const text = candidate.trim()
+    if (text && !literalFtsQuery(text)) return []
+  }
+  return querySnapshot(db, cfg, readSessionSnapshot(db), opts)
 }

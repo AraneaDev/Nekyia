@@ -12,6 +12,7 @@ const TITLE_COLUMNS = 512
 const PROMPT_DB_CHARS = 65_536
 const PROSE_DB_CHARS = 65_536
 const FILE_DB_CHARS = 2_048
+const BROWSE_DB_CHARS = 8_192
 
 function safe(value: string | null | undefined, columns = FIELD_COLUMNS): string {
   return boundedDisplayText(typeof value === 'string' ? value : '', columns)
@@ -26,21 +27,23 @@ function textLines(value: string | null | undefined): string[] {
 
 interface PreviewData { files: string[]; prompts: string[]; prose: string[] }
 
-function previewData(db: IndexDb, uid: string): PreviewData {
+function previewData(db: IndexDb, uid: string, full: boolean, maxLines: number): PreviewData {
   try {
+    const textChars = full ? PROMPT_DB_CHARS : BROWSE_DB_CHARS
+    const fileLimit = full ? 500 : Math.max(1, Math.min(500, Math.floor(maxLines)))
     const files = (db.raw().query(`
       SELECT substr(path, 1, ?) AS path
       FROM session_file
       WHERE uid = ?
       ORDER BY path COLLATE BINARY ASC
-      LIMIT 500
-    `).all(FILE_DB_CHARS, uid) as { path: string }[])
+      LIMIT ?
+    `).all(FILE_DB_CHARS, uid, fileLimit) as { path: string }[])
       .map((item) => safe(item.path))
       .filter(Boolean)
     const text = db.raw().query(`
       SELECT substr(prompts, 1, ?) AS prompts, substr(prose, 1, ?) AS prose
       FROM session_text WHERE uid = ?
-    `).get(PROMPT_DB_CHARS, PROSE_DB_CHARS, uid) as
+    `).get(textChars, full ? PROSE_DB_CHARS : BROWSE_DB_CHARS, uid) as
       { prompts: string | null; prose: string | null } | null
     return { files, prompts: textLines(text?.prompts), prose: textLines(text?.prose) }
   } catch {
@@ -99,7 +102,7 @@ export function buildPreviewLines(
 ): PreviewLine[] {
   if (!row) return []
   const width = Math.max(12, columns - LABEL_COLUMNS)
-  const { files, prompts, prose } = previewData(db, row.uid)
+  const { files, prompts, prose } = previewData(db, row.uid, full, maxLines)
   const title = safe(row.title, TITLE_COLUMNS) || '(no title)'
   // The opening prompt usually is the title, so showing both spends a line
   // restating what is already on screen. Compare raw: the two are bounded to
@@ -143,9 +146,12 @@ export function buildPreviewLines(
   }
 
   const blocks = [
-    { label: 'asked', body: asked.map((line) => safe(line, width)), dim: false },
-    { label: 'replied', body: prose.map((line) => safe(line, width)), dim: true },
-    { label: 'touched', body: touched.map((line) => boundedPathTail(line, width)), dim: false },
+    { label: 'asked', body: asked, dim: false, render: (line: string) => safe(line, width) },
+    { label: 'replied', body: prose, dim: true, render: (line: string) => safe(line, width) },
+    {
+      label: 'touched', body: touched, dim: false,
+      render: (line: string) => boundedPathTail(line, width),
+    },
   ].filter((block) => block.body.length)
 
   // Each block that appears costs the blank line above it.
@@ -159,7 +165,7 @@ export function buildPreviewLines(
     if (!count) return
     out.push({ text: '' })
     block.body.slice(0, count).forEach((line, offset) => {
-      out.push({ text: line, label: offset === 0 ? block.label : '', dim: block.dim })
+      out.push({ text: block.render(line), label: offset === 0 ? block.label : '', dim: block.dim })
     })
   })
   return out

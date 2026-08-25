@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { DEFAULT_CONFIG, type Config } from '../src/config'
 import { IndexDb } from '../src/core/db'
-import { query, recencyDecay } from '../src/core/query'
+import { query, querySnapshot, readSessionSnapshot, recencyDecay } from '../src/core/query'
 import type { SessionDoc, SessionRef } from '../src/types'
 
 const DAY = 86_400_000
@@ -47,6 +47,19 @@ test('with no query text, results are newest first with deterministic ties', () 
   seed(db, { uid: 'claude:a', nativeId: 'a' })
   expect(query(db, DEFAULT_CONFIG, { now: NOW }).map((r) => r.uid))
     .toEqual(['claude:a', 'claude:z', 'claude:old'])
+  db.close()
+})
+
+test('a session snapshot is stable while ordinary queries see later database writes', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:first', nativeId: 'first' })
+  const snapshot = readSessionSnapshot(db)
+  seed(db, { uid: 'claude:later', nativeId: 'later', endedAt: NOW + 1 })
+
+  expect(querySnapshot(db, DEFAULT_CONFIG, snapshot).map((row) => row.uid))
+    .toEqual(['claude:first'])
+  expect(query(db, DEFAULT_CONFIG).map((row) => row.uid))
+    .toEqual(['claude:later', 'claude:first'])
   db.close()
 })
 

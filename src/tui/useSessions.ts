@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react'
 import type { Config } from '../config'
 import type { IndexDb } from '../core/db'
-import { query, type Row } from '../core/query'
+import { querySnapshot, readSessionSnapshot, type Row } from '../core/query'
 
 /**
  * The directory the list is narrowed to, or null for the whole index. A path
@@ -37,6 +37,9 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
   const [scope, setScopeState] = useState<Scope>(cwd || null)
   const [client, setClientState] = useState<string | undefined>()
   const [selectedState, setSelectedState] = useState(0)
+  // The picker owns a stable database for its lifetime. Parse and connect the
+  // session metadata once instead of rebuilding the full index per keystroke.
+  const snapshot = useMemo(() => readSessionSnapshot(db), [db])
 
   // Config is commonly rebuilt by a parent render. Depend only on the values
   // which query() consumes, so equivalent identities do not hit SQLite again.
@@ -51,13 +54,13 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
   }), [cfg.halfLifeDays, cfg.showSniffed, hiddenClientsKey])
 
   const rows = useMemo(
-    () => query(db, queryConfig, {
+    () => querySnapshot(db, queryConfig, snapshot, {
       text: text || undefined,
       cwd: scope ?? undefined,
       client,
       limit: 500,
     }),
-    [db, queryConfig, text, scope, cwd, client],
+    [db, queryConfig, snapshot, text, scope, cwd, client],
   )
 
   const rowCount = useRef(rows.length)
