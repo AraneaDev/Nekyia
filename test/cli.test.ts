@@ -53,6 +53,32 @@ test('index then search finds a session across clients', () => {
   expect(publicRow.sourcePaths).toBeUndefined()
   expect(publicRow.fingerprint).toBeUndefined()
   expect(publicRow.missing).toBeUndefined()
+
+  const blamed = run(['blame', '/root/proj/src/sse.ts'], env)
+  expect(blamed.exitCode).toBe(0)
+  expect(blamed.stdout.toString()).toContain('sse reconnect')
+
+  const blamedJson = run(['blame', '/root/proj/src/sse.ts', '--json'], env)
+  expect(blamedJson.exitCode).toBe(0)
+  const blamedRows = JSON.parse(blamedJson.stdout.toString())
+  expect(blamedRows).toHaveLength(1)
+  expect(blamedRows[0].uid).toBe('claude:11111111-2222-3333-4444-555555555555')
+})
+
+test('blame is a strict global recent file-search shorthand', () => {
+  const env = environment()
+  for (const args of [
+    ['blame'],
+    ['blame', 'one.ts', 'two.ts'],
+    ['blame', 'one.ts', '--all'],
+    ['blame', 'one.ts', '--sort', 'recent'],
+    ['blame', 'one.ts', '--file', 'two.ts'],
+    ['blame', 'one.ts', '--limit', 'wat'],
+  ]) {
+    const result = run(args, env)
+    expect(result.exitCode).toBe(2)
+    expect(result.stderr.toString()).toContain('error:')
+  }
 })
 
 test('search without an index is clean and does not create a database', () => {

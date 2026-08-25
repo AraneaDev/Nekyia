@@ -50,6 +50,26 @@ test('with no query text, results are newest first with deterministic ties', () 
   db.close()
 })
 
+test('exact file matching resolves relative facets against each session cwd', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', cwd: '/work/a' }, { files: ['README.md'] })
+  seed(db, { uid: 'claude:b', nativeId: 'b', cwd: '/work/b' }, { files: ['README.md'] })
+  seed(db, { uid: 'claude:absolute', nativeId: 'absolute', cwd: '/elsewhere' }, {
+    files: ['/work/a/src/../README.md'],
+  })
+  seed(db, { uid: 'claude:unknown', nativeId: 'unknown', cwd: null }, { files: ['README.md'] })
+
+  expect(query(db, DEFAULT_CONFIG, { exactFile: '/work/a/./README.md' }).map((row) => row.uid))
+    .toEqual(['claude:a', 'claude:absolute'])
+  expect(query(db, DEFAULT_CONFIG, { exactFile: '/work/b/README.md' }).map((row) => row.uid))
+    .toEqual(['claude:b'])
+  expect(query(db, DEFAULT_CONFIG, { exactFile: 'README.md' })).toEqual([])
+  // The broad search filter intentionally retains its existing fragment semantics.
+  expect(query(db, DEFAULT_CONFIG, { file: 'README.md' }).map((row) => row.uid))
+    .toHaveLength(4)
+  db.close()
+})
+
 test('a session snapshot is stable while ordinary queries see later database writes', () => {
   const db = IndexDb.open(':memory:')
   seed(db, { uid: 'claude:first', nativeId: 'first' })

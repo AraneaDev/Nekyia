@@ -21,6 +21,12 @@ export interface FtsHit {
   score: number
 }
 
+/** One indexed file facet, returned without transcript content. */
+export interface FileFacet {
+  uid: string
+  path: string
+}
+
 const SCHEMA_VERSION = 2
 /** The oldest stamped schema this build still opens. Older indexes are migrated up to SCHEMA_VERSION. */
 const MIN_SCHEMA_VERSION = 1
@@ -566,6 +572,16 @@ export class IndexDb {
       SELECT DISTINCT uid FROM session_file WHERE path LIKE ? ESCAPE '\\' ORDER BY uid
     `).all(`%${literal}%`) as Array<{ uid: string }>
     return rows.map((row) => row.uid)
+  }
+
+  /** Candidate facets for callers that need stricter path semantics than substring search. */
+  fileFacetsContaining(fragment: string): FileFacet[] {
+    const literal = fragment.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+    return this.db.query(`
+      SELECT uid, path FROM session_file
+      WHERE path LIKE ? ESCAPE '\\'
+      ORDER BY uid, path COLLATE BINARY
+    `).all(`%${literal}%`) as FileFacet[]
   }
 
   deleteSession(uid: string): void {

@@ -88,11 +88,15 @@ you have already reviewed that boundary and need a non-interactive run.
 nekyia                         # interactive picker
 nekyia search reconnect race   # table output
 nekyia search reconnect --json # machine-readable output
+nekyia blame src/sse.ts        # recent sessions that touched this file
 nekyia last                    # newest session under this directory
 ```
 
 Search defaults to the current directory. Pass `--all` to search everywhere,
 `--client <id>` for one client, or `--file <path>` for sessions that touched a file.
+`nekyia blame <path>` resolves the path from the current directory, then searches
+globally and newest-first for that exact normalized file. "Touched" means the path
+appeared in indexed tool input; it does not prove that the session modified the file.
 
 In the picker, `tab` widens to every directory, and pressing it again narrows to the
 project of the row under the cursor, so you can start anywhere and end up in one
@@ -149,6 +153,7 @@ gets the same interface rather than a broken one:
 | --- | --- |
 | `nekyia` | Open the interactive picker |
 | `nekyia search <query>` | Search from the terminal, with optional JSON output |
+| `nekyia blame <path>` | List recent sessions that touched this exact file |
 | `nekyia last` | Launch the newest visible session in this directory |
 | `nekyia index [--rebuild]` | Refresh fingerprints and changed session content |
 | `nekyia show <uid>` | Print a deterministic handover as Markdown |

@@ -7,6 +7,8 @@ export interface QueryOpts {
   cwd?: string
   client?: string
   file?: string
+  /** Absolute lexical path matched exactly after resolving each facet against its session cwd. */
+  exactFile?: string
   sort?: 'auto' | 'recent' | 'relevance'
   limit?: number
   includeMissing?: boolean
@@ -106,6 +108,20 @@ function underScope(cwd: string | null, scope: string): boolean {
   if (!child || !parent) return false
   if (child === parent) return true
   return parent.endsWith('/') ? child.startsWith(parent) : child.startsWith(`${parent}/`)
+}
+
+function isAbsolutePath(value: string): boolean {
+  return value.startsWith('/') || value.startsWith('//') || /^[a-z]:\//u.test(value)
+}
+
+function resolveFacetPath(value: string, cwd: string | null): string | null {
+  const facet = normalizedPath(value)
+  if (!facet) return null
+  if (isAbsolutePath(facet)) return facet
+  if (!cwd) return null
+  const base = normalizedPath(cwd)
+  if (!base || !isAbsolutePath(base)) return null
+  return normalizedPath(`${base}/${facet}`)
 }
 
 /**
@@ -283,12 +299,30 @@ function search(
     if (scores.size === 0) return []
   }
 
+  const allRows = snapshot ?? db.searchRefs()
+  const components = componentsFor(allRows)
+  const hasExactFile = unsafeOpts.exactFile !== undefined
+  const exactFile = typeof unsafeOpts.exactFile === 'string'
+    ? normalizedPath(unsafeOpts.exactFile)
+    : null
   const file = typeof unsafeOpts.file === 'string' && unsafeOpts.file.length > 0
     ? unsafeOpts.file
     : null
-  const fileUids = file ? new Set(db.uidsTouchingFile(file)) : null
-  const allRows = snapshot ?? db.searchRefs()
-  const components = componentsFor(allRows)
+  let fileUids: Set<string> | null = null
+  if (hasExactFile) {
+    // An invalid internal exact-path request fails closed rather than silently
+    // becoming an unfiltered search. The CLI always supplies an absolute path.
+    fileUids = new Set()
+    if (exactFile && isAbsolutePath(exactFile)) {
+      const cwdByUid = new Map(allRows.map((row) => [row.uid, row.cwd]))
+      const basename = exactFile.split('/').at(-1) ?? exactFile
+      fileUids = new Set(db.fileFacetsContaining(basename)
+        .filter((facet) => resolveFacetPath(facet.path, cwdByUid.get(facet.uid) ?? null) === exactFile)
+        .map((facet) => facet.uid))
+    }
+  } else if (file) {
+    fileUids = new Set(db.uidsTouchingFile(file))
+  }
 
   const config = cfg as unknown as Record<string, unknown>
   const hiddenClients = new Set(

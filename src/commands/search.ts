@@ -10,6 +10,8 @@ export interface SearchOptions {
   cwd?: string
   client?: string
   file?: string
+  /** Internal exact resolved-path filter used by the blame shorthand. */
+  exactFile?: string
   sort?: 'auto' | 'recent' | 'relevance'
   limit?: number
   json?: boolean
@@ -52,6 +54,7 @@ export async function runSearch(opts: SearchOptions = {}): Promise<number> {
       cwd: opts.cwd,
       client: opts.client,
       file: opts.file,
+      exactFile: opts.exactFile,
       sort: opts.sort,
       limit: opts.limit ?? 40,
     })
