@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.10](https://github.com/AraneaDev/Nekyia/compare/v0.0.9...v0.0.10) (2026-08-25)
+
+
+### Documentation
+
+* describe the picker as it now behaves ([54b0e58](https://github.com/AraneaDev/Nekyia/commit/54b0e581ed925a2dad64d724e1a0ec25fc11c9b8))
+
 ## [0.0.9](https://github.com/AraneaDev/Nekyia/compare/v0.0.8...v0.0.9) (2026-08-25)
 
 
