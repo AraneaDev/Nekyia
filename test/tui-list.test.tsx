@@ -284,15 +284,21 @@ test('equivalent config identities do not rerun the query', () => {
   }) as typeof db.searchRefs
 
   let rerender: (() => void) | undefined
+  let rows: ReturnType<typeof useSessions>['rows'] | undefined
   function Harness() {
     const [, setTick] = React.useState(0)
     rerender = () => setTick((tick) => tick + 1)
-    useSessions(db, { ...DEFAULT_CONFIG, hiddenClients: [] }, '/root/proj')
+    rows = useSessions(db, { ...DEFAULT_CONFIG, hiddenClients: [] }, '/root/proj').rows
     return null
   }
   const view = render(<Harness />)
   expect(sessionSelects).toBe(1)
+  const before = rows
   withAct(() => rerender?.())
+  // The picker holds one snapshot for its lifetime, so counting reads of the
+  // session table no longer tells us whether the query itself reran. A rerun
+  // builds a fresh array, so identity is what actually discriminates here.
+  expect(rows).toBe(before)
   expect(sessionSelects).toBe(1)
   view.unmount()
   db.close()

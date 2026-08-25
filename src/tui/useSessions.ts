@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react'
 import type { Config } from '../config'
 import type { IndexDb } from '../core/db'
-import { query, type Row } from '../core/query'
+import { querySnapshot, readSessionSnapshot, type Row } from '../core/query'
 
 /**
  * The directory the list is narrowed to, or null for the whole index. A path
@@ -48,6 +48,18 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
   const [client, setClientState] = useState<string | undefined>()
   const [selectedState, setSelectedState] = useState(0)
 
+  // The picker holds one index handle for its whole run, so the session table is
+  // read once here and every keystroke reuses those rows and the fork chains
+  // derived from them, instead of rescanning the table per character typed.
+  //
+  // The invariant this buys is that the picker's view of the session table is
+  // frozen at open. A session marked `missing` after this point keeps listing as
+  // present until the picker is restarted. Nothing writes to the index while a
+  // picker is up, and the non-interactive callers go through `query()`, which
+  // reads fresh every call, so only this list can go stale. Should indexing ever
+  // run alongside the picker, this memo is what has to be invalidated.
+  const snapshot = useMemo(() => readSessionSnapshot(db), [db])
+
   // Config is commonly rebuilt by a parent render. Depend only on the values
   // which query() consumes, so equivalent identities do not hit SQLite again.
   const hiddenClientsKey = JSON.stringify(
@@ -61,7 +73,7 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
   }), [cfg.halfLifeDays, hiddenClientsKey])
 
   const found = useMemo(
-    () => query(db, queryConfig, {
+    () => querySnapshot(db, queryConfig, snapshot, {
       text: text || undefined,
       cwd: scope ?? undefined,
       client,
@@ -71,7 +83,7 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
       includeMissing: true,
       limit: SESSION_DISPLAY_LIMIT + 1,
     }),
-    [db, queryConfig, text, scope, cwd, client],
+    [db, queryConfig, snapshot, text, scope, cwd, client],
   )
   const overflowed = found.length > SESSION_DISPLAY_LIMIT
   const rows = useMemo(
