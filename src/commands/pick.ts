@@ -68,7 +68,16 @@ export interface PickDependencies {
 
 /** Mounts the picker on the alternate screen, so the session list never displaces the user's scrollback. */
 export function mountPicker(props: AppProps, renderer: typeof render = render): PickerInstance {
-  return renderer(React.createElement(App, props), { alternateScreen: true })
+  return renderer(React.createElement(App, props), {
+    alternateScreen: true,
+    // History scrolling changes a viewport, not the surrounding chrome. Let
+    // Ink patch only the changed terminal rows instead of erasing and
+    // rewriting the whole screen for every held-arrow frame.
+    incrementalRendering: true,
+    // Only affordable because each repaint is now incremental: doubling Ink's
+    // default 30 Hz throttle would otherwise double the cost of a held key.
+    maxFps: 60,
+  })
 }
 
 const defaults: PickDependencies = {
@@ -125,8 +134,21 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
       return 1
     }
     if (code !== 0) {
-      deps.error('no session index found; first-run indexing did not complete')
-      return code
+      // A run that indexed some clients and failed on others still leaves a
+      // usable index behind. Refusing to open the picker would lock the user
+      // out of the sessions that were indexed, so only a missing marker or a
+      // missing index is fatal here; the verification below still has to pass.
+      let partialIndex = false
+      try {
+        partialIndex = !deps.needsConsent() && deps.indexExists(path)
+      } catch {
+        // The verification below reports a stable first-run error.
+      }
+      if (!partialIndex) {
+        deps.error('no session index found; first-run indexing did not complete')
+        return code
+      }
+      deps.error('indexing completed with errors; continuing with the available sessions')
     }
     try {
       if (deps.needsConsent() || !deps.indexExists(path)) {

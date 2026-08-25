@@ -12,6 +12,15 @@ const TITLE_COLUMNS = 512
 const PROMPT_DB_CHARS = 65_536
 const PROSE_DB_CHARS = 65_536
 const FILE_DB_CHARS = 2_048
+/**
+ * What browsing reads per text column. Moving the cursor rebuilds the preview
+ * for every row it passes, and browsing only ever shows a pane's worth of
+ * lines, so reading a full 64 KiB of prompts and prose per step pays for text
+ * that is discarded before it is drawn.
+ */
+const BROWSE_DB_CHARS = 8_192
+/** Most files a preview will ever list, so a session that touched thousands cannot be read whole. */
+const FILE_ROW_LIMIT = 500
 
 function safe(value: string | null | undefined, columns = FIELD_COLUMNS): string {
   return boundedDisplayText(typeof value === 'string' ? value : '', columns)
@@ -26,21 +35,33 @@ function textLines(value: string | null | undefined): string[] {
 
 interface PreviewData { files: string[]; prompts: string[]; prose: string[] }
 
-function previewData(db: IndexDb, uid: string): PreviewData {
+/**
+ * How many file rows are worth reading for a pane of `maxLines`. Browsing can
+ * never draw more paths than the pane has lines, so anything past that is read
+ * and thrown away.
+ */
+function fileLimit(full: boolean, maxLines: number): number {
+  if (full || !Number.isFinite(maxLines)) return FILE_ROW_LIMIT
+  return Math.max(1, Math.min(FILE_ROW_LIMIT, Math.floor(maxLines)))
+}
+
+function previewData(db: IndexDb, uid: string, full: boolean, maxLines: number): PreviewData {
   try {
+    const textChars = full ? PROMPT_DB_CHARS : BROWSE_DB_CHARS
+    const proseChars = full ? PROSE_DB_CHARS : BROWSE_DB_CHARS
     const files = (db.raw().query(`
       SELECT substr(path, 1, ?) AS path
       FROM session_file
       WHERE uid = ?
       ORDER BY path COLLATE BINARY ASC
-      LIMIT 500
-    `).all(FILE_DB_CHARS, uid) as { path: string }[])
+      LIMIT ?
+    `).all(FILE_DB_CHARS, uid, fileLimit(full, maxLines)) as { path: string }[])
       .map((item) => safe(item.path))
       .filter(Boolean)
     const text = db.raw().query(`
       SELECT substr(prompts, 1, ?) AS prompts, substr(prose, 1, ?) AS prose
       FROM session_text WHERE uid = ?
-    `).get(PROMPT_DB_CHARS, PROSE_DB_CHARS, uid) as
+    `).get(textChars, proseChars, uid) as
       { prompts: string | null; prose: string | null } | null
     return { files, prompts: textLines(text?.prompts), prose: textLines(text?.prose) }
   } catch {
@@ -104,7 +125,7 @@ export function buildPreviewLines(
   // the metadata line cut short with the width sitting empty beside it.
   const headWidth = Math.max(12, columns)
   const width = Math.max(12, columns - LABEL_COLUMNS)
-  const { files, prompts, prose } = previewData(db, row.uid)
+  const { files, prompts, prose } = previewData(db, row.uid, full, maxLines)
   const title = safe(row.title, TITLE_COLUMNS) || '(no title)'
   // The opening prompt usually is the title, so showing both spends a line
   // restating what is already on screen. Compare raw: the two are bounded to
@@ -147,10 +168,16 @@ export function buildPreviewLines(
     head.push({ text: 'source transcript no longer on disk', color: 'red' })
   }
 
+  // Sanitizing is deferred to `render`. Browsing hands a block a few lines out
+  // of the hundreds it offers, and bounding the rest only to drop them spends
+  // the most expensive work in the preview on text nobody sees.
   const blocks = [
-    { label: 'asked', body: asked.map((line) => safe(line, width)), dim: false },
-    { label: 'replied', body: prose.map((line) => safe(line, width)), dim: true },
-    { label: 'touched', body: touched.map((line) => boundedPathTail(line, width)), dim: false },
+    { label: 'asked', body: asked, dim: false, render: (line: string) => safe(line, width) },
+    { label: 'replied', body: prose, dim: true, render: (line: string) => safe(line, width) },
+    {
+      label: 'touched', body: touched, dim: false,
+      render: (line: string) => boundedPathTail(line, width),
+    },
   ].filter((block) => block.body.length)
 
   // Each block that appears costs the blank line above it.
@@ -164,7 +191,7 @@ export function buildPreviewLines(
     if (!count) return
     out.push({ text: '' })
     block.body.slice(0, count).forEach((line, offset) => {
-      out.push({ text: line, label: offset === 0 ? block.label : '', dim: block.dim })
+      out.push({ text: block.render(line), label: offset === 0 ? block.label : '', dim: block.dim })
     })
   })
   return out
