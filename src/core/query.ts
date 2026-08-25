@@ -155,7 +155,7 @@ class Components {
 }
 
 /** Build chain membership from every row, including rows later removed by filters. */
-function chainComponents(rows: SearchRef[]): Components {
+function chainComponents(rows: readonly SearchRef[]): Components {
   const components = new Components(rows.length)
   const byNative = new Map<string, number[]>()
   for (let index = 0; index < rows.length; index++) {
@@ -186,7 +186,11 @@ function chainComponents(rows: SearchRef[]): Components {
   return components
 }
 
-function collapseChains(rows: Row[], allRows: SearchRef[], components: Components): Row[] {
+function collapseChains(
+  rows: Row[],
+  allRows: readonly SearchRef[],
+  components: Components,
+): Row[] {
   const indexByUid = new Map(allRows.map((row, index) => [row.uid, index]))
   const groups = new Map<number, Row[]>()
   for (const row of rows) {
@@ -214,8 +218,53 @@ function collapseChains(rows: Row[], allRows: SearchRef[], components: Component
   })
 }
 
-/** Runs a search, blending weighted text relevance with recency and collapsing each fork chain to its newest session. */
-export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
+/**
+ * Every indexed session as one search read them, held still for as long as the caller keeps it.
+ *
+ * A caller that searches repeatedly over an unchanging index, the picker once
+ * per keystroke, reads the table once and hands the same array back, rather
+ * than paying for a full table scan and a fresh fork-chain pass each time. The
+ * cost is that the snapshot cannot see writes made after it was taken, so only
+ * a caller that knows the index is not moving underneath it should hold one.
+ */
+export type SessionSnapshot = readonly SearchRef[]
+
+/**
+ * The fork-chain components of a snapshot, keyed by the snapshot itself.
+ *
+ * Union-find over the whole table is the expensive half of a search, and it
+ * depends on nothing but the rows. Keying on the array means a snapshot that
+ * goes out of scope takes its components with it, and a one-shot `query` gets
+ * the same treatment as the picker without either having to say so.
+ */
+const snapshotComponents = new WeakMap<SessionSnapshot, Components>()
+
+/** Reads the session table once, in the narrow shape a search consumes. */
+export function readSessionSnapshot(db: IndexDb): SessionSnapshot {
+  return db.searchRefs()
+}
+
+/** The snapshot's fork chains, built on first use and reused by every later search over it. */
+function componentsFor(snapshot: SessionSnapshot): Components {
+  const cached = snapshotComponents.get(snapshot)
+  if (cached) return cached
+  const components = chainComponents(snapshot)
+  snapshotComponents.set(snapshot, components)
+  return components
+}
+
+/**
+ * The one search implementation, over a caller's snapshot or over a fresh read.
+ *
+ * A null snapshot means read the table, and it is read lazily so that input
+ * which cannot become an FTS query still costs nothing.
+ */
+function search(
+  db: IndexDb,
+  cfg: Config,
+  snapshot: SessionSnapshot | null,
+  opts: QueryOpts,
+): Row[] {
   const unsafeOpts = opts as Record<string, unknown>
   const text = typeof unsafeOpts.text === 'string' ? unsafeOpts.text.trim() : ''
   const hasText = text.length > 0
@@ -238,8 +287,8 @@ export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
     ? unsafeOpts.file
     : null
   const fileUids = file ? new Set(db.uidsTouchingFile(file)) : null
-  const allRows = db.searchRefs()
-  const components = chainComponents(allRows)
+  const allRows = snapshot ?? db.searchRefs()
+  const components = componentsFor(allRows)
 
   const config = cfg as unknown as Record<string, unknown>
   const hiddenClients = new Set(
@@ -285,4 +334,31 @@ export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
   if (typeof unsafeOpts.limit !== 'number' || !Number.isFinite(unsafeOpts.limit)) return collapsed
   const limit = Math.max(0, Math.floor(unsafeOpts.limit))
   return collapsed.slice(0, limit)
+}
+
+/**
+ * Runs a search against the index as it is right now.
+ *
+ * Every non-interactive caller comes through here and reads the session table
+ * afresh, so a session marked missing between two commands is missing in the
+ * second one.
+ */
+export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
+  return search(db, cfg, null, opts)
+}
+
+/**
+ * Runs a search over a caller-held snapshot, blending weighted text relevance
+ * with recency and collapsing each fork chain to its newest session.
+ *
+ * Text and file matching still go to the live index; only the session table and
+ * the fork chains over it are the caller's frozen copy.
+ */
+export function querySnapshot(
+  db: IndexDb,
+  cfg: Config,
+  snapshot: SessionSnapshot,
+  opts: QueryOpts = {},
+): Row[] {
+  return search(db, cfg, snapshot, opts)
 }

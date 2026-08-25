@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { DEFAULT_CONFIG, type Config } from '../src/config'
 import { IndexDb } from '../src/core/db'
-import { query, recencyDecay } from '../src/core/query'
+import { query, querySnapshot, readSessionSnapshot, recencyDecay } from '../src/core/query'
 import type { SessionDoc, SessionRef } from '../src/types'
 
 const DAY = 86_400_000
@@ -47,6 +47,48 @@ test('with no query text, results are newest first with deterministic ties', () 
   seed(db, { uid: 'claude:a', nativeId: 'a' })
   expect(query(db, DEFAULT_CONFIG, { now: NOW }).map((r) => r.uid))
     .toEqual(['claude:a', 'claude:z', 'claude:old'])
+  db.close()
+})
+
+test('a session snapshot is stable while ordinary queries see later database writes', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:first', nativeId: 'first' })
+  const snapshot = readSessionSnapshot(db)
+  seed(db, { uid: 'claude:later', nativeId: 'later', endedAt: NOW + 1 })
+
+  expect(querySnapshot(db, DEFAULT_CONFIG, snapshot).map((row) => row.uid))
+    .toEqual(['claude:first'])
+  expect(query(db, DEFAULT_CONFIG).map((row) => row.uid))
+    .toEqual(['claude:later', 'claude:first'])
+  db.close()
+})
+
+test('searching a snapshot never reads the session table again', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:root', nativeId: 'root' }, { prose: ['needle'] })
+  seed(
+    db,
+    { uid: 'claude:fork', nativeId: 'fork', parentNativeId: 'root', endedAt: NOW + 1 },
+    { prose: ['needle'] },
+  )
+
+  const snapshot = readSessionSnapshot(db)
+  const original = db.searchRefs.bind(db)
+  let reads = 0
+  db.searchRefs = (() => {
+    reads++
+    return original()
+  }) as typeof db.searchRefs
+
+  // The fork chain collapses the same way on every pass, so the components are
+  // reused rather than rebuilt alongside a fresh read of the table.
+  for (const text of ['', 'needle', 'untitled needle', 'untitled']) {
+    expect(querySnapshot(db, DEFAULT_CONFIG, snapshot, { text: text || undefined, now: NOW })
+      .map((row) => row.uid)).toEqual(['claude:fork'])
+  }
+  expect(reads).toBe(0)
+  expect(query(db, DEFAULT_CONFIG, { now: NOW }).map((row) => row.uid)).toEqual(['claude:fork'])
+  expect(reads).toBe(1)
   db.close()
 })
 
