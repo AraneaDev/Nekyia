@@ -50,6 +50,69 @@ test('with no query text, results are newest first with deterministic ties', () 
   db.close()
 })
 
+test('exact file matching resolves relative facets against each session cwd', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', cwd: '/work/a' }, { files: ['README.md'] })
+  seed(db, { uid: 'claude:b', nativeId: 'b', cwd: '/work/b' }, { files: ['README.md'] })
+  seed(db, { uid: 'claude:absolute', nativeId: 'absolute', cwd: '/elsewhere' }, {
+    files: ['/work/a/src/../README.md'],
+  })
+  seed(db, { uid: 'claude:unknown', nativeId: 'unknown', cwd: null }, { files: ['README.md'] })
+
+  expect(query(db, DEFAULT_CONFIG, { exactFile: '/work/a/./README.md' }).map((row) => row.uid))
+    .toEqual(['claude:a', 'claude:absolute'])
+  expect(query(db, DEFAULT_CONFIG, { exactFile: '/work/b/README.md' }).map((row) => row.uid))
+    .toEqual(['claude:b'])
+  // A relative request cannot be anchored, so it fails closed rather than
+  // becoming an unfiltered search.
+  expect(query(db, DEFAULT_CONFIG, { exactFile: 'README.md' })).toEqual([])
+  expect(query(db, DEFAULT_CONFIG, { exactFile: '' })).toEqual([])
+  // The broad search filter intentionally retains its existing fragment semantics.
+  expect(query(db, DEFAULT_CONFIG, { file: 'README.md' }).map((row) => row.uid))
+    .toHaveLength(4)
+  db.close()
+})
+
+test('an exact path with no basename matches nothing without scanning for it', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', cwd: '/work/a' }, { files: ['README.md'] })
+  const original = db.fileFacetsContaining.bind(db)
+  let scans = 0
+  db.fileFacetsContaining = ((fragment: string) => {
+    scans++
+    return original(fragment)
+  }) as typeof db.fileFacetsContaining
+
+  // `/` normalizes to `/`, whose last segment is empty: an unguarded prefilter
+  // would become LIKE '%%' and read the whole facet table to match nothing.
+  expect(query(db, DEFAULT_CONFIG, { exactFile: '/' })).toEqual([])
+  expect(scans).toBe(0)
+  expect(query(db, DEFAULT_CONFIG, { exactFile: '/work/a/README.md' }).map((row) => row.uid))
+    .toEqual(['claude:a'])
+  expect(scans).toBe(1)
+  db.close()
+})
+
+test('the search path reads the narrow row shape and never resolves provenance', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', sourcePaths: ['/transcripts/a.jsonl'] })
+  const original = db.getRef.bind(db)
+  let refReads = 0
+  db.getRef = ((uid: string) => {
+    refReads++
+    return original(uid)
+  }) as typeof db.getRef
+
+  const rows = query(db, DEFAULT_CONFIG, { now: NOW })
+  expect(rows).toHaveLength(1)
+  // The picker searches on every keystroke, so the row it gets back must not
+  // carry a field that costs a JSON parse per row and that nothing renders.
+  expect(Object.keys(rows[0]!)).not.toContain('sourcePaths')
+  expect(Object.keys(db.searchRefs()[0]!)).not.toContain('sourcePaths')
+  expect(refReads).toBe(0)
+  db.close()
+})
+
 test('a session snapshot is stable while ordinary queries see later database writes', () => {
   const db = IndexDb.open(':memory:')
   seed(db, { uid: 'claude:first', nativeId: 'first' })

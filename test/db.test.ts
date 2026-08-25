@@ -528,6 +528,51 @@ test('a real version 2 index migrates to version 3 with every row and flag intac
   }
 })
 
+test('an index whose stamp disagrees with its shape is refused instead of stamped current', () => {
+  const { dir, path } = temporaryPath()
+  try {
+    // A real state reachable from an unreleased development branch: stamped 2,
+    // already carrying `session_turn`, but never given the `degraded` column.
+    // `migrate` trusts the stamp, so its only remaining step is a no-op create.
+    writeV1Index(path)
+    const raw = new Database(path)
+    try {
+      raw.query("UPDATE meta SET value = '2' WHERE key = 'schema_version'").run()
+      raw.exec(`
+        CREATE TABLE session_turn (
+          uid TEXT NOT NULL,
+          ordinal INTEGER NOT NULL,
+          role TEXT NOT NULL,
+          text TEXT NOT NULL,
+          PRIMARY KEY (uid, ordinal)
+        )
+      `)
+    } finally {
+      raw.close()
+    }
+
+    let opened: IndexDb | undefined
+    try {
+      expect(() => { opened = IndexDb.open(path, false) })
+        .toThrow(/index schema columns do not match: session/)
+      // The refusal is actionable: it names the file and the way out, and rules
+      // out the command a user would otherwise try first.
+      expect(() => { opened = IndexDb.open(path, false) }).toThrow(path)
+      expect(() => { opened = IndexDb.open(path, false) }).toThrow('nekyia index')
+      expect(() => { opened = IndexDb.open(path, false) }).toThrow('--rebuild')
+    } finally {
+      opened?.close()
+    }
+
+    // The column really is still missing, so every later open refuses too rather
+    // than handing out an index that claims to be current.
+    expect(sessionColumns(path)).toEqual(V1_COLUMNS)
+    expect(() => IndexDb.open(path, false)).toThrow('index schema columns do not match: session')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('a version 2 index stays usable by the commands that cannot migrate it', () => {
   const { dir, path } = temporaryPath()
   try {

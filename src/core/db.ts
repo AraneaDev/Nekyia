@@ -178,6 +178,22 @@ function supportedVersion(version: number): number {
   return version
 }
 
+/**
+ * A schema complaint that also says how to get out of it.
+ *
+ * There is no repair for an index whose shape does not match its stamp, and the
+ * command a user reaches for does not help: `nekyia index --rebuild` reopens the
+ * same file and re-runs the same refused validation. The only way out is to
+ * remove the file, so the message names it.
+ */
+function schemaError(reason: string, db: Database): Error {
+  const file = db.filename && db.filename !== ':memory:' ? db.filename : 'the index file'
+  return new Error(
+    `${reason}; this index cannot be repaired, so delete ${file} and run "nekyia index"`
+    + ' ("--rebuild" reopens the same file and does not fix it)',
+  )
+}
+
 interface SessionRow {
   uid: string
   client: string
@@ -239,6 +255,18 @@ function parseSourcePaths(value: string): string[] {
  * search over an index this build has not migrated yet still works.
  */
 export type SearchRef = Omit<StoredRef, 'sourcePaths' | 'fingerprint' | 'truncated' | 'degraded'>
+
+/**
+ * One indexed file facet, returned without transcript content.
+ *
+ * A caller that needs stricter path semantics than substring matching has to see
+ * which path matched and which session recorded it, because a relative facet
+ * only means something against its own session's working directory.
+ */
+export interface FileFacet {
+  uid: string
+  path: string
+}
 
 type SearchRow = Omit<SessionRow, 'source_paths' | 'fingerprint' | 'truncated' | 'degraded'>
 
@@ -327,6 +355,11 @@ export class IndexDb {
 
       const index = new IndexDb(db)
       index.migrate()
+      // `migrate` trusts the stamp and runs only the steps above it, so a file
+      // whose stamp disagrees with its actual shape comes out of the ladder
+      // stamped current and still missing something. Validating afterwards turns
+      // that into an error the user can act on instead of an index that lies.
+      IndexDb.validateExistingSchema(db)
       return index
     } catch (error) {
       db.close()
@@ -359,11 +392,11 @@ export class IndexDb {
       const object = db.query(
         "SELECT type FROM sqlite_master WHERE name = ? AND type = 'table'",
       ).get(table) as { type: string } | null
-      if (!object) throw new Error(`index schema table is missing: ${table}`)
+      if (!object) throw schemaError(`index schema table is missing: ${table}`, db)
       // Table names are internal constants, never caller input.
       const found = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
       if (found.map((row) => row.name).join('\0') !== columns.join('\0')) {
-        throw new Error(`index schema columns do not match: ${table}`)
+        throw schemaError(`index schema columns do not match: ${table}`, db)
       }
     }
     const fts = db.query("SELECT sql FROM sqlite_master WHERE name = 'session_fts'")
@@ -372,7 +405,7 @@ export class IndexDb {
     if (!ftsSql.startsWith('create virtual table session_fts using fts5(')
       || !ftsSql.includes("content='session_text'")
       || !ftsSql.includes("content_rowid='rowid'")) {
-      throw new Error('index search schema does not match')
+      throw schemaError('index search schema does not match', db)
     }
     return version
   }
@@ -636,6 +669,22 @@ export class IndexDb {
       SELECT DISTINCT uid FROM session_file WHERE path LIKE ? ESCAPE '\\' ORDER BY uid
     `).all(`%${literal}%`) as Array<{ uid: string }>
     return rows.map((row) => row.uid)
+  }
+
+  /**
+   * Candidate facets for callers that need stricter path semantics than substring search.
+   *
+   * The fragment is only a prefilter: it narrows the table down using the same
+   * indexed `path` column `uidsTouchingFile` uses, and the caller decides what
+   * actually matches once it can resolve each facet against its session.
+   */
+  fileFacetsContaining(fragment: string): FileFacet[] {
+    const literal = fragment.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+    return this.db.query(`
+      SELECT uid, path FROM session_file
+      WHERE path LIKE ? ESCAPE '\\'
+      ORDER BY uid, path COLLATE BINARY
+    `).all(`%${literal}%`) as FileFacet[]
   }
 
   deleteSession(uid: string): void {
