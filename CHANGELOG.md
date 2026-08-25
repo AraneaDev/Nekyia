@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.0.8](https://github.com/AraneaDev/Nekyia/compare/v0.0.7...v0.0.8) (2026-08-25)
+
+
+### Features
+
+* **picker:** read a session's history as the conversation it was ([a48e680](https://github.com/AraneaDev/Nekyia/commit/a48e6805f6580c59cb51f2f7d8f866a5d718494e))
+
+
+### Fixes
+
+* **codex:** find the sessions Codex actually writes ([5ccf030](https://github.com/AraneaDev/Nekyia/commit/5ccf030bf3f86131cc388ba3bf98396ad91cbe5a))
+
+
+### Performance
+
+* **picker:** read the session table once per picker, not once per keystroke ([b8906bf](https://github.com/AraneaDev/Nekyia/commit/b8906bfd716c4ce4da10fdbd1080c68c11e5376f))
+* **picker:** stop preparing preview text the pane will not show ([150c363](https://github.com/AraneaDev/Nekyia/commit/150c3638719f3293e1ce8eb2ecedbe0a44d51b6e))
+
 ## [0.0.7](https://github.com/AraneaDev/Nekyia/compare/v0.0.6...v0.0.7) (2026-08-25)
 
 
