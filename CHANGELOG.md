@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.11](https://github.com/AraneaDev/Nekyia/compare/v0.0.10...v0.0.11) (2026-08-25)
+
+
+### Documentation
+
+* keep one key table, and correct what the rest claimed ([dedd020](https://github.com/AraneaDev/Nekyia/commit/dedd020a85b51952bcbd194c53715d9f2414493b))
+
 ## [0.0.10](https://github.com/AraneaDev/Nekyia/compare/v0.0.9...v0.0.10) (2026-08-25)
 
 
