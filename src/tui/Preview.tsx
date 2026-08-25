@@ -1,9 +1,10 @@
 import React from 'react'
 import { Box, Text } from 'ink'
+import { TURN_SCHEMA_VERSION } from '../core/db'
 import type { IndexDb } from '../core/db'
 import type { Row } from '../core/query'
 import { relTime } from '../render'
-import { boundedDisplayText, boundedPathTail } from './text'
+import { boundedDisplayText, boundedPathTail, wrappedDisplayLines } from './text'
 
 const FIELD_COLUMNS = 120
 /** Width of the hanging label column in the preview. */
@@ -21,6 +22,19 @@ const FILE_DB_CHARS = 2_048
 const BROWSE_DB_CHARS = 8_192
 /** Most files a preview will ever list, so a session that touched thousands cannot be read whole. */
 const FILE_ROW_LIMIT = 500
+/**
+ * What the opened history reads of a session's ordered dialogue.
+ *
+ * Deliberately far wider than the browsing budgets: this view exists to be read
+ * in full, is built once when ctrl+o opens it rather than on every cursor move,
+ * and wrapping means a long reply continues instead of being cut. The ceiling
+ * is there so one runaway session cannot pull an unbounded string into memory,
+ * and the reader is told when it is reached rather than left to assume the
+ * transcript simply ended.
+ */
+const HISTORY_DB_CHARS = 1_048_576
+/** Companion ceiling on turn count, so a session of many tiny turns is bounded too. */
+const HISTORY_TURN_LIMIT = 4_096
 
 function safe(value: string | null | undefined, columns = FIELD_COLUMNS): string {
   return boundedDisplayText(typeof value === 'string' ? value : '', columns)
@@ -33,7 +47,18 @@ function textLines(value: string | null | undefined): string[] {
     .filter(Boolean)
 }
 
-interface PreviewData { files: string[]; prompts: string[]; prose: string[] }
+/** One stored turn, as the history reads it back out of the index. */
+interface PreviewTurn { role: 'user' | 'assistant'; text: string }
+
+interface PreviewData {
+  files: string[]
+  prompts: string[]
+  prose: string[]
+  /** Empty while browsing, and for a session indexed before ordered turns existed. */
+  dialogue: PreviewTurn[]
+  /** The stored dialogue ran past a budget, so what is shown stops short of it. */
+  dialogueTruncated: boolean
+}
 
 /**
  * How many file rows are worth reading for a pane of `maxLines`. Browsing can
@@ -43,6 +68,37 @@ interface PreviewData { files: string[]; prompts: string[]; prose: string[] }
 function fileLimit(full: boolean, maxLines: number): number {
   if (full || !Number.isFinite(maxLines)) return FILE_ROW_LIMIT
   return Math.max(1, Math.min(FILE_ROW_LIMIT, Math.floor(maxLines)))
+}
+
+/**
+ * Reads a session's turns in order, stopping at whichever budget runs out first.
+ *
+ * The window function carries a running total of the characters in every turn
+ * before this one, so each row knows how much of the budget was already spent
+ * when it starts. Rows that begin past the budget are dropped, and the one row
+ * that straddles the boundary is cut to exactly what is left, which keeps the
+ * whole read bounded without a second round trip to find out where to stop.
+ * `LIMIT` bounds the turn count independently, for a session whose turns are
+ * many and short.
+ */
+function dialogueTurns(db: IndexDb, uid: string): PreviewTurn[] {
+  const rows = db.raw().query(`
+    WITH ordered AS (
+      SELECT role, text, ordinal,
+        COALESCE(SUM(length(text)) OVER (
+          ORDER BY ordinal ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+        ), 0) AS before_chars
+      FROM session_turn WHERE uid = ?
+    )
+    SELECT role, substr(text, 1, max(0, ? - before_chars)) AS text
+    FROM ordered
+    WHERE before_chars < ?
+    ORDER BY ordinal
+    LIMIT ?
+  `).all(uid, HISTORY_DB_CHARS, HISTORY_DB_CHARS, HISTORY_TURN_LIMIT) as PreviewTurn[]
+  return rows.filter((turn): turn is PreviewTurn => (
+    (turn.role === 'user' || turn.role === 'assistant') && typeof turn.text === 'string'
+  ))
 }
 
 function previewData(db: IndexDb, uid: string, full: boolean, maxLines: number): PreviewData {
@@ -63,9 +119,23 @@ function previewData(db: IndexDb, uid: string, full: boolean, maxLines: number):
       FROM session_text WHERE uid = ?
     `).get(textChars, proseChars, uid) as
       { prompts: string | null; prose: string | null } | null
-    return { files, prompts: textLines(text?.prompts), prose: textLines(text?.prose) }
+    // Browsing never draws a transcript, so it never pays for one. An index
+    // stamped below schema version 3 has no table to read either.
+    const stats = full && db.schemaVersion() >= TURN_SCHEMA_VERSION
+      ? db.raw().query(`
+        SELECT COUNT(*) AS turns, COALESCE(SUM(length(text)), 0) AS chars
+        FROM session_turn WHERE uid = ?
+      `).get(uid) as { turns: number; chars: number }
+      : { turns: 0, chars: 0 }
+    return {
+      files,
+      prompts: textLines(text?.prompts),
+      prose: textLines(text?.prose),
+      dialogue: stats.turns > 0 ? dialogueTurns(db, uid) : [],
+      dialogueTruncated: stats.turns > HISTORY_TURN_LIMIT || stats.chars > HISTORY_DB_CHARS,
+    }
   } catch {
-    return { files: [], prompts: [], prose: [] }
+    return { files: [], prompts: [], prose: [], dialogue: [], dialogueTruncated: false }
   }
 }
 
@@ -125,7 +195,9 @@ export function buildPreviewLines(
   // the metadata line cut short with the width sitting empty beside it.
   const headWidth = Math.max(12, columns)
   const width = Math.max(12, columns - LABEL_COLUMNS)
-  const { files, prompts, prose } = previewData(db, row.uid, full, maxLines)
+  const { files, prompts, prose, dialogue, dialogueTruncated } = previewData(
+    db, row.uid, full, maxLines,
+  )
   const title = safe(row.title, TITLE_COLUMNS) || '(no title)'
   // The opening prompt usually is the title, so showing both spends a line
   // restating what is already on screen. Compare raw: the two are bounded to
@@ -166,6 +238,35 @@ export function buildPreviewLines(
   }
   if (row.missing) {
     head.push({ text: 'source transcript no longer on disk', color: 'red' })
+  }
+  if (full && dialogueTruncated) {
+    head.push({ text: 'history display capped; indexed dialogue continues', color: 'yellow' })
+  }
+
+  // The opened history is a transcript: who said what, in the order they said
+  // it, opening prompt included even though the title repeats it. A session
+  // indexed before ordered turns existed has none, and falls through to the
+  // grouped blocks below until it is hydrated again.
+  if (full && dialogue.length > 0) {
+    const out = [...head]
+    for (const turn of dialogue) {
+      const lines = textLines(turn.text).flatMap((line) => wrappedDisplayLines(line, width))
+      if (lines.length === 0) continue
+      out.push({ text: '' })
+      lines.forEach((line, index) => out.push({
+        text: line,
+        label: index === 0 ? (turn.role === 'user' ? 'asked' : 'replied') : '',
+        dim: turn.role === 'assistant',
+      }))
+    }
+    if (touched.length > 0) {
+      out.push({ text: '' })
+      touched.forEach((line, index) => out.push({
+        text: boundedPathTail(line, width),
+        label: index === 0 ? 'touched' : '',
+      }))
+    }
+    return out
   }
 
   // Sanitizing is deferred to `render`. Browsing hands a block a few lines out

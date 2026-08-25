@@ -100,6 +100,16 @@ export interface SessionDoc {
   ref: SessionRef
   prompts: string[]
   prose: string[]
+  /**
+   * The same user and assistant text as `prompts` and `prose`, but kept in the
+   * order it was said rather than grouped by speaker.
+   *
+   * The grouped facets are what full-text search ranks and what a handover
+   * quotes, so they stay as they are. Only a transcript-style history needs the
+   * interleaving, and only a reader that can produce it fills this in: optional,
+   * because a format that cannot order its turns must not claim it can.
+   */
+  dialogue?: DialogueTurn[]
   files: string[]
   /**
    * A size cap stopped the read short: the whole file was over `maxFileBytes`,
@@ -116,6 +126,12 @@ export interface SessionDoc {
    * that cannot degrade should not have to say so on every document it builds.
    */
   degraded?: boolean
+}
+
+/** One thing said in a session, by whom, in the order the transcript recorded it. */
+export interface DialogueTurn {
+  role: 'user' | 'assistant'
+  text: string
 }
 
 /**

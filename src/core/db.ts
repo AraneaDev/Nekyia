@@ -1,7 +1,7 @@
 import Database from 'bun:sqlite'
 import { lstatSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { SessionDoc, SessionRef } from '../types'
+import type { DialogueTurn, SessionDoc, SessionRef } from '../types'
 
 /**
  * A session as the index holds it: the discovered reference, whether its source
@@ -21,9 +21,16 @@ export interface FtsHit {
   score: number
 }
 
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 /** The oldest stamped schema this build still opens. Older indexes are migrated up to SCHEMA_VERSION. */
 const MIN_SCHEMA_VERSION = 1
+/**
+ * The version that introduced `session_turn`.
+ *
+ * Read wherever the table's existence is in question rather than assumed: an
+ * index opened by a path that cannot migrate may still be stamped below this.
+ */
+export const TURN_SCHEMA_VERSION = 3
 /** How long a statement waits for another process's lock; SQLite otherwise gives up instantly. */
 const BUSY_TIMEOUT_MS = 5_000
 
@@ -87,8 +94,10 @@ const SCHEMA_V1 = `
  * which is what keeps a freshly created database column-for-column identical to
  * a migrated one.
  *
- * Adding version 3 means adding a `3:` step here, a `3:` entry to
- * SESSION_COLUMNS, and raising SCHEMA_VERSION. Nothing else changes.
+ * Adding version 4 means adding a `4:` step here, a `4:` entry to
+ * SESSION_COLUMNS, and raising SCHEMA_VERSION. A step that adds a table rather
+ * than a column repeats the previous SESSION_COLUMNS entry and adds the table
+ * to `validateExistingSchema` behind the version that introduced it.
  */
 const MIGRATIONS: Record<number, (db: Database) => void> = {
   1: (db) => { db.exec(SCHEMA_V1) },
@@ -96,6 +105,21 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
   // whatever `truncated` they were stamped with and start out not degraded.
   // The next hydration of each session writes the split values.
   2: (db) => { db.exec('ALTER TABLE session ADD COLUMN degraded INTEGER NOT NULL DEFAULT 0') },
+  // Ordered dialogue, which the grouped `session_text` facets cannot express.
+  // Sessions indexed before this step have no turns until they are hydrated
+  // again, and the history view falls back to the grouped facets for them.
+  3: (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS session_turn (
+        uid TEXT NOT NULL,
+        ordinal INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        text TEXT NOT NULL,
+        PRIMARY KEY (uid, ordinal)
+      );
+      CREATE INDEX IF NOT EXISTS session_turn_uid_idx ON session_turn(uid);
+    `)
+  },
 }
 
 const SESSION_COLUMNS_V1 = [
@@ -113,6 +137,8 @@ const SESSION_COLUMNS_V1 = [
 const SESSION_COLUMNS: Record<number, string[]> = {
   1: SESSION_COLUMNS_V1,
   2: [...SESSION_COLUMNS_V1, 'degraded'],
+  // Version 3 added the `session_turn` table, not a `session` column.
+  3: [...SESSION_COLUMNS_V1, 'degraded'],
 }
 
 /**
@@ -311,10 +337,10 @@ export class IndexDb {
   /**
    * Checks that a file really is a Nekyia index at a version this build reads.
    *
-   * The column list is the one that version leaves behind rather than the
-   * newest one, so an index a migrating command has not reached yet is
-   * recognised instead of being rejected as foreign. Returns the version it
-   * validated against.
+   * The column list, and the set of tables, are the ones that version leaves
+   * behind rather than the newest ones, so an index a migrating command has not
+   * reached yet is recognised instead of being rejected as foreign. Returns the
+   * version it validated against.
    */
   private static validateExistingSchema(db: Database): number {
     const version = supportedVersion(storedSchemaVersion(db))
@@ -325,6 +351,9 @@ export class IndexDb {
       session_text: ['rowid', 'uid', 'title', 'prompts', 'prose'],
       session_fts: ['title', 'prompts', 'prose'],
       session_file: ['uid', 'path'],
+    }
+    if (version >= TURN_SCHEMA_VERSION) {
+      expected.session_turn = ['uid', 'ordinal', 'role', 'text']
     }
     for (const [table, columns] of Object.entries(expected)) {
       const object = db.query(
@@ -495,8 +524,36 @@ export class IndexDb {
     const insertFile = this.db.query('INSERT INTO session_file (uid, path) VALUES (?, ?)')
     for (const path of new Set(doc.files)) insertFile.run(doc.ref.uid, path)
 
+    this.writeTurns(doc.ref.uid, doc.dialogue)
+
     this.db.query('UPDATE session SET hydrated = 1, truncated = ?, degraded = ? WHERE uid = ?')
       .run(doc.truncated ? 1 : 0, doc.degraded ? 1 : 0, doc.ref.uid)
+  }
+
+  /**
+   * Replaces a session's ordered turns, renumbering them from zero.
+   *
+   * A reader that cannot order its turns passes nothing, which still clears
+   * whatever an earlier hydration left behind: a stale ordering would be read
+   * as this session's history. Turns are validated here rather than trusted,
+   * because a manifest-described format decides what a role is.
+   *
+   * Only writers reach this, and every writing path opens through `open`, which
+   * migrates. The table therefore always exists by the time this runs.
+   */
+  private writeTurns(uid: string, dialogue: DialogueTurn[] | undefined): void {
+    this.db.query('DELETE FROM session_turn WHERE uid = ?').run(uid)
+    if (!Array.isArray(dialogue) || dialogue.length === 0) return
+    const insertTurn = this.db.query(
+      'INSERT INTO session_turn (uid, ordinal, role, text) VALUES (?, ?, ?, ?)',
+    )
+    let ordinal = 0
+    for (const turn of dialogue) {
+      if (!turn) continue
+      if (turn.role !== 'user' && turn.role !== 'assistant') continue
+      if (typeof turn.text !== 'string' || turn.text.length === 0) continue
+      insertTurn.run(uid, ordinal++, turn.role, turn.text)
+    }
   }
 
   upsertDoc(doc: SessionDoc): void {
@@ -584,6 +641,13 @@ export class IndexDb {
       `)
       const deleteText = this.db.query('DELETE FROM session_text WHERE uid = ?')
       const deleteFile = this.db.query('DELETE FROM session_file WHERE uid = ?')
+      // `forget` and `prune` open an older index without migrating it, so the
+      // turn table need not exist. Preparing the statement at all would throw
+      // there and take both commands away from every user who has not
+      // reindexed since version 3.
+      const deleteTurn = storedSchemaVersion(this.db) >= TURN_SCHEMA_VERSION
+        ? this.db.query('DELETE FROM session_turn WHERE uid = ?')
+        : null
       const deleteRef = this.db.query('DELETE FROM session WHERE uid = ?')
 
       for (const value of new Set(values)) {
@@ -593,6 +657,7 @@ export class IndexDb {
           deleteText.run(value)
         }
         deleteFile.run(value)
+        deleteTurn?.run(value)
         deleteRef.run(value)
       }
     })(uids)

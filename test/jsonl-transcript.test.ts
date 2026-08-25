@@ -221,6 +221,10 @@ test('generic hydration indexes and counts only configured user and assistant ro
 
     expect(doc.prompts).toEqual(['safe user'])
     expect(doc.prose).toEqual(['safe assistant'])
+    expect(doc.dialogue).toEqual([
+      { role: 'user', text: 'safe user' },
+      { role: 'assistant', text: 'safe assistant' },
+    ])
     expect(doc.ref.turns).toBe(2)
   })
 })
@@ -284,6 +288,32 @@ test('hydrates Claude prompts and assistant prose', async () => {
   expect(doc.ref.turns).toBe(4)
 })
 
+test('Claude hydration keeps the order the transcript was written in', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'projects', 'p')
+    mkdirSync(directory, { recursive: true })
+    writeJsonl(join(directory, 'order.jsonl'), [
+      { message: { role: 'user', content: 'first question' } },
+      { message: { role: 'assistant', content: 'first answer' } },
+      { message: { role: 'user', content: 'second question' } },
+      { message: { role: 'assistant', content: 'second answer' } },
+    ])
+    const { refs } = await jsonlTranscript.discover(claude, root)
+    const doc = await jsonlTranscript.hydrate(claude, root, refs[0]!, DEFAULT_CONFIG)
+
+    // The grouped facets are what search ranks, and they lose the interleaving.
+    expect(doc.prompts).toEqual(['first question', 'second question'])
+    expect(doc.prose).toEqual(['first answer', 'second answer'])
+    // The dialogue is the only place the conversation survives as a conversation.
+    expect(doc.dialogue).toEqual([
+      { role: 'user', text: 'first question' },
+      { role: 'assistant', text: 'first answer' },
+      { role: 'user', text: 'second question' },
+      { role: 'assistant', text: 'second answer' },
+    ])
+  })
+})
+
 test('Claude hydration does not count empty or tool-only messages as turns', async () => {
   await inTempDir(async (root) => {
     const directory = join(root, 'projects', 'p')
@@ -339,6 +369,9 @@ test('over-cap Claude transcripts keep prompts and facets but drop prose', async
   expect(doc.truncated).toBe(true)
   expect(doc.prompts).toEqual(['fix the sse reconnect race'])
   expect(doc.prose).toEqual([])
+  // Dropped prose is dropped from the transcript too, rather than leaving a
+  // history that reads as if the assistant never answered anything.
+  expect(doc.dialogue).toEqual([{ role: 'user', text: 'fix the sse reconnect race' }])
   expect(doc.files).toContain('/root/proj/src/sse.ts')
 })
 
@@ -365,6 +398,10 @@ test('hydrates only Codex user input_text and assistant output_text', async () =
 
   expect(doc.prompts).toEqual(['rewrite the transport layer'])
   expect(doc.prose).toEqual(['Rewriting transport now.'])
+  expect(doc.dialogue).toEqual([
+    { role: 'user', text: 'rewrite the transport layer' },
+    { role: 'assistant', text: 'Rewriting transport now.' },
+  ])
   expect(doc.ref.turns).toBe(2)
 })
 

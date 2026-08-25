@@ -5,7 +5,7 @@ import { Glob } from 'bun'
 import type { Config } from '../config'
 import type { Manifest } from '../manifests/load'
 import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
-import type { Diagnostic, SessionDoc, SessionRef } from '../types'
+import type { Diagnostic, DialogueTurn, SessionDoc, SessionRef } from '../types'
 import { collectPaths } from './paths'
 import { userPromptText } from '../render'
 
@@ -767,6 +767,7 @@ function hydrateClaude(
   overCap: boolean,
   prompts: string[],
   prose: string[],
+  dialogue: DialogueTurn[],
   files: Set<string>,
   onFilesTruncated: () => void,
 ): number {
@@ -786,9 +787,13 @@ function hydrateClaude(
     const asked = userPromptText(text)
     if (!asked) return 0
     prompts.push(asked)
+    dialogue.push({ role: 'user', text: asked })
   } else {
     if (!text) return 0
-    if (!overCap) prose.push(text)
+    if (!overCap) {
+      prose.push(text)
+      dialogue.push({ role: 'assistant', text })
+    }
   }
   return 1
 }
@@ -798,6 +803,7 @@ function hydrateCodex(
   overCap: boolean,
   prompts: string[],
   prose: string[],
+  dialogue: DialogueTurn[],
   files: Set<string>,
   onFilesTruncated: () => void,
 ): number {
@@ -824,12 +830,16 @@ function hydrateCodex(
     const text = userPromptText(codexInputText(payload.content))
     if (!text) return 0
     prompts.push(text)
+    dialogue.push({ role: 'user', text })
     return 1
   }
   if (payload.role === 'assistant') {
     const text = textOfType(payload.content, 'output_text')
     if (!text) return 0
-    if (!overCap && text) prose.push(text)
+    if (!overCap) {
+      prose.push(text)
+      dialogue.push({ role: 'assistant', text })
+    }
     return 1
   }
   return 0
@@ -840,6 +850,7 @@ function hydrateGeneric(
   overCap: boolean,
   prompts: string[],
   prose: string[],
+  dialogue: DialogueTurn[],
   userRoles: Set<string>,
   assistantRoles: Set<string>,
   rolePath: string | undefined,
@@ -852,9 +863,13 @@ function hydrateGeneric(
     const asked = userPromptText(text)
     if (!asked) return 0
     prompts.push(asked)
+    dialogue.push({ role: 'user', text: asked })
   }
   else if (assistantRoles.has(role)) {
-    if (!overCap) prose.push(text)
+    if (!overCap) {
+      prose.push(text)
+      dialogue.push({ role: 'assistant', text })
+    }
   } else return 0
   return 1
 }
@@ -919,6 +934,8 @@ export const jsonlTranscript: FormatModule = {
     const overCap = (await Bun.file(path).stat()).size > config.maxFileBytes
     const prompts: string[] = []
     const prose: string[] = []
+    // The same text as `prompts` and `prose`, kept in the order it was said.
+    const dialogue: DialogueTurn[] = []
     const files = new Set<string>()
     const generic = manifest.jsonl.generic
     const genericUserRoles = new Set(generic?.userRoles ?? ['user', 'human'])
@@ -929,14 +946,15 @@ export const jsonlTranscript: FormatModule = {
 
     const oversizedRow = await rowsFromStream(path, (row) => {
       turns += manifest.jsonl.variant === 'claude'
-        ? hydrateClaude(row, overCap, prompts, prose, files, onFilesTruncated)
+        ? hydrateClaude(row, overCap, prompts, prose, dialogue, files, onFilesTruncated)
         : manifest.jsonl.variant === 'codex'
-          ? hydrateCodex(row, overCap, prompts, prose, files, onFilesTruncated)
+          ? hydrateCodex(row, overCap, prompts, prose, dialogue, files, onFilesTruncated)
           : hydrateGeneric(
             row,
             overCap,
             prompts,
             prose,
+            dialogue,
             genericUserRoles,
             genericAssistantRoles,
             generic?.rolePath,
@@ -948,6 +966,7 @@ export const jsonlTranscript: FormatModule = {
       ref: { ...ref, turns },
       prompts,
       prose,
+      dialogue,
       files: [...files],
       truncated: overCap || oversizedRow || filesTruncated,
     }
