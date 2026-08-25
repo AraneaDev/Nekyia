@@ -6,7 +6,7 @@ import type { Config } from '../config'
 import type { Manifest } from '../manifests/load'
 import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
 import type { Diagnostic, DialogueTurn, SessionDoc, SessionRef } from '../types'
-import { collectPaths } from './paths'
+import { collectPatchPaths, collectPaths } from './paths'
 import { userPromptText } from '../render'
 
 const HEAD_BYTES = 16 * 1024
@@ -148,15 +148,17 @@ function parsedTimestamp(value: unknown, unit?: 'ms' | 's' | 'iso'): number | nu
 /**
  * Adds the paths one tool call mentions, up to the per-session ceiling.
  *
- * Stopping silently would offer a partial file list as a complete one, so
- * reaching the ceiling is reported exactly as the other readers report it.
+ * Every reader of a tool call funnels its paths through here, whatever grammar
+ * they were read out of, so the ceiling is enforced in one place. Stopping
+ * silently would offer a partial file list as a complete one, so reaching it is
+ * reported exactly as the other readers report it.
  */
 function addRecoveredPaths(
   files: Set<string>,
-  input: unknown,
+  paths: readonly string[],
   onTruncated: () => void,
 ): void {
-  for (const path of collectPaths(input)) {
+  for (const path of paths) {
     if (files.size >= MAX_SESSION_FILES) {
       onTruncated()
       return
@@ -778,7 +780,7 @@ function hydrateClaude(
   if (Array.isArray(message.content)) {
     for (const block of message.content) {
       if (isObject(block) && block.type === 'tool_use') {
-        addRecoveredPaths(files, block.input, onFilesTruncated)
+        addRecoveredPaths(files, collectPaths(block.input), onFilesTruncated)
       }
     }
   }
@@ -818,10 +820,23 @@ function hydrateCodex(
   if (payload.type === 'function_call') {
     if (typeof payload.arguments === 'string') {
       try {
-        addRecoveredPaths(files, JSON.parse(payload.arguments) as unknown, onFilesTruncated)
+        const parsed: unknown = JSON.parse(payload.arguments)
+        addRecoveredPaths(files, collectPaths(parsed), onFilesTruncated)
       } catch {
         // Malformed tool arguments have no indexable content.
       }
+    }
+    return 0
+  }
+  if (payload.type === 'custom_tool_call') {
+    // Current Codex records a file edit as the patch body of a custom call
+    // instead of as JSON arguments, so the structured walk above never sees it.
+    // Only the call's own input is read: `custom_tool_call_output` is tool
+    // output and is left out of the index like every other tool result, and
+    // even here nothing but the file names reaches searchable text.
+    if (typeof payload.input === 'string') {
+      const name = typeof payload.name === 'string' ? payload.name : undefined
+      addRecoveredPaths(files, collectPatchPaths(payload.input, name), onFilesTruncated)
     }
     return 0
   }

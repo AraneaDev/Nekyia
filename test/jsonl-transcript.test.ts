@@ -12,8 +12,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
 import { jsonlTranscript } from '../src/formats/jsonl-transcript'
-import { collectPaths } from '../src/formats/paths'
+import { collectPatchPaths, collectPaths } from '../src/formats/paths'
 import { validateManifest } from '../src/manifests/load'
+import { MAX_SESSION_FILES } from '../src/types'
 
 const fixtures = join(import.meta.dir, 'fixtures')
 
@@ -97,6 +98,71 @@ test('collectPaths recursively finds path fields and ignores ordinary strings', 
     'My File.ts',
     'relative dir/file.ts',
   ])
+})
+
+test('collectPatchPaths reads the three file headers of a bare apply_patch body', () => {
+  const patch = [
+    '*** Begin Patch',
+    '*** Update File: /root/proj/src/updated.ts',
+    '@@ -1,4 +1,4 @@',
+    '-const old = 1',
+    '+const fresh = 2',
+    '*** Add File: /root/proj/src/added.ts',
+    '+SECRET_PATCH_CONTENT',
+    '*** Delete File: relative/old.ts',
+    '*** End Patch',
+  ].join('\n')
+
+  // The body of a real patch call never spells the command that made it, which
+  // is why the call's own name has to be enough to let it through.
+  expect(patch).not.toContain('apply_patch')
+  expect(collectPatchPaths(patch, 'apply_patch').sort()).toEqual([
+    '/root/proj/src/added.ts',
+    '/root/proj/src/updated.ts',
+    'relative/old.ts',
+  ])
+  expect(collectPatchPaths(patch)).toEqual([])
+})
+
+test('collectPatchPaths ignores hunks, patch content and ordinary path mentions', () => {
+  expect(collectPatchPaths([
+    '*** Begin Patch',
+    '@@ /root/proj/src/hunk.ts @@',
+    '+import { added } from "/root/proj/src/imported.ts"',
+    '-const removed = "/root/proj/src/removed.ts"',
+    ' *** Update File: /root/proj/src/indented.ts',
+    'see also /root/proj/src/mentioned.ts',
+    '*** Move File: /root/proj/src/moved.ts',
+    '*** Update File: not a filesystem target',
+    '*** End Patch',
+  ].join('\n'), 'apply_patch')).toEqual([])
+})
+
+test('collectPatchPaths reads an embedded patch only when the call drives the bridge', () => {
+  const source = [
+    'const patch = "*** Begin Patch\\n*** Add File: /root/proj/Dockerfile\\n'
+    + '+RUN chmod 0755 /opt/bin \\\\\\n*** Update File: /root/proj/src/continued.ts\\n+SECRET";',
+    'text("also wrote /root/proj/src/not-touched.ts");',
+  ].join('\n')
+
+  expect(collectPatchPaths(`${source}\nawait tools.apply_patch(patch);`, 'exec').sort()).toEqual([
+    '/root/proj/Dockerfile',
+    '/root/proj/src/continued.ts',
+  ])
+  expect(collectPatchPaths(`${source}\nawait tools.write_file(patch);`, 'exec')).toEqual([])
+})
+
+test('collectPatchPaths bounds the body it reads and the paths it returns', () => {
+  expect(collectPatchPaths('*** Add File: /root/proj/src/kept.ts', 'apply_patch'))
+    .toEqual(['/root/proj/src/kept.ts'])
+  expect(collectPatchPaths(
+    `*** Add File: /root/proj/src/kept.ts\n${'x'.repeat(1024 * 1024)}`,
+    'apply_patch',
+  )).toEqual([])
+  expect(collectPatchPaths(`*** Add File: /root/${'a'.repeat(4096)}.ts`, 'apply_patch')).toEqual([])
+  // A bare body is read verbatim, so a Windows path keeps its own separators.
+  expect(collectPatchPaths('*** Update File: C:\\new\\thing.ts', 'apply_patch'))
+    .toEqual(['C:\\new\\thing.ts'])
 })
 
 test('discover rejects empty native IDs for every JSONL variant', async () => {
@@ -559,6 +625,41 @@ test('Codex hydration excludes developer and tool output while extracting tool p
       {
         type: 'response_item',
         payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          input: [
+            '*** Begin Patch',
+            '*** Update File: /root/proj/src/patched.ts',
+            '+PATCH_BODY_SECRET',
+            '*** End Patch',
+          ].join('\n'),
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'exec',
+          input: [
+            'const patch = "*** Begin Patch\\n*** Add File: /root/proj/src/scripted.ts\\n+MORE_SECRET";',
+            'await tools.apply_patch(patch);',
+            'ordinary mention /root/proj/src/not-touched.ts',
+          ].join('\n'),
+        },
+      },
+      {
+        // Tool output is never read, whatever it happens to spell: this row is
+        // given both the field a real output row has and the one a call has.
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call_output',
+          output: 'CUSTOM_TOOL_OUTPUT_SECRET\n*** Add File: /root/proj/src/from-output.ts',
+          input: '*** Add File: /root/proj/src/from-output-input.ts',
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
           type: 'message',
           role: 'user',
           content: [{ type: 'input_text', text: 'safe prompt' }],
@@ -581,13 +682,121 @@ test('Codex hydration excludes developer and tool output while extracting tool p
     })
     const { refs } = await jsonlTranscript.discover(manifest, root)
     const doc = await jsonlTranscript.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
-    const indexed = [...doc.prompts, ...doc.prose].join('\n')
+    const indexed = [
+      ...doc.prompts,
+      ...doc.prose,
+      ...(doc.dialogue ?? []).map((turn) => turn.text),
+    ].join('\n')
 
     expect(doc.prompts).toEqual(['safe prompt'])
     expect(doc.prose).toEqual(['safe prose'])
-    expect(doc.files).toContain('/root/proj/src/tool.ts')
+    expect(doc.files.sort()).toEqual([
+      '/root/proj/src/patched.ts',
+      '/root/proj/src/scripted.ts',
+      '/root/proj/src/tool.ts',
+    ])
     expect(indexed).not.toContain('DEVELOPER_SECRET')
     expect(indexed).not.toContain('TOOL_OUTPUT_SECRET')
+    expect(indexed).not.toContain('PATCH_BODY_SECRET')
+    expect(indexed).not.toContain('MORE_SECRET')
+    expect(indexed).not.toContain('CUSTOM_TOOL_OUTPUT_SECRET')
+    expect(indexed).not.toContain('*** Update File:')
+  })
+})
+
+test('Codex custom patch calls honour the per-session file ceiling', async () => {
+  await inTempDir(async (root) => {
+    const path = join(root, 'codex.jsonl')
+    const headers = Array.from(
+      { length: MAX_SESSION_FILES + 40 },
+      (_, index) => `*** Add File: /root/proj/src/f${index}.ts`,
+    )
+    writeJsonl(path, [
+      {
+        timestamp: '2026-08-02T09:00:00.000Z',
+        type: 'session_meta',
+        payload: { session_id: 'codex-ceiling', cwd: '/root/proj' },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          input: ['*** Begin Patch', ...headers, '*** End Patch'].join('\n'),
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'safe prompt' }],
+        },
+      },
+    ])
+    const manifest = validateManifest({
+      ...codex,
+      tier: 'search',
+      resume: undefined,
+      jsonl: { glob: 'codex.jsonl', variant: 'codex' },
+    })
+    const { refs } = await jsonlTranscript.discover(manifest, root)
+    const doc = await jsonlTranscript.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
+
+    expect(doc.files).toHaveLength(MAX_SESSION_FILES)
+    expect(doc.truncated).toBe(true)
+    expect(doc.prompts).toEqual(['safe prompt'])
+  })
+})
+
+test('Codex custom patch calls refuse an oversized call body', async () => {
+  await inTempDir(async (root) => {
+    const path = join(root, 'codex.jsonl')
+    writeJsonl(path, [
+      {
+        timestamp: '2026-08-02T09:00:00.000Z',
+        type: 'session_meta',
+        payload: { session_id: 'codex-oversized-call', cwd: '/root/proj' },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          input: `*** Add File: /root/proj/src/oversized.ts\n+${'x'.repeat(1024 * 1024)}`,
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          input: '*** Add File: /root/proj/src/bounded.ts',
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'safe prompt' }],
+        },
+      },
+    ])
+    const manifest = validateManifest({
+      ...codex,
+      tier: 'search',
+      resume: undefined,
+      jsonl: { glob: 'codex.jsonl', variant: 'codex' },
+    })
+    const { refs } = await jsonlTranscript.discover(manifest, root)
+    const doc = await jsonlTranscript.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
+
+    // The row after it is still read, so the bound drops one call, not the rest
+    // of the session.
+    expect(doc.files).toEqual(['/root/proj/src/bounded.ts'])
+    expect(doc.prompts).toEqual(['safe prompt'])
+    expect(doc.truncated).toBe(false)
   })
 })
 
