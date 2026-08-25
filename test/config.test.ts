@@ -1,5 +1,13 @@
 import { expect, test, beforeEach, afterEach } from 'bun:test'
-import { configDir, dataDir, indexPath, loadConfig, isExcluded, DEFAULT_CONFIG } from '../src/config'
+import {
+  configDir,
+  dataDir,
+  indexPath,
+  loadConfig,
+  isExcluded,
+  updateConfig,
+  DEFAULT_CONFIG,
+} from '../src/config'
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -69,9 +77,28 @@ test('uses defaults for config fields with invalid types', () => {
     halfLifeDays: 'fourteen',
     maxFileBytes: 'large',
     hiddenClients: ['valid', 42],
-    showSniffed: 'yes',
   }))
   expect(loadConfig()).toEqual(DEFAULT_CONFIG)
+})
+
+test('a config written by an older version still loads and still updates', async () => {
+  // showSniffed was retired. A config that still carries it must keep working:
+  // a normal load ignores it, and the strict read behind `nekyia exclude` must
+  // not reject the whole file over a key Nekyia itself once wrote.
+  mkdirSync(configDir(), { recursive: true })
+  writeFileSync(join(configDir(), 'config.json'), JSON.stringify({
+    halfLifeDays: 30,
+    showSniffed: true,
+  }))
+  const loaded = loadConfig()
+  expect(loaded.halfLifeDays).toBe(30)
+  expect('showSniffed' in loaded).toBe(false)
+
+  const updated = await updateConfig((config) => ({ ...config, halfLifeDays: 7 }))
+  expect(updated.halfLifeDays).toBe(7)
+  // The retired key is dropped on the way out rather than carried forever.
+  expect('showSniffed' in updated).toBe(false)
+  expect(loadConfig().halfLifeDays).toBe(7)
 })
 
 test('preserves finite numeric config values regardless of sign', () => {

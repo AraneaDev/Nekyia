@@ -58,7 +58,7 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
   const queryConfig = useMemo<Config>(() => ({
     ...cfg,
     hiddenClients: JSON.parse(hiddenClientsKey) as string[],
-  }), [cfg.halfLifeDays, cfg.showSniffed, hiddenClientsKey])
+  }), [cfg.halfLifeDays, hiddenClientsKey])
 
   const found = useMemo(
     () => query(db, queryConfig, {

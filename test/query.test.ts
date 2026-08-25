@@ -171,10 +171,11 @@ test('orphan siblings can collapse through their absent parent', () => {
 
 test('filtered parents still connect visible descendants without inflating collapsed count', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:root', nativeId: 'root', origin: 'sniffed', endedAt: NOW - 2 * DAY })
+  seed(db, { uid: 'claude:root', nativeId: 'root', endedAt: NOW - 2 * DAY })
   seed(db, { uid: 'claude:left', nativeId: 'left', parentNativeId: 'root', endedAt: NOW - DAY })
   seed(db, { uid: 'claude:right', nativeId: 'right', parentNativeId: 'root', endedAt: NOW })
-  const rows = query(db, { ...DEFAULT_CONFIG, showSniffed: false }, { now: NOW })
+  db.markMissing(['claude:root'])
+  const rows = query(db, DEFAULT_CONFIG, { now: NOW })
   expect(rows.map((r) => [r.uid, r.collapsed])).toEqual([['claude:right', 1]])
   db.close()
 })
@@ -189,19 +190,20 @@ test('duplicate native IDs do not overwrite rows or create ambiguous parent edge
   db.close()
 })
 
-test('missing, sniffed, client, hidden-client, and file filters compose', () => {
+test('missing, client, hidden-client, and file filters compose', () => {
   const db = IndexDb.open(':memory:')
   seed(db, { uid: 'claude:gone', nativeId: 'gone' }, { files: ['src/shared.ts'] })
   db.markMissing(['claude:gone'])
-  seed(db, { uid: 'codex:sniffed', client: 'codex', nativeId: 'sniffed', origin: 'sniffed' }, { files: ['src/shared.ts'] })
+  seed(db, { uid: 'codex:shared', client: 'codex', nativeId: 'shared' }, { files: ['src/shared.ts'] })
   seed(db, { uid: 'codex:shown', client: 'codex', nativeId: 'shown' }, { files: ['src/other.ts'] })
 
-  expect(query(db, { ...DEFAULT_CONFIG, showSniffed: false }, { file: 'shared', now: NOW })).toEqual([])
+  expect(query(db, DEFAULT_CONFIG, { file: 'shared', now: NOW }).map((r) => r.uid))
+    .toEqual(['codex:shared'])
   expect(query(db, DEFAULT_CONFIG, {
-    file: 'shared', client: 'codex', includeMissing: true, includeSniffed: true, now: NOW,
-  }).map((r) => r.uid)).toEqual(['codex:sniffed'])
+    file: 'shared', client: 'codex', includeMissing: true, now: NOW,
+  }).map((r) => r.uid)).toEqual(['codex:shared'])
   expect(query(db, { ...DEFAULT_CONFIG, hiddenClients: ['codex'] }, {
-    includeMissing: true, includeSniffed: true, now: NOW,
+    includeMissing: true, now: NOW,
   }).map((r) => r.uid)).toEqual(['claude:gone'])
   db.close()
 })
@@ -219,12 +221,11 @@ test('limit has explicit zero and negative semantics and applies after collapse'
 
 test('invalid runtime option and config values degrade safely', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:a', nativeId: 'a', origin: 'sniffed', title: 'needle' })
+  seed(db, { uid: 'claude:a', nativeId: 'a', title: 'needle' })
   const badCfg = {
     ...DEFAULT_CONFIG,
     halfLifeDays: Number.NaN,
     hiddenClients: null,
-    showSniffed: 'yes',
   } as unknown as Config
   const badOpts = {
     text: 42,
@@ -235,7 +236,9 @@ test('invalid runtime option and config values degrade safely', () => {
     limit: Number.NaN,
     now: Number.POSITIVE_INFINITY,
   } as never
+  // Every unusable value is ignored rather than thrown on or read as a filter,
+  // so the search still answers with the sessions the index holds.
   expect(() => query(db, badCfg, badOpts)).not.toThrow()
-  expect(query(db, badCfg, badOpts).map((r) => r.uid)).toEqual([])
+  expect(query(db, badCfg, badOpts).map((r) => r.uid)).toEqual(['claude:a'])
   db.close()
 })
