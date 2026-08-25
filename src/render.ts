@@ -1,4 +1,5 @@
 import type { Row } from './core/query'
+import { boundedDisplayText } from './tui/List'
 
 const MIN = 60_000
 const HOUR = 3_600_000
@@ -30,15 +31,39 @@ export function tierGlyph(tier: string): string {
   return tier === 'resume' ? '*' : 'o'
 }
 
-/** Renders one search result as a fixed-width terminal line. */
+/** Width of the project column, in terminal columns rather than code units. */
+const PROJECT_COLUMNS = 16
+/**
+ * Width the title may claim. The columns before it cost 38, so 120 keeps a full
+ * row inside a wide terminal while leaving room for a title worth reading, and
+ * it bounds a transcript that opens with a whole pasted file.
+ */
+const TITLE_COLUMNS = 120
+
+/** Pads to a terminal width; `padEnd` counts code units, which a wide character breaks. */
+function padColumns(value: string, columns: number): string {
+  return value + ' '.repeat(Math.max(0, columns - Bun.stringWidth(value)))
+}
+
+/**
+ * Renders one search result as a fixed-width terminal line.
+ *
+ * Titles and project names come from indexed transcripts, so they reach the
+ * terminal only through `boundedDisplayText`: an escape sequence or a bidi
+ * override in a pasted prompt would otherwise clear the screen or reverse the
+ * line. Bounding by display width rather than code units is also what keeps
+ * the project column aligned when the name is CJK or carries an emoji.
+ */
 export function formatRow(row: Row, now: number = Date.now()): string {
   const suffix = row.collapsed ? `  +${row.collapsed}` : ''
+  const project = boundedDisplayText(projectName(row.cwd), PROJECT_COLUMNS)
+  const title = boundedDisplayText(row.title ?? '(no title)', TITLE_COLUMNS)
   return [
     tierGlyph(row.tier),
     row.client.padEnd(9),
     relTime(row.endedAt, now).padStart(4),
-    projectName(row.cwd).padEnd(16).slice(0, 16),
-    (row.title ?? '(no title)') + suffix,
+    padColumns(project, PROJECT_COLUMNS),
+    title + suffix,
   ].join('  ')
 }
 
