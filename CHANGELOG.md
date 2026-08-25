@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.0.7](https://github.com/AraneaDev/Nekyia/compare/v0.0.6...v0.0.7) (2026-08-25)
+
+
+### Features
+
+* **doctor:** tell a size cap apart from an unreadable transcript ([aa15d4f](https://github.com/AraneaDev/Nekyia/commit/aa15d4f3c2d14b2376d4c3d10bc46f4ace091b44))
+
+
+### Fixes
+
+* **brief:** say what the handover left out ([f17b9b4](https://github.com/AraneaDev/Nekyia/commit/f17b9b49ecad740672bf5fa360c5617a1f9a17f8))
+* **config:** cover a directory's children, and recover an abandoned guard ([25a6b75](https://github.com/AraneaDev/Nekyia/commit/25a6b75cf013348429a12a9d6331af9c65bce0a0))
+* **db:** wait for a concurrent writer instead of failing at once ([ab7df5d](https://github.com/AraneaDev/Nekyia/commit/ab7df5de9ff915e26deb81dfd14ed10c8797c6ed))
+* **formats:** charge bytes once, bound recovered paths, and reject unusable ids ([1885f30](https://github.com/AraneaDev/Nekyia/commit/1885f30c3388afc5148a155ac3c92187b5642dc5))
+* **formats:** reject an unsafe id taken from a Claude transcript filename ([03db389](https://github.com/AraneaDev/Nekyia/commit/03db3890e6b65c31190256d7886fc1b1544ba19c))
+* **index:** stop a failed hydration from erasing a session ([953c43e](https://github.com/AraneaDev/Nekyia/commit/953c43ea13f4d9ed9fe683575d6cc163a15051a7))
+* **privacy:** delete excluded sessions instead of only flagging them ([4d085e2](https://github.com/AraneaDev/Nekyia/commit/4d085e252af989cbafe289f483c6ac0a98196b7a))
+* **resume:** hand the terminal's signals to the launched client ([fe9536f](https://github.com/AraneaDev/Nekyia/commit/fe9536f6bc5ca56710562168df4b1f914d364f07))
+* **search:** sanitize session titles before printing them ([ee496f6](https://github.com/AraneaDev/Nekyia/commit/ee496f65e2733cae0466783f06759087569031a2))
+* **tui:** keep the picker honest about what it is showing ([a51ae01](https://github.com/AraneaDev/Nekyia/commit/a51ae01f9a430fc569dee751650b9de26bd6d660))
+
+
+### Performance
+
+* **cli:** keep ink off the startup path of the plain commands ([0e6deed](https://github.com/AraneaDev/Nekyia/commit/0e6deed1db73427244c0f782e947eca59c9a619d))
+* **search:** stop parsing provenance the search path never reads ([475e66d](https://github.com/AraneaDev/Nekyia/commit/475e66d30a13b3653e454023704547e1b5450bb2))
+
+
+### Tests
+
+* cover the error paths the command layer reports through ([51e805e](https://github.com/AraneaDev/Nekyia/commit/51e805e3b0b005b533c70f06d2c46a1909f6786a))
+* resolve temporary roots so macOS symlinks do not fail two tests ([b68e472](https://github.com/AraneaDev/Nekyia/commit/b68e4721331e53eed6e18c9f335cb13dfb252e50))
+
+
+### Continuous integration
+
+* require a conventional pull request title ([f6ab49e](https://github.com/AraneaDev/Nekyia/commit/f6ab49e6553a382b57cf695f6cc88f4e773f25ef))
+
+
+### Refactoring
+
+* **config:** drop an origin and a setting nothing could reach ([06f7530](https://github.com/AraneaDev/Nekyia/commit/06f7530e3df9cd838e10edd7dd41c92fcb00a31a))
+
 ## [0.0.6](https://github.com/AraneaDev/Nekyia/compare/v0.0.5...v0.0.6) (2026-08-24)
 
 
