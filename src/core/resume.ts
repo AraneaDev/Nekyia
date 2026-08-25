@@ -16,9 +16,18 @@ interface SpawnOptions {
   stderr: 'inherit'
 }
 
+/**
+ * A spawned child. `kill` is optional because test doubles stand in for a real
+ * subprocess and only have to supply what the caller reads back.
+ */
+interface SpawnedProcess {
+  exited: Promise<number>
+  kill?(signal?: number | NodeJS.Signals): void
+}
+
 /** The process launcher, injectable so tests can observe a spawn without running one. */
 export interface RunIo {
-  spawn(command: string[], options: SpawnOptions): { exited: Promise<number> }
+  spawn(command: string[], options: SpawnOptions): SpawnedProcess
 }
 
 function executableAt(path: string): boolean {
@@ -91,6 +100,40 @@ function releaseStdin(): void {
 }
 
 /**
+ * Hands SIGINT and SIGTERM to the child for as long as it runs, and returns the
+ * undo.
+ *
+ * The child is not detached, so it shares this process group. Ctrl-C at the tty
+ * is therefore delivered to the whole group, and the child already has the
+ * signal before this handler runs; forwarding it would deliver it twice. What
+ * the handler is for is the default the runtime would otherwise apply, which is
+ * to terminate this process at once. Agent CLIs read SIGINT as "cancel this
+ * generation" rather than "quit", so dying on the first Ctrl-C hands the shell
+ * its prompt back while the client is still alive, still in raw mode and still
+ * repainting the same terminal. Ignoring the signal keeps the wrapper waiting
+ * until the child decides it is done.
+ *
+ * SIGTERM is the mirror image. `kill <nekyia-pid>` addresses this process
+ * alone, never the group, so nothing reaches the child unless it is passed on,
+ * and the wrapper would exit leaving the client orphaned. The child may have
+ * exited between the signal arriving and the kill, so the kill is guarded.
+ */
+function holdSignals(proc: SpawnedProcess): () => void {
+  const ignoreInterrupt = (): void => {
+    // Deliberately empty: see above, the child already got this from the tty.
+  }
+  const forwardTerminate = (): void => {
+    try { proc.kill?.('SIGTERM') } catch { /* the child may already be gone */ }
+  }
+  process.on('SIGINT', ignoreInterrupt)
+  process.on('SIGTERM', forwardTerminate)
+  return () => {
+    process.off('SIGINT', ignoreInterrupt)
+    process.off('SIGTERM', forwardTerminate)
+  }
+}
+
+/**
  * Spawns the client with inherited stdio and returns its exact process status.
  * The caller must tear down any TUI first: the child owns the terminal.
  */
@@ -104,7 +147,12 @@ export async function runPlan(plan: ExecPlan, io: RunIo = defaultIo): Promise<nu
     stdout: 'inherit',
     stderr: 'inherit',
   })
-  return await proc.exited
+  const releaseSignals = holdSignals(proc)
+  try {
+    return await proc.exited
+  } finally {
+    releaseSignals()
+  }
 }
 
 function quote(value: string): string {
