@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { IndexDb } from '../src/core/db'
-import type { SessionRef, SessionDoc } from '../src/types'
+import type { DialogueTurn, SessionRef, SessionDoc } from '../src/types'
 
 function ref(over: Partial<SessionRef> = {}): SessionRef {
   return {
@@ -43,6 +43,51 @@ test('re-hydrating replaces old text rather than duplicating it', () => {
 test('files are stored as a separate facet', () => {
   const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r); db.upsertDoc(doc(r))
   expect(db.uidsTouchingFile('src/sse')).toEqual(['claude:abc']); db.close()
+})
+test('ordered dialogue is stored, renumbered, replaced and deleted with the session', () => {
+  const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
+  // A manifest decides what a role is, so a role the index does not know, and a
+  // turn with nothing in it, are both dropped without leaving a gap in the
+  // ordinals.
+  const mixed = [
+    { role: 'user', text: 'first question' },
+    { role: 'system', text: 'ignored' },
+    { role: 'assistant', text: '' },
+    { role: 'assistant', text: 'first answer' },
+  ] as unknown as DialogueTurn[]
+  db.upsertDoc(doc(r, { dialogue: mixed }))
+  expect(db.raw().query('SELECT ordinal, role, text FROM session_turn ORDER BY ordinal').all()).toEqual([
+    { ordinal: 0, role: 'user', text: 'first question' },
+    { ordinal: 1, role: 'assistant', text: 'first answer' },
+  ])
+
+  db.upsertDoc(doc(r, { dialogue: [{ role: 'user', text: 'replacement question' }] }))
+  expect(db.raw().query('SELECT role, text FROM session_turn ORDER BY ordinal').all()).toEqual([
+    { role: 'user', text: 'replacement question' },
+  ])
+
+  // A reader that stops producing turns must not leave the old ones behind.
+  db.upsertDoc(doc(r))
+  expect(db.raw().query('SELECT * FROM session_turn').all()).toEqual([])
+
+  db.upsertDoc(doc(r, { dialogue: [{ role: 'assistant', text: 'back again' }] }))
+  db.deleteSession(r.uid)
+  expect(db.raw().query('SELECT * FROM session_turn').all()).toEqual([])
+  db.close()
+})
+test('a failed replacement rolls the ordered dialogue back with everything else', () => {
+  const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
+  db.upsertDoc(doc(r, { dialogue: [{ role: 'user', text: 'the original turn' }] }))
+  db.raw().exec(`CREATE TRIGGER fail_turn_replacement BEFORE INSERT ON session_text
+    WHEN NEW.prompts LIKE '%different%' BEGIN SELECT RAISE(FAIL, 'replacement failed'); END`)
+  expect(() => db.upsertDoc(doc(r, {
+    prompts: ['totally different words'],
+    dialogue: [{ role: 'user', text: 'the replacement turn' }],
+  }))).toThrow('replacement failed')
+  expect(db.raw().query('SELECT role, text FROM session_turn ORDER BY ordinal').all()).toEqual([
+    { role: 'user', text: 'the original turn' },
+  ])
+  db.close()
 })
 test('deleteSession removes the row, its text and its files', () => {
   const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r); db.upsertDoc(doc(r)); db.deleteSession('claude:abc')
@@ -127,11 +172,11 @@ test('open rejects a newer schema version without overwriting it', () => {
   try {
     const raw=new Database(path, { create: true })
     raw.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)')
-    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '3')
+    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '4')
     raw.close()
-    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 3')
+    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 4')
     const check=new Database(path)
-    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '3' })
+    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '4' })
     check.close()
   } finally {
     opened?.close(); rmSync(dir, { recursive: true, force: true })
@@ -206,6 +251,15 @@ const V1_SCHEMA = `
   CREATE INDEX session_file_path_idx ON session_file(path);
 `
 
+/**
+ * The schema exactly as version 2 shipped it: version 1 plus the one column the
+ * `degraded` step appended. Written out for the same reason V1_SCHEMA is.
+ */
+const V2_SCHEMA = V1_SCHEMA.replace(
+  '    hydrated INTEGER NOT NULL DEFAULT 0\n  );',
+  '    hydrated INTEGER NOT NULL DEFAULT 0,\n    degraded INTEGER NOT NULL DEFAULT 0\n  );',
+)
+
 const V1_COLUMNS = [
   'uid', 'client', 'native_id', 'cwd', 'git_branch', 'title', 'started_at', 'ended_at',
   'turns', 'parent_native_id', 'tier', 'origin', 'source_paths', 'fingerprint', 'missing',
@@ -246,12 +300,52 @@ function writeV1Index(path: string): void {
   }
 }
 
+/** Writes a populated version 2 index by hand, the way the released Nekyia before this change left one on disk. */
+function writeV2Index(path: string): void {
+  const raw = new Database(path, { create: true })
+  try {
+    raw.exec(V2_SCHEMA)
+    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '2')
+    raw.query(`
+      INSERT INTO session (
+        uid, client, native_id, cwd, git_branch, title, started_at, ended_at,
+        turns, parent_native_id, tier, origin, source_paths, fingerprint,
+        missing, truncated, hydrated, degraded
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'claude:two', 'claude', 'two', '/root/proj', 'main', 'An indexed v2 session',
+      1000, 2000, 9, null, 'resume', 'manifest', JSON.stringify(['/b.jsonl']), 'fp-v2',
+      0, 1, 1, 1,
+    )
+    raw.query(
+      'INSERT INTO session_text (uid, title, prompts, prose) VALUES (?, ?, ?, ?)',
+    ).run('claude:two', 'An indexed v2 session', 'legacytwoprompt text', 'legacy two prose')
+    raw.query(
+      'INSERT INTO session_fts(rowid, title, prompts, prose) VALUES (?, ?, ?, ?)',
+    ).run(1, 'An indexed v2 session', 'legacytwoprompt text', 'legacy two prose')
+    raw.query('INSERT INTO session_file (uid, path) VALUES (?, ?)').run('claude:two', 'src/legacy-two.ts')
+  } finally {
+    raw.close()
+  }
+}
+
 function storedVersion(path: string): string | null {
   const raw = new Database(path)
   try {
     const row = raw.query("SELECT value FROM meta WHERE key = 'schema_version'")
       .get() as { value: string } | null
     return row?.value ?? null
+  } finally {
+    raw.close()
+  }
+}
+
+function tableNames(path: string): string[] {
+  const raw = new Database(path)
+  try {
+    return (raw.query(
+      "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+    ).all() as Array<{ name: string }>).map((row) => row.name)
   } finally {
     raw.close()
   }
@@ -267,7 +361,7 @@ function sessionColumns(path: string): string[] {
   }
 }
 
-test('a real version 1 index migrates to version 2 with every row intact', () => {
+test('a real version 1 index migrates to the current schema with every row intact', () => {
   const { dir, path } = temporaryPath()
   try {
     writeV1Index(path)
@@ -275,8 +369,9 @@ test('a real version 1 index migrates to version 2 with every row intact', () =>
 
     const db = IndexDb.open(path, false)
     try {
-      expect(storedVersion(path)).toBe('2')
+      expect(storedVersion(path)).toBe('3')
       expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded'])
+      expect(tableNames(path)).toContain('session_turn')
 
       const stored = db.getRef('claude:old')!
       expect(stored.title).toBe('An indexed v1 session')
@@ -293,7 +388,7 @@ test('a real version 1 index migrates to version 2 with every row intact', () =>
       expect(db.allUids()).toEqual(['claude:old'])
       expect(db.ftsSearch('legacyprompt').map((hit) => hit.uid)).toEqual(['claude:old'])
       expect(db.uidsTouchingFile('src/legacy')).toEqual(['claude:old'])
-      expect(db.schemaVersion()).toBe(2)
+      expect(db.schemaVersion()).toBe(3)
     } finally {
       db.close()
     }
@@ -314,7 +409,8 @@ test('a migrated index and a freshly created one have the same session columns',
     IndexDb.open(migrated.path, false).close()
     IndexDb.open(fresh.path).close()
     expect(sessionColumns(migrated.path)).toEqual(sessionColumns(fresh.path))
-    expect(storedVersion(fresh.path)).toBe('2')
+    expect(tableNames(migrated.path)).toEqual(tableNames(fresh.path))
+    expect(storedVersion(fresh.path)).toBe('3')
   } finally {
     rmSync(migrated.dir, { recursive: true, force: true })
     rmSync(fresh.dir, { recursive: true, force: true })
@@ -363,6 +459,84 @@ test('a migration step that fails leaves the version it started from', () => {
 
     expect(() => IndexDb.open(path, false)).toThrow()
     expect(storedVersion(path)).toBe('1')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+
+test('a real version 2 index migrates to version 3 with every row and flag intact', () => {
+  const { dir, path } = temporaryPath()
+  try {
+    writeV2Index(path)
+    expect(tableNames(path)).not.toContain('session_turn')
+
+    const db = IndexDb.open(path, false)
+    try {
+      expect(storedVersion(path)).toBe('3')
+      expect(db.schemaVersion()).toBe(3)
+      // The step adds a table, so the session columns are untouched.
+      expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded'])
+      expect(tableNames(path)).toContain('session_turn')
+      expect(
+        (db.raw().query('PRAGMA table_info(session_turn)').all() as Array<{ name: string }>)
+          .map((row) => row.name),
+      ).toEqual(['uid', 'ordinal', 'role', 'text'])
+
+      const stored = db.getRef('claude:two')!
+      expect(stored.title).toBe('An indexed v2 session')
+      expect(stored.turns).toBe(9)
+      expect(stored.sourcePaths).toEqual(['/b.jsonl'])
+      expect(stored.fingerprint).toBe('fp-v2')
+      expect(stored.missing).toBe(false)
+      // Both split flags survive the step that only added a table.
+      expect(stored.truncated).toBe(true)
+      expect(stored.degraded).toBe(true)
+
+      expect(db.allUids()).toEqual(['claude:two'])
+      expect(db.ftsSearch('legacytwoprompt').map((hit) => hit.uid)).toEqual(['claude:two'])
+      expect(db.uidsTouchingFile('src/legacy-two')).toEqual(['claude:two'])
+      // Nothing to show until the session is hydrated again.
+      expect(db.raw().query('SELECT * FROM session_turn').all()).toEqual([])
+    } finally {
+      db.close()
+    }
+
+    // The migrated file passes the strict validation the mutating commands do.
+    const writable = IndexDb.openExistingWritable(path)
+    writable.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a version 2 index stays usable by the commands that cannot migrate it', () => {
+  const { dir, path } = temporaryPath()
+  try {
+    writeV2Index(path)
+
+    const readonly = IndexDb.openReadonly(path)
+    try {
+      expect(readonly.schemaVersion()).toBe(2)
+      expect(readonly.searchRefs().map((row) => row.uid)).toEqual(['claude:two'])
+    } finally {
+      readonly.close()
+    }
+
+    // forget and prune delete without migrating, so the delete must not touch a
+    // table this index has no reason to have yet.
+    const writable = IndexDb.openExistingWritable(path)
+    try {
+      expect(writable.schemaVersion()).toBe(2)
+      writable.deleteSession('claude:two')
+      expect(writable.allUids()).toEqual([])
+      expect(writable.ftsSearch('legacytwoprompt')).toEqual([])
+      expect(writable.uidsTouchingFile('src/legacy-two')).toEqual([])
+    } finally {
+      writable.close()
+    }
+    expect(storedVersion(path)).toBe('2')
+    expect(tableNames(path)).not.toContain('session_turn')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

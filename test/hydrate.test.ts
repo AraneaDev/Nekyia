@@ -55,6 +55,21 @@ test('hydrateAll writes text that is then searchable', async () => {
   db.close()
 })
 
+test('hydrateAll stores the conversation in the order the transcript recorded it', async () => {
+  const db = IndexDb.open(':memory:')
+  const s = await scan(db, DEFAULT_CONFIG, [claude])
+  await hydrateAll(db, DEFAULT_CONFIG, [claude], s.changed)
+
+  const turns = db.raw().query(`
+    SELECT role, text FROM session_turn WHERE uid = ? ORDER BY ordinal
+  `).all('claude:11111111-2222-3333-4444-555555555555') as Array<{ role: string; text: string }>
+  expect(turns.length).toBeGreaterThan(1)
+  expect(turns[0]!.role).toBe('user')
+  // Not grouped by speaker: the reply follows the prompt it answered.
+  expect(turns.some((turn, index) => index > 0 && turn.role !== turns[index - 1]!.role)).toBe(true)
+  db.close()
+})
+
 test('hydrateAll reports progress for every ref', async () => {
   const db = IndexDb.open(':memory:')
   const s = await scan(db, DEFAULT_CONFIG, [claude])

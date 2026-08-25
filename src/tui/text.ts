@@ -84,6 +84,44 @@ export function boundedDisplayText(
   return result
 }
 
+/**
+ * Sanitizes a line and folds it onto as many terminal rows as it needs, keeping
+ * every character instead of cutting the tail off at the right edge.
+ *
+ * `boundedDisplayText` is right for a list row or a browsing preview: they show
+ * one row per value and the reader has no way to reach past it, so scanning
+ * further than the width would be work spent on text that is dropped. The
+ * opened history is the opposite. It is the one view whose whole purpose is
+ * reading a reply in full, and its scroll model can reach every row produced
+ * here, so a 400-character answer must continue rather than disappear.
+ *
+ * Nothing bounds the input, so a caller must bring its own budget: this reads
+ * the entire string and returns a row for roughly every `maxColumns` of it.
+ */
+export function wrappedDisplayLines(value: string, maxColumns: number): string[] {
+  const columns = displayColumns(maxColumns)
+  if (columns === 0 || value.length === 0) return []
+  const safe = sanitizeDisplaySample(value)
+  const lines: string[] = []
+  let pieces: string[] = []
+  let width = 0
+
+  for (const part of GRAPHEMES.segment(safe)) {
+    const partWidth = Bun.stringWidth(part.segment)
+    // A grapheme wider than the whole width still has to go somewhere, so it
+    // takes a row of its own rather than looping forever on an empty line.
+    if (pieces.length > 0 && width + partWidth > columns) {
+      lines.push(pieces.join(''))
+      pieces = []
+      width = 0
+    }
+    pieces.push(part.segment)
+    width += partWidth
+  }
+  if (pieces.length > 0) lines.push(pieces.join(''))
+  return lines
+}
+
 /** Pads to a terminal width; `padEnd` counts code units, which a wide character breaks. */
 export function padColumns(value: string, columns: number): string {
   return value + ' '.repeat(Math.max(0, columns - Bun.stringWidth(value)))

@@ -201,6 +201,58 @@ test('forget and prune CLI report real outcomes and delete the selected rows', (
   remaining.close()
 })
 
+/**
+ * Rolls a current index back to an older stamped version, the way a user who
+ * has not reindexed since that version still has one on disk. `db.test.ts` owns
+ * the from-scratch fixtures; this only needs a file the CLI will refuse to
+ * migrate.
+ */
+function downgradeIndex(version: 1 | 2): void {
+  const raw = new Database(indexPath())
+  try {
+    raw.exec('DROP TABLE IF EXISTS session_turn')
+    if (version === 1) raw.exec('ALTER TABLE session DROP COLUMN degraded')
+    raw.query('UPDATE meta SET value = ? WHERE key = ?').run(String(version), 'schema_version')
+  } finally {
+    raw.close()
+  }
+}
+
+test('forget and prune still work on an index that has not been migrated', () => {
+  for (const version of [1, 2] as const) {
+    rmSync(dirname(indexPath()), { recursive: true, force: true })
+    mkdirSync(dirname(indexPath()), { recursive: true })
+    const db = IndexDb.open(indexPath())
+    seed(db, 'claude:keep')
+    seed(db, 'claude:drop')
+    seed(db, 'codex:gone')
+    db.markMissing(['codex:gone'])
+    db.close()
+    downgradeIndex(version)
+
+    const forgotten = run(['forget', 'claude:drop'])
+    expect(forgotten.exitCode).toBe(0)
+    expect(forgotten.stderr.toString()).toContain('forgot claude:drop')
+
+    const pruned = run(['prune', '--missing'])
+    expect(pruned.exitCode).toBe(0)
+    expect(pruned.stderr.toString()).toContain('pruned 1 sessions')
+
+    // Neither command migrated the file it was asked to delete a row from.
+    const raw = new Database(indexPath())
+    try {
+      expect(raw.query("SELECT value FROM meta WHERE key = 'schema_version'").get())
+        .toEqual({ value: String(version) })
+      expect(raw.query('SELECT uid FROM session ORDER BY uid').all())
+        .toEqual([{ uid: 'claude:keep' }])
+      expect(raw.query('SELECT uid FROM session_file ORDER BY uid').all())
+        .toEqual([{ uid: 'claude:keep' }])
+    } finally {
+      raw.close()
+    }
+  }
+})
+
 test('client ids accepted by manifests remain addressable by privacy commands', () => {
   mkdirSync(dirname(indexPath()), { recursive: true })
   const db = IndexDb.open(indexPath())
