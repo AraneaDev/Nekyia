@@ -3,9 +3,16 @@ import { lstatSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { SessionDoc, SessionRef } from '../types'
 
-/** A session as the index holds it: the discovered reference plus whether its source has since disappeared. */
+/**
+ * A session as the index holds it: the discovered reference, whether its source
+ * has since disappeared, and what hydration could not carry over.
+ */
 export interface StoredRef extends SessionRef {
   missing: boolean
+  /** A size cap stopped indexing short of the whole session. Raising `maxFileBytes` can recover it. */
+  truncated: boolean
+  /** Content was lost to a parse or read failure rather than to a cap, so no setting recovers it. */
+  degraded: boolean
 }
 
 /** One full-text match: the session it belongs to and its weighted relevance. */
@@ -14,9 +21,136 @@ export interface FtsHit {
   score: number
 }
 
-const SCHEMA_VERSION = 1
+const SCHEMA_VERSION = 2
+/** The oldest stamped schema this build still opens. Older indexes are migrated up to SCHEMA_VERSION. */
+const MIN_SCHEMA_VERSION = 1
 /** How long a statement waits for another process's lock; SQLite otherwise gives up instantly. */
 const BUSY_TIMEOUT_MS = 5_000
+
+/** The whole schema as version 1 shipped it, kept verbatim as the first rung of the ladder. */
+const SCHEMA_V1 = `
+  CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
+  CREATE TABLE IF NOT EXISTS session (
+    uid TEXT PRIMARY KEY,
+    client TEXT NOT NULL,
+    native_id TEXT NOT NULL,
+    cwd TEXT,
+    git_branch TEXT,
+    title TEXT,
+    started_at INTEGER NOT NULL,
+    ended_at INTEGER NOT NULL,
+    turns INTEGER,
+    parent_native_id TEXT,
+    tier TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    source_paths TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    missing INTEGER NOT NULL DEFAULT 0,
+    truncated INTEGER NOT NULL DEFAULT 0,
+    hydrated INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS session_cwd_idx ON session(cwd);
+  CREATE INDEX IF NOT EXISTS session_ended_at_idx ON session(ended_at DESC);
+  CREATE TABLE IF NOT EXISTS session_text (
+    rowid INTEGER PRIMARY KEY,
+    uid TEXT UNIQUE NOT NULL,
+    title TEXT,
+    prompts TEXT,
+    prose TEXT
+  );
+  CREATE VIRTUAL TABLE IF NOT EXISTS session_fts USING fts5(
+    title,
+    prompts,
+    prose,
+    content='session_text',
+    content_rowid='rowid',
+    tokenize='porter unicode61'
+  );
+  CREATE TABLE IF NOT EXISTS session_file (
+    uid TEXT NOT NULL,
+    path TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS session_file_uid_idx ON session_file(uid);
+  CREATE INDEX IF NOT EXISTS session_file_path_idx ON session_file(path);
+`
+
+/**
+ * One step per schema version: `MIGRATIONS[n]` takes an index from version n-1 to n.
+ *
+ * `migrate` runs every step above the stamped version in order, each in its own
+ * transaction that stamps its own version as it commits, so an upgrade
+ * interrupted halfway resumes at the step it stopped on rather than claiming a
+ * version the file does not have. A brand new index walks the same ladder,
+ * which is what keeps a freshly created database column-for-column identical to
+ * a migrated one.
+ *
+ * Adding version 3 means adding a `3:` step here, a `3:` entry to
+ * SESSION_COLUMNS, and raising SCHEMA_VERSION. Nothing else changes.
+ */
+const MIGRATIONS: Record<number, (db: Database) => void> = {
+  1: (db) => { db.exec(SCHEMA_V1) },
+  // Sessions indexed under version 1 recorded one conflated flag, so they keep
+  // whatever `truncated` they were stamped with and start out not degraded.
+  // The next hydration of each session writes the split values.
+  2: (db) => { db.exec('ALTER TABLE session ADD COLUMN degraded INTEGER NOT NULL DEFAULT 0') },
+}
+
+const SESSION_COLUMNS_V1 = [
+  'uid', 'client', 'native_id', 'cwd', 'git_branch', 'title', 'started_at', 'ended_at',
+  'turns', 'parent_native_id', 'tier', 'origin', 'source_paths', 'fingerprint', 'missing',
+  'truncated', 'hydrated',
+]
+
+/**
+ * The `session` columns each schema version leaves behind, in the order SQLite reports them.
+ *
+ * A migrated index and a newly created one agree because both walk the same
+ * ladder: ADD COLUMN appends, and the create step is the version 1 schema.
+ */
+const SESSION_COLUMNS: Record<number, string[]> = {
+  1: SESSION_COLUMNS_V1,
+  2: [...SESSION_COLUMNS_V1, 'degraded'],
+}
+
+/**
+ * Reads the stamped schema version, or 0 for an index that has never been stamped.
+ *
+ * A value that is not a plain safe integer is a corrupt or foreign stamp rather
+ * than a version this build could reason about, so it throws instead of being
+ * coerced into one.
+ */
+function storedSchemaVersion(db: Database): number {
+  const hasMeta = db.query(`
+    SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'meta'
+  `).get() !== null
+  if (!hasMeta) return 0
+  const stored = db.query("SELECT value FROM meta WHERE key = 'schema_version'")
+    .get() as { value: string | null } | null
+  if (!stored) return 0
+  if (stored.value === null || !/^\d+$/.test(stored.value)) {
+    throw new Error(`invalid schema version: ${String(stored.value)}`)
+  }
+  const version = Number(stored.value)
+  if (!Number.isSafeInteger(version)) throw new Error(`invalid schema version: ${stored.value}`)
+  return version
+}
+
+/**
+ * Narrows a stamped version to one this build can work with.
+ *
+ * Unstamped and newer-than-us are both refused here; older but known versions
+ * are returned as they are, because the paths that cannot migrate still read
+ * them correctly and the paths that can migrate them will.
+ */
+function supportedVersion(version: number): number {
+  if (version < MIN_SCHEMA_VERSION || version > SCHEMA_VERSION) {
+    throw new Error(`unsupported schema version: ${version === 0 ? 'missing' : version}`)
+  }
+  return version
+}
 
 interface SessionRow {
   uid: string
@@ -34,6 +168,9 @@ interface SessionRow {
   source_paths: string
   fingerprint: string
   missing: number
+  truncated: number
+  /** Absent from a version 1 index, which had no column for it. */
+  degraded?: number
 }
 
 interface TextRow {
@@ -68,10 +205,16 @@ function parseSourcePaths(value: string): string[] {
  * resolve a session back to the files it came from. A search reads every row in
  * the index on every keystroke and reads neither field, so it selects the
  * narrower shape rather than paying a JSON parse per row for values it drops.
+ *
+ * `truncated` and `degraded` are left out for the same reason: nothing a result
+ * row renders mentions them, and only the handover, which reads one session at a
+ * time through `getRef`, has anything to say about them. Leaving them out also
+ * keeps the select list identical to the one a version 1 index answers, so a
+ * search over an index this build has not migrated yet still works.
  */
-export type SearchRef = Omit<StoredRef, 'sourcePaths' | 'fingerprint'>
+export type SearchRef = Omit<StoredRef, 'sourcePaths' | 'fingerprint' | 'truncated' | 'degraded'>
 
-type SearchRow = Omit<SessionRow, 'source_paths' | 'fingerprint'>
+type SearchRow = Omit<SessionRow, 'source_paths' | 'fingerprint' | 'truncated' | 'degraded'>
 
 /** The columns `searchRefs` selects, in the order `SearchRow` declares them. */
 const SEARCH_COLUMNS = `
@@ -98,12 +241,19 @@ function rowToSearchRef(row: SearchRow): SearchRef {
   }
 }
 
-/** Maps a raw index row onto the full stored shape, provenance included. */
+/**
+ * Maps a raw index row onto the full stored shape, provenance included.
+ *
+ * `degraded` is absent from a version 1 row, which is read as false: that index
+ * recorded no read failures separately from size caps.
+ */
 export function rowToRef(row: SessionRow): StoredRef {
   return {
     ...rowToSearchRef(row),
     sourcePaths: parseSourcePaths(row.source_paths),
     fingerprint: row.fingerprint,
+    truncated: Boolean(row.truncated),
+    degraded: Boolean(row.degraded),
   }
 }
 
@@ -158,20 +308,20 @@ export class IndexDb {
     }
   }
 
-  private static validateExistingSchema(db: Database): void {
-    const stored = db.query("SELECT value FROM meta WHERE key = 'schema_version'")
-      .get() as { value: string | null } | null
-    if (!stored || stored.value !== String(SCHEMA_VERSION)) {
-      throw new Error(`unsupported schema version: ${String(stored?.value ?? 'missing')}`)
-    }
+  /**
+   * Checks that a file really is a Nekyia index at a version this build reads.
+   *
+   * The column list is the one that version leaves behind rather than the
+   * newest one, so an index a migrating command has not reached yet is
+   * recognised instead of being rejected as foreign. Returns the version it
+   * validated against.
+   */
+  private static validateExistingSchema(db: Database): number {
+    const version = supportedVersion(storedSchemaVersion(db))
 
     const expected: Record<string, string[]> = {
       meta: ['key', 'value'],
-      session: [
-        'uid', 'client', 'native_id', 'cwd', 'git_branch', 'title', 'started_at', 'ended_at',
-        'turns', 'parent_native_id', 'tier', 'origin', 'source_paths', 'fingerprint', 'missing',
-        'truncated', 'hydrated',
-      ],
+      session: SESSION_COLUMNS[version]!,
       session_text: ['rowid', 'uid', 'title', 'prompts', 'prose'],
       session_fts: ['title', 'prompts', 'prose'],
       session_file: ['uid', 'path'],
@@ -195,9 +345,16 @@ export class IndexDb {
       || !ftsSql.includes("content_rowid='rowid'")) {
       throw new Error('index search schema does not match')
     }
+    return version
   }
 
-  /** Opens a validated existing Nekyia index for mutation without migration or PRAGMA writes. */
+  /**
+   * Opens a validated existing Nekyia index for mutation without migration or PRAGMA writes.
+   *
+   * An index stamped at an older supported version is opened at that version:
+   * `forget` and `prune` only delete rows, so neither has a reason to force a
+   * schema upgrade onto a file the user asked it to remove something from.
+   */
   static openExistingWritable(path: string): IndexDb {
     if (path === ':memory:') throw new Error('existing in-memory index is unsupported')
     IndexDb.validatePath(path, false)
@@ -235,11 +392,10 @@ export class IndexDb {
         SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'meta'
       `).get() !== null
       if (!hasMeta) throw new Error('index schema metadata is missing')
-      const stored = db.query("SELECT value FROM meta WHERE key = 'schema_version'")
-        .get() as { value: string | null } | null
-      if (!stored || stored.value !== String(SCHEMA_VERSION)) {
-        throw new Error(`unsupported schema version: ${String(stored?.value ?? 'missing')}`)
-      }
+      // A readonly handle cannot migrate, so an older index it can still read is
+      // opened as it is: refusing would take `doctor` and `last` away from a user
+      // whose index simply has not been through a writing command yet.
+      supportedVersion(storedSchemaVersion(db))
       return new IndexDb(db)
     } catch (error) {
       db.close()
@@ -247,77 +403,27 @@ export class IndexDb {
     }
   }
 
+  /**
+   * Brings the open index up to SCHEMA_VERSION one version at a time.
+   *
+   * Every step commits with its own version stamp, so a crash between steps
+   * leaves a consistent index that the next run resumes from.
+   */
   private migrate(): void {
-    const hasMeta = this.db.query(`
-      SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'meta'
-    `).get() !== null
-    const stored = hasMeta
-      ? this.db.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string | null } | null
-      : null
-
-    let version = 0
-    if (stored) {
-      if (stored.value === null || !/^\d+$/.test(stored.value)) {
-        throw new Error(`invalid schema version: ${String(stored.value)}`)
-      }
-      version = Number(stored.value)
-      if (!Number.isSafeInteger(version)) throw new Error(`invalid schema version: ${stored.value}`)
-    }
+    let version = storedSchemaVersion(this.db)
     if (version > SCHEMA_VERSION) throw new Error(`unsupported schema version: ${version}`)
-    if (version === SCHEMA_VERSION) return
 
-    this.db.transaction(() => {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS meta (
-          key TEXT PRIMARY KEY,
-          value TEXT
-        );
-        CREATE TABLE IF NOT EXISTS session (
-          uid TEXT PRIMARY KEY,
-          client TEXT NOT NULL,
-          native_id TEXT NOT NULL,
-          cwd TEXT,
-          git_branch TEXT,
-          title TEXT,
-          started_at INTEGER NOT NULL,
-          ended_at INTEGER NOT NULL,
-          turns INTEGER,
-          parent_native_id TEXT,
-          tier TEXT NOT NULL,
-          origin TEXT NOT NULL,
-          source_paths TEXT NOT NULL,
-          fingerprint TEXT NOT NULL,
-          missing INTEGER NOT NULL DEFAULT 0,
-          truncated INTEGER NOT NULL DEFAULT 0,
-          hydrated INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE INDEX IF NOT EXISTS session_cwd_idx ON session(cwd);
-        CREATE INDEX IF NOT EXISTS session_ended_at_idx ON session(ended_at DESC);
-        CREATE TABLE IF NOT EXISTS session_text (
-          rowid INTEGER PRIMARY KEY,
-          uid TEXT UNIQUE NOT NULL,
-          title TEXT,
-          prompts TEXT,
-          prose TEXT
-        );
-        CREATE VIRTUAL TABLE IF NOT EXISTS session_fts USING fts5(
-          title,
-          prompts,
-          prose,
-          content='session_text',
-          content_rowid='rowid',
-          tokenize='porter unicode61'
-        );
-        CREATE TABLE IF NOT EXISTS session_file (
-          uid TEXT NOT NULL,
-          path TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS session_file_uid_idx ON session_file(uid);
-        CREATE INDEX IF NOT EXISTS session_file_path_idx ON session_file(path);
-      `)
-      this.db.query('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)')
-        .run('schema_version', String(SCHEMA_VERSION))
-    })()
+    while (version < SCHEMA_VERSION) {
+      const next = version + 1
+      const step = MIGRATIONS[next]
+      if (!step) throw new Error(`no migration to schema version: ${next}`)
+      this.db.transaction(() => {
+        step(this.db)
+        this.db.query('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)')
+          .run('schema_version', String(next))
+      })()
+      version = next
+    }
   }
 
   private writeRef(ref: SessionRef): void {
@@ -389,8 +495,8 @@ export class IndexDb {
     const insertFile = this.db.query('INSERT INTO session_file (uid, path) VALUES (?, ?)')
     for (const path of new Set(doc.files)) insertFile.run(doc.ref.uid, path)
 
-    this.db.query('UPDATE session SET hydrated = 1, truncated = ? WHERE uid = ?')
-      .run(doc.truncated ? 1 : 0, doc.ref.uid)
+    this.db.query('UPDATE session SET hydrated = 1, truncated = ?, degraded = ? WHERE uid = ?')
+      .run(doc.truncated ? 1 : 0, doc.degraded ? 1 : 0, doc.ref.uid)
   }
 
   upsertDoc(doc: SessionDoc): void {
@@ -497,6 +603,11 @@ export class IndexDb {
       const update = this.db.query('UPDATE session SET missing = 1 WHERE uid = ?')
       for (const uid of values) update.run(uid)
     })(uids)
+  }
+
+  /** The schema version of the open index, which is below SCHEMA_VERSION only on a path that cannot migrate. */
+  schemaVersion(): number {
+    return storedSchemaVersion(this.db)
   }
 
   raw(): Database {

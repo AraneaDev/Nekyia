@@ -275,7 +275,10 @@ async function snapshotFile(path: string): Promise<SnapshotToken> {
 
 interface ArrayScanResult {
   turns: number
+  /** A size cap dropped content: the whole file, or one element too large to hold. */
   truncated: boolean
+  /** The array itself did not parse, so content was lost to a malformed source rather than to a cap. */
+  degraded: boolean
 }
 
 /**
@@ -291,6 +294,7 @@ async function scanMessageArray(
   const handle = await openReadonly(path)
   let turns = 0
   let truncated = false
+  let degraded = false
   try {
     const stat = await handle.stat()
     const cap = Number.isFinite(configCap) && configCap >= 0 ? configCap : 0
@@ -349,7 +353,8 @@ async function scanMessageArray(
           turns += 1
           onMessage(value, proseAllowed)
         } catch {
-          truncated = true
+          // One malformed element is a corrupt transcript, not a cap.
+          degraded = true
         }
       }
       active = false
@@ -373,7 +378,7 @@ async function scanMessageArray(
               state = 'value-or-end'
               allowEnd = true
             } else {
-              truncated = true
+              degraded = true
               state = 'done'
             }
             continue
@@ -385,7 +390,7 @@ async function scanMessageArray(
               continue
             }
             if (byte === 0x5d) {
-              truncated = true
+              degraded = true
               state = 'done'
               continue
             }
@@ -400,12 +405,12 @@ async function scanMessageArray(
             } else if (byte === 0x5d) {
               state = 'done'
             } else {
-              truncated = true
+              degraded = true
               state = 'done'
             }
             continue
           } else {
-            if (!whitespace) truncated = true
+            if (!whitespace) degraded = true
             continue
           }
         }
@@ -455,8 +460,10 @@ async function scanMessageArray(
     }
 
     if (active && primitive) finishElement()
-    if (active || state !== 'done') truncated = true
-    return { turns, truncated }
+    // An array that never closed inside the snapshot is an incomplete document:
+    // a file still being written, or a truncated one. Either way no cap caused it.
+    if (active || state !== 'done') degraded = true
+    return { turns, truncated, degraded }
   } finally {
     await handle.close()
   }
@@ -650,23 +657,26 @@ export const jsonDir: FormatModule = {
   },
 
   async hydrate(manifest, root, ref, config: Config): Promise<SessionDoc> {
-    const empty = (truncated: boolean): SessionDoc => ({
+    // Every early return below is a source that could not be read at all, which
+    // is a degraded read and not a size cap: no config change recovers it.
+    const unread = (): SessionDoc => ({
       ref,
       prompts: [],
       prose: [],
       files: [],
-      truncated,
+      truncated: false,
+      degraded: true,
     })
     let rootReal: string
     try {
       rootReal = realpathSync(root)
     } catch {
-      return empty(true)
+      return unread()
     }
     const path = ref.sourcePaths[0]
-    if (!path) return empty(true)
+    if (!path) return unread()
     const messages = containedRealPath(rootReal, path)
-    if (messages === null || basename(messages) !== 'chat-messages.json') return empty(true)
+    if (messages === null || basename(messages) !== 'chat-messages.json') return unread()
 
     const prompts: string[] = []
     const prose: string[] = []
@@ -681,7 +691,7 @@ export const jsonDir: FormatModule = {
         else if (proseAllowed) prose.push(...parts)
       })
     } catch {
-      return empty(true)
+      return unread()
     }
 
     return {
@@ -690,6 +700,7 @@ export const jsonDir: FormatModule = {
       prose,
       files: [],
       truncated: scan.truncated,
+      degraded: scan.degraded,
     }
   },
 }

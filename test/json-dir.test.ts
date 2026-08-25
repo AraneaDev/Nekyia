@@ -222,7 +222,10 @@ test('hydrate stops at its initial fstat snapshot and sees appends next time', a
     const snapshotDoc = await jsonDir.hydrate(m, root, ref, DEFAULT_CONFIG)
     expect(snapshotDoc.prompts).toEqual(['initial prompt'])
     expect(snapshotDoc.ref.turns).toBe(1)
-    expect(snapshotDoc.truncated).toBe(true)
+    // The array never closed inside the snapshot, which is an incomplete
+    // document rather than a cap: no maxFileBytes value would have changed it.
+    expect(snapshotDoc.truncated).toBe(false)
+    expect(snapshotDoc.degraded).toBe(true)
   } finally {
     openSpy.mockRestore()
   }
@@ -230,6 +233,7 @@ test('hydrate stops at its initial fstat snapshot and sees appends next time', a
   expect(futureDoc.prompts).toEqual(['initial prompt', 'appended prompt'])
   expect(futureDoc.ref.turns).toBe(2)
   expect(futureDoc.truncated).toBe(false)
+  expect(futureDoc.degraded).toBe(false)
 })
 
 test('incrementally hydrates a valid transcript above 64 MiB without Bun.file', async () => {
@@ -308,7 +312,9 @@ test('malformed or missing files are localized and deterministic', async () => {
   const bad = result.refs.find((ref) => ref.nativeId.endsWith('01.000Z'))!
   const doc = await jsonDir.hydrate(manifest(root), root, bad, DEFAULT_CONFIG)
   expect(doc.prompts).toEqual([])
-  expect(doc.truncated).toBe(true)
+  // A chat file that is not even a JSON array is unreadable, not size-capped.
+  expect(doc.truncated).toBe(false)
+  expect(doc.degraded).toBe(true)
 })
 
 test('normalizes ids and falls back to a nonempty directory id', async () => {

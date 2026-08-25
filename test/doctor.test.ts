@@ -14,7 +14,10 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { buildAdapter } from '../src/core/adapter'
+import { IndexDb } from '../src/core/db'
+import { DEFAULT_CONFIG } from '../src/config'
 import { validateManifest } from '../src/manifests/load'
+import type { SessionRef } from '../src/types'
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts')
 const temporaries: string[] = []
@@ -127,8 +130,13 @@ test('doctor does not create an absent index and reads an existing index summary
   const before = readFileSync(path)
   const beforeFiles = readdirSync(dirname(path)).sort()
   const report = JSON.parse(run(['doctor', '--json'], setup.env).stdout.toString())
-  expect(report.index).toMatchObject({ sessions: 2, proseTruncated: 1, missing: 1 })
+  // A version 1 index has no degraded column, so doctor reads what it can and
+  // says the two causes are not told apart rather than refusing the file.
+  expect(report.index).toMatchObject({
+    sessions: 2, sizeCapped: 1, degraded: 0, missing: 1, degradedTracked: false,
+  })
   expect(report.index.sizeCappedSessions).toEqual(['x:1'])
+  expect(report.index.degradedSessions).toEqual([])
   expect(readFileSync(path)).toEqual(before)
   expect(readdirSync(dirname(path)).sort()).toEqual(beforeFiles)
 })
@@ -279,4 +287,42 @@ test('doctor options belong only to doctor', () => {
     expect(result.exitCode).toBe(2)
     expect(result.stderr.toString()).toContain('error:')
   }
+})
+
+test('doctor separates a size cap from an unreadable source and prints the cap setting', () => {
+  const setup = environment()
+  const path = join(setup.env.XDG_DATA_HOME!, 'nekyia', 'index.db')
+  mkdirSync(dirname(path), { recursive: true })
+  const indexed = (uid: string): SessionRef => ({
+    uid, client: 'x', nativeId: uid.slice(2), cwd: null, gitBranch: null, title: null,
+    startedAt: 1, endedAt: 2, turns: null, parentNativeId: null, tier: 'search',
+    origin: 'manifest', sourcePaths: ['/a'], fingerprint: 'f',
+  })
+  const db = IndexDb.open(path)
+  db.upsertHydrated({
+    ref: indexed('x:capped'), prompts: [], prose: [], files: [], truncated: true,
+  })
+  db.upsertHydrated({
+    ref: indexed('x:unreadable'), prompts: [], prose: [], files: [], truncated: false,
+    degraded: true,
+  })
+  db.upsertHydrated({
+    ref: indexed('x:whole'), prompts: [], prose: [], files: [], truncated: false,
+  })
+  db.close()
+
+  const report = JSON.parse(run(['doctor', '--json'], setup.env).stdout.toString())
+  expect(report.index).toMatchObject({
+    sessions: 3, sizeCapped: 1, degraded: 1, missing: 0, degradedTracked: true,
+  })
+  expect(report.index.sizeCappedSessions).toEqual(['x:capped'])
+  expect(report.index.degradedSessions).toEqual(['x:unreadable'])
+  expect(report.config.maxFileBytes).toBe(DEFAULT_CONFIG.maxFileBytes)
+
+  const text = run(['doctor'], setup.env).stdout.toString()
+  expect(text).toContain('size-capped: x:capped')
+  expect(text).toContain('partly unreadable: x:unreadable')
+  // The one cause a setting can fix names the setting, with its current value.
+  expect(text).toContain(`maxFileBytes   ${DEFAULT_CONFIG.maxFileBytes}`)
+  expect(text).toContain('No setting recovers that')
 })

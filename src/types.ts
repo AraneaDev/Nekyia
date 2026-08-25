@@ -101,7 +101,21 @@ export interface SessionDoc {
   prompts: string[]
   prose: string[]
   files: string[]
+  /**
+   * A size cap stopped the read short: the whole file was over `maxFileBytes`,
+   * a running byte budget ran out, or a single value was too large to keep.
+   * Raising the cap can recover the missing content, and `doctor` says so.
+   */
   truncated: boolean
+  /**
+   * Content was lost to a parse or read failure rather than to a cap: a
+   * malformed element, an unreadable sidecar, a source that could not be
+   * located. No setting recovers it, so it must never be reported as a cap.
+   *
+   * Optional because most readers never lose content this way, and a producer
+   * that cannot degrade should not have to say so on every document it builds.
+   */
+  degraded?: boolean
 }
 
 /**

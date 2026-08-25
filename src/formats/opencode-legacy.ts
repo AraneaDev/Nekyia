@@ -24,6 +24,8 @@ interface NamedJson {
   time: number
   size: number
   readable: boolean
+  /** Unreadable because it is over the JSON ceiling, rather than because it is malformed. */
+  oversized: boolean
 }
 
 function isObject(value: unknown): value is JsonObject {
@@ -342,6 +344,7 @@ function orderedJsonMetadata(base: string, directory: string, unit: 'ms' | 's' |
         : Number.MAX_SAFE_INTEGER,
       size: parsed.size,
       readable: parsed.ok,
+      oversized: !parsed.ok && parsed.oversized,
     })
   }
   rows.sort((left, right) => left.time - right.time || compareStrings(left.file, right.file))
@@ -373,6 +376,13 @@ export async function hydrateLegacy(
     : 0
   let consumedBytes = 0
   let truncated = false
+  let degraded = false
+
+  /** A file this reader could not use: too large is a cap, anything else is a failed read. */
+  function unusable(oversized: boolean): void {
+    if (oversized) truncated = true
+    else degraded = true
+  }
 
   function charge(size: number): boolean {
     if (size <= maxBytes - consumedBytes) {
@@ -387,13 +397,13 @@ export async function hydrateLegacy(
   for (const messageRow of messages.rows) {
     if (!messageRow.readable) {
       charge(messageRow.size)
-      truncated = true
+      unusable(messageRow.oversized)
       continue
     }
     const parsedMessage = readJson(base, messageRow.path)
     if (!parsedMessage.ok) {
       charge(messageRow.size)
-      truncated = true
+      unusable(parsedMessage.oversized)
       continue
     }
     const message = parsedMessage.value
@@ -403,7 +413,8 @@ export async function hydrateLegacy(
     if (owningSession !== sessionId) continue
     if (messageId === null || role === null) {
       charge(messageRow.size)
-      truncated = true
+      // A stored message without an id or a role is malformed, not oversized.
+      degraded = true
       continue
     }
     charge(messageRow.size)
@@ -412,13 +423,13 @@ export async function hydrateLegacy(
     for (const partRow of parts.rows) {
       if (!partRow.readable) {
         charge(partRow.size)
-        truncated = true
+        unusable(partRow.oversized)
         continue
       }
       const parsedPart = readJson(base, partRow.path)
       if (!parsedPart.ok) {
         charge(partRow.size)
-        truncated = true
+        unusable(parsedPart.oversized)
         continue
       }
       const part = parsedPart.value
@@ -427,7 +438,7 @@ export async function hydrateLegacy(
       if (owningPartSession !== sessionId || owningMessage !== messageId) continue
       if (normalizedString(part.id) === null || normalizedString(part.type) === null) {
         charge(partRow.size)
-        truncated = true
+        degraded = true
         continue
       }
       const withinBudget = charge(partRow.size)
@@ -438,7 +449,7 @@ export async function hydrateLegacy(
         else if (text !== null && role === 'assistant' && withinBudget) prose.push(text)
       } else if (part.type === 'tool') {
         if (!isObject(part.state)) {
-          truncated = true
+          degraded = true
           continue
         }
         for (const path of collectPaths(part.state.input)) {
@@ -454,5 +465,5 @@ export async function hydrateLegacy(
     }
   }
 
-  return { ref, prompts, prose, files: [...files], truncated }
+  return { ref, prompts, prose, files: [...files], truncated, degraded }
 }

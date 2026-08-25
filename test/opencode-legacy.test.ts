@@ -229,7 +229,7 @@ test('global byte budget drops assistant prose but preserves prompts and tool fa
   expect(JSON.stringify(doc)).not.toContain('SECRET OUTPUT')
 })
 
-test('malformed relevant hydration files mark the document truncated', async () => {
+test('malformed relevant hydration files mark the document degraded, not size-capped', async () => {
   const root = makeLegacyRoot()
   put(root, 'storage/session/p/s.json', {
     id: 'ses', projectID: 'p', time: { created: 1, updated: 2 },
@@ -240,7 +240,9 @@ test('malformed relevant hydration files mark the document truncated', async () 
   put(root, 'storage/part/msg/bad.json', '{oops')
   const manifest = tempManifest(root)
   const ref = (await discoverLegacy(manifest, root)).refs[0]!
-  expect((await hydrateLegacy(manifest, root, ref)).truncated).toBe(true)
+  const doc = await hydrateLegacy(manifest, root, ref)
+  expect(doc.truncated).toBe(false)
+  expect(doc.degraded).toBe(true)
 })
 
 test('legacy storage cannot escape the manifest root lexically or through symlinks', async () => {
@@ -283,7 +285,9 @@ test('oversized part files are skipped and mark hydration truncated without losi
   expect(doc.prompts).toEqual(['keep prompt'])
   expect(doc.files).toEqual(['/keep/tool.ts'])
   expect(doc.prose).toEqual([])
+  // Skipped for its size, so this is the cap and not an unreadable source.
   expect(doc.truncated).toBe(true)
+  expect(doc.degraded).toBe(false)
 })
 
 test('legacy discovery reads time in the unit the manifest declares', async () => {
