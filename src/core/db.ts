@@ -61,8 +61,26 @@ function parseSourcePaths(value: string): string[] {
   return parsed as string[]
 }
 
-/** Maps a raw index row onto the shared session shape, keeping snake_case confined to this module. */
-export function rowToRef(row: SessionRow): StoredRef {
+/**
+ * A stored session without its provenance: what a search actually consumes.
+ *
+ * `sourcePaths` and `fingerprint` exist for discovery and hydration, which
+ * resolve a session back to the files it came from. A search reads every row in
+ * the index on every keystroke and reads neither field, so it selects the
+ * narrower shape rather than paying a JSON parse per row for values it drops.
+ */
+export type SearchRef = Omit<StoredRef, 'sourcePaths' | 'fingerprint'>
+
+type SearchRow = Omit<SessionRow, 'source_paths' | 'fingerprint'>
+
+/** The columns `searchRefs` selects, in the order `SearchRow` declares them. */
+const SEARCH_COLUMNS = `
+  uid, client, native_id, cwd, git_branch, title, started_at, ended_at,
+  turns, parent_native_id, tier, origin, missing
+`
+
+/** Maps the narrow index row onto the shared session shape, keeping snake_case confined to this module. */
+function rowToSearchRef(row: SearchRow): SearchRef {
   return {
     uid: row.uid,
     client: row.client,
@@ -76,9 +94,16 @@ export function rowToRef(row: SessionRow): StoredRef {
     parentNativeId: row.parent_native_id,
     tier: row.tier,
     origin: row.origin,
+    missing: Boolean(row.missing),
+  }
+}
+
+/** Maps a raw index row onto the full stored shape, provenance included. */
+export function rowToRef(row: SessionRow): StoredRef {
+  return {
+    ...rowToSearchRef(row),
     sourcePaths: parseSourcePaths(row.source_paths),
     fingerprint: row.fingerprint,
-    missing: Boolean(row.missing),
   }
 }
 
@@ -380,6 +405,18 @@ export class IndexDb {
       this.writeRef(value.ref)
       this.writeDoc(value)
     })(doc)
+  }
+
+  /**
+   * Every indexed session in the shape a search consumes.
+   *
+   * The provenance columns are left out of the SELECT as well as the mapping,
+   * so a search over the whole table never reads or parses them.
+   */
+  searchRefs(): SearchRef[] {
+    // Column list is an internal constant, never caller input.
+    const rows = this.db.query(`SELECT ${SEARCH_COLUMNS} FROM session`).all() as SearchRow[]
+    return rows.map(rowToSearchRef)
   }
 
   getRef(uid: string): StoredRef | null {

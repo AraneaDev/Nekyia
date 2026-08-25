@@ -9,6 +9,20 @@ import type { Manifest, ManifestSource } from '../manifests/load'
 import { expandRoot, loadManifests, renderArgs } from '../manifests/load'
 import type { Diagnostic, ExecPlan, Origin, SessionDoc, SessionRef } from '../types'
 
+/**
+ * The part of a session a launch is planned from.
+ *
+ * `plan` renders only the native id and the recorded directory into a client's
+ * command template. Asking for those two rather than a whole `SessionRef` lets
+ * the search path plan a launch from rows that never read the provenance
+ * columns, instead of carrying fields it would have to invent.
+ */
+export interface PlanTarget {
+  nativeId: string
+  /** Null for a session that recorded no directory; `plan` then falls back to the manifest's own cwd. */
+  cwd: string | null
+}
+
 /** One client, wired up: how to detect it, list its sessions, read one, and launch it. */
 export interface Adapter {
   id: string
@@ -17,7 +31,7 @@ export interface Adapter {
   discover(): Promise<AdapterDiscovery>
   hydrate(ref: SessionRef, cfg: Config): Promise<SessionDoc>
   /** Returns null when no plan is possible, for example a session with no cwd. */
-  plan(ref: SessionRef, promptText?: string): ExecPlan | null
+  plan(ref: PlanTarget, promptText?: string): ExecPlan | null
 }
 
 /**
@@ -77,10 +91,14 @@ function cloneRef(ref: SessionRef, origin: Origin): SessionRef {
 /**
  * Maps a manifest's provenance onto the origin stamped on the refs it produces.
  *
- * `sniffed` is never returned here: it belongs to sessions found without a
- * manifest, so an unknown source is reported as a built-in rather than guessed at.
+ * A manifest Nekyia cannot place is reported as a built-in rather than as the
+ * user's: only a source that says it came from the user manifest directory
+ * makes a client the user's responsibility in diagnostics.
+ *
+ * Exported so every path that builds a single adapter stamps the same origin
+ * `buildAdapters` would have stamped on it.
  */
-function originFor(source: ManifestSource | undefined): Origin {
+export function originFor(source: ManifestSource | undefined): Origin {
   return source?.kind === 'user' ? 'user-manifest' : 'manifest'
 }
 

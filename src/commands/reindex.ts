@@ -1,12 +1,12 @@
 import { existsSync, realpathSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
-import { buildAdapter, buildAdapters, type Adapter } from '../core/adapter'
+import { buildAdapter, buildAdapters, originFor, type Adapter } from '../core/adapter'
 import { IndexDb } from '../core/db'
 import { scan } from '../core/discover'
 import { hydrateAll } from '../core/hydrate'
 import { indexPath, loadConfig, type Config } from '../config'
-import { loadManifests, type ManifestSource } from '../manifests/load'
-import type { Diagnostic, Origin, SessionRef } from '../types'
+import { loadManifests } from '../manifests/load'
+import type { Diagnostic, SessionRef } from '../types'
 
 /** Controls an index refresh, including whether to discard and rebuild. */
 export interface ReindexOptions {
@@ -45,14 +45,6 @@ export function safeOverrideRoot(base: string, clientId: string): string | null 
     return null
   }
   return candidate
-}
-
-/**
- * Mirrors the provenance mapping `buildAdapters` applies, so a client wired up
- * here reports the same origin it would when the whole set is built at once.
- */
-function originFor(source: ManifestSource | undefined): Origin {
-  return source?.kind === 'user' ? 'user-manifest' : 'manifest'
 }
 
 /** Re-points every manifest root at a fixture tree. Test hook only. */

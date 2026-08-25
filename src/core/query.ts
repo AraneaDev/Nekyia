@@ -1,5 +1,5 @@
 import type { Config } from '../config'
-import { IndexDb, rowToRef, type StoredRef } from './db'
+import type { IndexDb, SearchRef } from './db'
 
 /** Everything a search can be narrowed or sorted by. Omitted fields mean no constraint. */
 export interface QueryOpts {
@@ -14,8 +14,14 @@ export interface QueryOpts {
   now?: number
 }
 
-/** A search result: the stored session, its blended score, and how much of its fork chain folded into it. */
-export interface Row extends StoredRef {
+/**
+ * A search result: the stored session, its blended score, and how much of its fork chain folded into it.
+ *
+ * Provenance is deliberately absent. Nothing downstream of a search resolves a
+ * session back to its files, so `SearchRef` leaves those columns unread rather
+ * than handing on values a caller would have to trust.
+ */
+export interface Row extends SearchRef {
   score: number
   /** How many older sessions in this fork chain were folded into this row. */
   collapsed: number
@@ -149,7 +155,7 @@ class Components {
 }
 
 /** Build chain membership from every row, including rows later removed by filters. */
-function chainComponents(rows: StoredRef[]): Components {
+function chainComponents(rows: SearchRef[]): Components {
   const components = new Components(rows.length)
   const byNative = new Map<string, number[]>()
   for (let index = 0; index < rows.length; index++) {
@@ -180,7 +186,7 @@ function chainComponents(rows: StoredRef[]): Components {
   return components
 }
 
-function collapseChains(rows: Row[], allRows: StoredRef[], components: Components): Row[] {
+function collapseChains(rows: Row[], allRows: SearchRef[], components: Components): Row[] {
   const indexByUid = new Map(allRows.map((row, index) => [row.uid, index]))
   const groups = new Map<number, Row[]>()
   for (const row of rows) {
@@ -232,8 +238,7 @@ export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
     ? unsafeOpts.file
     : null
   const fileUids = file ? new Set(db.uidsTouchingFile(file)) : null
-  const allRows = (db.raw().query('SELECT * FROM session').all() as Parameters<typeof rowToRef>[0][])
-    .map(rowToRef)
+  const allRows = db.searchRefs()
   const components = chainComponents(allRows)
 
   const config = cfg as unknown as Record<string, unknown>
