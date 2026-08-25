@@ -10,7 +10,7 @@
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { IndexDb } from '../src/core/db'
-import type { SessionRef, Tier } from '../src/types'
+import type { DialogueTurn, SessionRef, Tier } from '../src/types'
 
 const root = process.argv[2] ?? '/tmp/nekyia-demo'
 const HOUR = 3_600_000
@@ -221,6 +221,24 @@ const consent = join(data, 'consent-v1')
 writeFileSync(consent, 'nekyia-index-consent-v1\n', { mode: 0o600 })
 chmodSync(consent, 0o600)
 
+/**
+ * Alternates what was asked with what came back, the way a transcript records it.
+ *
+ * The reader stores the real order as it hydrates, so the seeded index has to do
+ * the same or the history shot would show the fallback for a session with no
+ * turns rather than the conversation the picker actually renders.
+ */
+function interleave(prompts: string[], replies: string[]): DialogueTurn[] {
+  const turns: DialogueTurn[] = []
+  for (let index = 0; index < Math.max(prompts.length, replies.length); index++) {
+    const asked = prompts[index]
+    const replied = replies[index]
+    if (asked !== undefined) turns.push({ role: 'user', text: asked })
+    if (replied !== undefined) turns.push({ role: 'assistant', text: replied })
+  }
+  return turns
+}
+
 const db = IndexDb.open(join(data, 'index.db'))
 SEEDS.forEach((seed, index) => {
   const ref = seedRef(seed, index)
@@ -229,6 +247,7 @@ SEEDS.forEach((seed, index) => {
     ref,
     prompts: seed.prompts ?? [],
     prose: seed.replies ?? [],
+    dialogue: interleave(seed.prompts ?? [], seed.replies ?? []),
     files: (seed.files ?? []).map((file) => `/home/dev/work/${seed.project}/${file}`),
     truncated: false,
   })
