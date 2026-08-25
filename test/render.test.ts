@@ -70,3 +70,52 @@ test('harness wrappers are unwrapped into what was actually asked', () => {
   expect(userPromptText('')).toBe('')
   expect(userPromptText('a < b and 3 > 2')).toBe('a < b and 3 > 2')
 })
+
+test('a title carrying an escape sequence or a bidi override is neutralised', () => {
+  const row = {
+    uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/root/nekyia',
+    gitBranch: null, title: '\u001b[2J\u001b[Hwiped\u202edesrever', startedAt: NOW,
+    endedAt: NOW - 5 * MIN, turns: 1, parentNativeId: null, tier: 'resume',
+    origin: 'manifest', sourcePaths: [], fingerprint: 'f', missing: false,
+    score: 1, collapsed: 0,
+  } satisfies Row
+  const line = formatRow(row, NOW)
+  // The introducer becomes a space, so the screen-clear reads as text, not as a command.
+  expect(line).not.toContain('\u001b')
+  expect(line).toContain('[2J [Hwiped')
+  // The override is dropped outright: a replacement space would still shift the line.
+  expect(line).not.toContain('\u202e')
+  expect(line).toContain('wipeddesrever')
+})
+
+test('a wide project name still occupies exactly sixteen terminal columns', () => {
+  const row = {
+    uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/root/日本語プロジェクト名前',
+    gitBranch: null, title: 'x', startedAt: NOW, endedAt: NOW - 5 * MIN, turns: 1,
+    parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: [],
+    fingerprint: 'f', missing: false, score: 1, collapsed: 0,
+  } satisfies Row
+  const line = formatRow(row, NOW)
+  // The glyph, client and age columns with their separators cost twenty columns.
+  const project = line.slice(20, 20 + '日本語プロジェク'.length)
+  expect(Bun.stringWidth(project)).toBe(16)
+  expect(line.slice(20 + '日本語プロジェク'.length)).toBe('  x')
+  // Eight double-width graphemes fill the column; the ninth is dropped whole.
+  expect(project).toBe('日本語プロジェク')
+
+  // A short wide name is padded by display width: padEnd would have counted the
+  // two code units of 日本 as two columns and left the title four columns adrift.
+  const short = formatRow({ ...row, cwd: '/root/日本' }, NOW)
+  expect(short.slice(20)).toBe(`日本${' '.repeat(12)}  x`)
+})
+
+test('an unbounded title is cut to the title column', () => {
+  const row = {
+    uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/root/nekyia',
+    gitBranch: null, title: 'a'.repeat(5_000), startedAt: NOW, endedAt: NOW - 5 * MIN,
+    turns: 1, parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: [],
+    fingerprint: 'f', missing: false, score: 3, collapsed: 0,
+  } satisfies Row
+  expect(formatRow(row, NOW)).toContain('a'.repeat(120))
+  expect(formatRow(row, NOW)).not.toContain('a'.repeat(121))
+})

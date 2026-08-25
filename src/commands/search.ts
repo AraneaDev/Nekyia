@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { indexPath, loadConfig } from '../config'
 import { IndexDb } from '../core/db'
 import { query } from '../core/query'
@@ -67,4 +68,3 @@ export async function runSearch(opts: SearchOptions = {}): Promise<number> {
     db.close()
   }
 }
-import { existsSync } from 'node:fs'
