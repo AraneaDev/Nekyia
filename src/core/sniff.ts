@@ -236,6 +236,7 @@ export function sniffJsonl(path: string): SniffResult | null {
           idFrom: 'filename',
           cwdPath: shape.cwdPath,
           tsPath: shape.tsPath,
+          tsUnit: declaredTimeUnit(shape.records[0]![shape.tsPath]),
           rolePath: shape.rolePath,
           textPath: shape.textPath,
           userRoles,
@@ -336,7 +337,15 @@ function plausibleId(value: unknown): boolean {
     && !/[\u0000-\u001f\u007f-\u009f]/.test(value)
 }
 
-function sqliteTimeUnit(value: unknown): 'ms' | 's' | 'iso' {
+/**
+ * Names the unit a plausible timestamp is written in.
+ *
+ * plausibleTime already decides that a small number can only be seconds, so a
+ * draft manifest says so instead of leaving the reader to assume milliseconds
+ * and place the session in 1970. Both drafts share this so the two sniffers
+ * cannot drift apart on the same value.
+ */
+function declaredTimeUnit(value: unknown): 'ms' | 's' | 'iso' {
   if (typeof value === 'number') return value < 100_000_000_000 ? 's' : 'ms'
   return 'iso'
 }
@@ -400,7 +409,7 @@ export function sniffSqlite(path: string): SniffResult | null {
           sqlite: {
             file: basename(path),
             sessions,
-            timeUnit: sqliteTimeUnit(plausible.__time),
+            timeUnit: declaredTimeUnit(plausible.__time),
           },
         },
       }

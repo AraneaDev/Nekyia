@@ -4,7 +4,7 @@ import { basename, extname, join } from 'node:path'
 import { Glob } from 'bun'
 import type { Config } from '../config'
 import type { Manifest } from '../manifests/load'
-import { makeUid } from '../types'
+import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
 import type { Diagnostic, SessionDoc, SessionRef } from '../types'
 import { collectPaths } from './paths'
 import { userPromptText } from '../render'
@@ -21,6 +21,14 @@ const INJECTED_INPUT_PREFIXES = [
   '<skills_instructions>',
   '<image_generation_notes>',
 ] as const
+
+/**
+ * Why a session was dropped, worded identically in every reader.
+ *
+ * The offending id is never repeated back: it is the untrusted value, and the
+ * source path already says where to look for it.
+ */
+const UNSAFE_NATIVE_ID = 'session skipped: id is empty, over-long, or carries control or bidi characters'
 
 /** The contract every store reader implements: cheap discovery first, expensive hydration only for sessions that changed. */
 export interface FormatModule {
@@ -100,13 +108,49 @@ function codexInputText(value: unknown): string {
   return textOfType(value, 'input_text', (text) => !isInjectedInput(text))
 }
 
-function parsedTimestamp(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
+/**
+ * Reads a timestamp in the unit a generic manifest declares.
+ *
+ * Without a declared unit a bare number is taken as milliseconds, which is what
+ * every manifest written before `tsUnit` existed already relies on. Guessing
+ * seconds from magnitude was considered and rejected: it would silently move
+ * the start time of manifests that are correct today. A declared unit is read
+ * exactly as the SQLite reader reads `timeUnit`, so a numeric unit refuses a
+ * string and `iso` refuses a number rather than reinterpreting either.
+ */
+function parsedTimestamp(value: unknown, unit?: 'ms' | 's' | 'iso'): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (unit === 'iso') return null
+    if (unit === undefined) return value
+    const timestamp = unit === 's' ? value * 1000 : value
+    return Math.abs(timestamp) <= Number.MAX_SAFE_INTEGER ? timestamp : null
+  }
   if (typeof value === 'string') {
+    if (unit === 'ms' || unit === 's') return null
     const parsed = Date.parse(value)
     if (Number.isFinite(parsed)) return parsed
   }
   return null
+}
+
+/**
+ * Adds the paths one tool call mentions, up to the per-session ceiling.
+ *
+ * Stopping silently would offer a partial file list as a complete one, so
+ * reaching the ceiling is reported exactly as the other readers report it.
+ */
+function addRecoveredPaths(
+  files: Set<string>,
+  input: unknown,
+  onTruncated: () => void,
+): void {
+  for (const path of collectPaths(input)) {
+    if (files.size >= MAX_SESSION_FILES) {
+      onTruncated()
+      return
+    }
+    files.add(path)
+  }
 }
 
 function nativeIdFromFilename(path: string): string {
@@ -238,6 +282,7 @@ function discoverCodex(
   path: string,
   stat: { size: number; mtime: Date },
   rows: JsonObject[],
+  diagnostics: Diagnostic[],
 ): SessionRef | null {
   let nativeId: string | null = null
   let cwd: string | null = null
@@ -249,7 +294,14 @@ function discoverCodex(
     const payload = isObject(row.payload) ? row.payload : undefined
     if (!hasMetadata && row.type === 'session_meta' && payload
       && typeof payload.session_id === 'string' && payload.session_id.length > 0) {
-        nativeId = payload.session_id
+      // The id is transcript content, so it can hold anything. One that cannot
+      // round-trip through a uid would index a session `forget` then refuses to
+      // remove, leaving prune --client as the only way out.
+      if (!isSafeNativeId(payload.session_id)) {
+        diagnostics.push(warn(manifest.id, path, UNSAFE_NATIVE_ID))
+        return null
+      }
+      nativeId = payload.session_id
       if (typeof payload.cwd === 'string') cwd = payload.cwd
       startedAt = parsedTimestamp(row.timestamp) ?? startedAt
       hasMetadata = true
@@ -271,6 +323,7 @@ function discoverGeneric(
   path: string,
   stat: { size: number; mtime: Date },
   rows: JsonObject[],
+  diagnostics: Diagnostic[],
 ): SessionRef | null {
   const spec = manifest.jsonl.generic
   const idFrom = spec?.idFrom ?? 'filename'
@@ -291,7 +344,7 @@ function discoverGeneric(
       if (typeof value === 'string') cwd = value
     }
     if (spec?.tsPath && !hasStartedAt) {
-      const parsed = parsedTimestamp(get(row, spec.tsPath))
+      const parsed = parsedTimestamp(get(row, spec.tsPath), spec.tsUnit)
       if (parsed !== null) {
         startedAt = parsed
         hasStartedAt = true
@@ -304,9 +357,14 @@ function discoverGeneric(
     }
   }
 
-  return !nativeId
-    ? null
-    : baseRef(manifest, path, stat, nativeId, startedAt, cwd, null, title)
+  if (!nativeId) return null
+  // Whether the id came from a row or from the filename, it is content Nekyia
+  // did not choose, so it is held to the same bound the uid consumers enforce.
+  if (!isSafeNativeId(nativeId)) {
+    diagnostics.push(warn(manifest.id, path, UNSAFE_NATIVE_ID))
+    return null
+  }
+  return baseRef(manifest, path, stat, nativeId, startedAt, cwd, null, title)
 }
 
 async function rowsFromStream(
@@ -611,6 +669,7 @@ function hydrateClaude(
   prompts: string[],
   prose: string[],
   files: Set<string>,
+  onFilesTruncated: () => void,
 ): number {
   if (row.toolUseResult !== undefined) return 0
   const message = isObject(row.message) ? row.message : undefined
@@ -618,7 +677,9 @@ function hydrateClaude(
 
   if (Array.isArray(message.content)) {
     for (const block of message.content) {
-      if (isObject(block) && block.type === 'tool_use') collectPaths(block.input, files)
+      if (isObject(block) && block.type === 'tool_use') {
+        addRecoveredPaths(files, block.input, onFilesTruncated)
+      }
     }
   }
   const text = textOf(message.content)
@@ -639,6 +700,7 @@ function hydrateCodex(
   prompts: string[],
   prose: string[],
   files: Set<string>,
+  onFilesTruncated: () => void,
 ): number {
   if (row.type !== 'response_item') return 0
   const payload = isObject(row.payload) ? row.payload : undefined
@@ -647,7 +709,7 @@ function hydrateCodex(
   if (payload.type === 'function_call') {
     if (typeof payload.arguments === 'string') {
       try {
-        collectPaths(JSON.parse(payload.arguments) as unknown, files)
+        addRecoveredPaths(files, JSON.parse(payload.arguments) as unknown, onFilesTruncated)
       } catch {
         // Malformed tool arguments have no indexable content.
       }
@@ -723,8 +785,8 @@ export const jsonlTranscript: FormatModule = {
                 && stat.size > HEAD_BYTES,
             )
             : manifest.jsonl.variant === 'codex'
-              ? discoverCodex(manifest, path, stat, parsed.rows)
-              : discoverGeneric(manifest, path, stat, parsed.rows)
+              ? discoverCodex(manifest, path, stat, parsed.rows, diagnostics)
+              : discoverGeneric(manifest, path, stat, parsed.rows, diagnostics)
           if (ref) refs.push(ref)
         } catch (error) {
           diagnostics.push(warn(manifest.id, path, error))
@@ -750,12 +812,14 @@ export const jsonlTranscript: FormatModule = {
     const genericUserRoles = new Set(generic?.userRoles ?? ['user', 'human'])
     const genericAssistantRoles = new Set(generic?.assistantRoles ?? ['assistant'])
     let turns = 0
+    let filesTruncated = false
+    const onFilesTruncated = (): void => { filesTruncated = true }
 
     const oversizedRow = await rowsFromStream(path, (row) => {
       turns += manifest.jsonl.variant === 'claude'
-        ? hydrateClaude(row, overCap, prompts, prose, files)
+        ? hydrateClaude(row, overCap, prompts, prose, files, onFilesTruncated)
         : manifest.jsonl.variant === 'codex'
-          ? hydrateCodex(row, overCap, prompts, prose, files)
+          ? hydrateCodex(row, overCap, prompts, prose, files, onFilesTruncated)
           : hydrateGeneric(
             row,
             overCap,
@@ -773,7 +837,7 @@ export const jsonlTranscript: FormatModule = {
       prompts,
       prose,
       files: [...files],
-      truncated: overCap || oversizedRow,
+      truncated: overCap || oversizedRow || filesTruncated,
     }
   },
 }

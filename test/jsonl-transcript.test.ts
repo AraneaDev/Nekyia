@@ -799,3 +799,133 @@ test('a title keeps enough text for the widest terminal', async () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+test('a codex session id that could never round-trip through a uid is refused', async () => {
+  await inTempDir(async (root) => {
+    const path = join(root, 'codex.jsonl')
+    writeJsonl(path, [{
+      timestamp: '2026-08-01T00:00:00.000Z',
+      type: 'session_meta',
+      payload: { session_id: 'ses\u0007bad', cwd: '/root/proj' },
+    }])
+    const manifest = validateManifest({
+      ...codex,
+      tier: 'search',
+      resume: undefined,
+      jsonl: { glob: 'codex.jsonl', variant: 'codex' },
+    })
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(manifest, root)
+
+    // Indexing it would produce a uid `forget` refuses, leaving `prune
+    // --client` as the only way to remove the session again.
+    expect(refs).toEqual([])
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.level).toBe('warn')
+    expect(diagnostics[0]!.path).toBe(path)
+    expect(diagnostics[0]!.message).toContain('session skipped')
+    expect(diagnostics[0]!.message).not.toContain('\u0007')
+  })
+})
+
+test('a generic session id with bidi characters is refused, and doctor is told', async () => {
+  await inTempDir(async (root) => {
+    const path = join(root, 'session.jsonl')
+    writeJsonl(path, [{
+      session: { id: 'g\u202e1' },
+      timestamp: '2026-08-01T00:00:00.000Z',
+      role: 'user',
+      text: 'hello',
+    }])
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(generic, root)
+
+    expect(refs).toEqual([])
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.level).toBe('warn')
+    expect(diagnostics[0]!.path).toBe(path)
+    expect(diagnostics[0]!.message).toContain('session skipped')
+  })
+})
+
+test('a generic manifest can declare that its timestamps are seconds', async () => {
+  await inTempDir(async (root) => {
+    writeJsonl(join(root, 'seconds.jsonl'), [{
+      session: { id: 'g1' }, ts: 1_787_640_881, role: 'user', text: 'hello',
+    }])
+    const spec = {
+      idFrom: 'session.id', tsPath: 'ts', rolePath: 'role', textPath: 'text',
+    }
+    const declared = validateManifest({
+      ...generic,
+      jsonl: { glob: 'seconds.jsonl', variant: 'generic', generic: { ...spec, tsUnit: 's' } },
+    })
+    const undeclared = validateManifest({
+      ...generic,
+      jsonl: { glob: 'seconds.jsonl', variant: 'generic', generic: spec },
+    })
+
+    const withUnit = await jsonlTranscript.discover(declared, root)
+    const withoutUnit = await jsonlTranscript.discover(undeclared, root)
+
+    expect(withUnit.refs[0]!.startedAt).toBe(1_787_640_881_000)
+    // A manifest that declares nothing keeps the behaviour it has today.
+    // Guessing seconds from magnitude would silently move every session a
+    // correct manifest already places properly.
+    expect(withoutUnit.refs[0]!.startedAt).toBe(1_787_640_881)
+  })
+})
+
+test('a declared timestamp unit refuses a value written in another shape', async () => {
+  await inTempDir(async (root) => {
+    writeJsonl(join(root, 'iso.jsonl'), [{
+      session: { id: 'g1' }, ts: '2026-08-01T00:00:00.000Z', role: 'user', text: 'hello',
+    }])
+    const manifest = validateManifest({
+      ...generic,
+      jsonl: {
+        glob: 'iso.jsonl',
+        variant: 'generic',
+        generic: {
+          idFrom: 'session.id', tsPath: 'ts', tsUnit: 'ms', rolePath: 'role', textPath: 'text',
+        },
+      },
+    })
+
+    const { refs } = await jsonlTranscript.discover(manifest, root)
+
+    // A manifest claiming milliseconds described a numeric field. Reading the
+    // string anyway would mean the declaration bought nothing, so the reader
+    // falls back to the file's own mtime instead.
+    expect(refs[0]!.startedAt).toBe(refs[0]!.endedAt)
+  })
+})
+
+test('paths recovered from Claude tool calls stop at the per-session ceiling', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'projects', 'p')
+    mkdirSync(directory, { recursive: true })
+    writeJsonl(join(directory, 'many-files.jsonl'), [{
+      timestamp: '2026-08-01T00:00:00.000Z',
+      message: {
+        role: 'assistant',
+        content: [{
+          type: 'tool_use',
+          input: {
+            edits: Array.from({ length: 1100 }, (_unused, index) => ({
+              filePath: `/root/proj/file-${index}.ts`,
+            })),
+          },
+        }],
+      },
+    }])
+
+    const { refs } = await jsonlTranscript.discover(claude, root)
+    const doc = await jsonlTranscript.hydrate(claude, root, refs[0]!, DEFAULT_CONFIG)
+
+    // One runaway session must not bloat the index, and a partial file list
+    // must never be handed back as a complete one.
+    expect(doc.files).toHaveLength(1024)
+    expect(doc.truncated).toBe(true)
+  })
+})

@@ -44,7 +44,7 @@ test('claims JSONL only when complete evidence occurs in each of two records', (
   expect(result.kind).toBe('jsonl')
   expect(result.suggested.tier).toBe('search')
   expect(result.suggested.jsonl?.generic).toMatchObject({
-    cwdPath: 'cwd', tsPath: 'ts', rolePath: 'role', textPath: 'text',
+    cwdPath: 'cwd', tsPath: 'ts', tsUnit: 'ms', rolePath: 'role', textPath: 'text',
     userRoles: ['user'], assistantRoles: ['assistant'],
   })
   expect(() => validateManifest({
@@ -293,4 +293,27 @@ test('candidateRoots normalizes/deduplicates and returns no symlinks', () => {
   expect(new Set(roots).size).toBe(roots.length)
   expect(roots).toEqual([...roots].sort())
   expect(roots.every((path) => basename(path).length > 0)).toBe(true)
+})
+
+test('a JSONL draft declares the unit its timestamps are actually written in', () => {
+  // plausibleTime already decides a small number can only be seconds. Emitting
+  // that decision keeps the drafted manifest from dating every session to 1970.
+  const path = tmpFile('seconds.jsonl',
+    JSON.stringify({ ts: 1_787_640_881, cwd: '/root/proj', role: 'user', text: 'secret-user' }) + '\n'
+    + JSON.stringify({ ts: 1_787_640_941, cwd: '/root/proj', role: 'assistant', text: 'secret-assistant' }) + '\n')
+
+  const result = sniffJsonl(path)!
+
+  expect(result.suggested.jsonl?.generic?.tsUnit).toBe('s')
+  expect(() => validateManifest({
+    ...result.suggested, id: 'draft', name: 'Draft', roots: [dirname(path)],
+  })).not.toThrow()
+})
+
+test('a JSONL draft declares an ISO timestamp field as iso', () => {
+  const path = tmpFile('iso.jsonl',
+    JSON.stringify({ ts: '2026-08-01T10:00:00.000Z', cwd: '/root/proj', role: 'user', text: 'secret-user' }) + '\n'
+    + JSON.stringify({ ts: '2026-08-01T11:00:00.000Z', cwd: '/root/proj', role: 'assistant', text: 'secret-assistant' }) + '\n')
+
+  expect(sniffJsonl(path)!.suggested.jsonl?.generic?.tsUnit).toBe('iso')
 })
