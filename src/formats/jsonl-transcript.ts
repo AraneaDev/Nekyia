@@ -231,9 +231,18 @@ function discoverClaude(
   stat: { size: number; mtime: Date },
   rows: JsonObject[],
   headTruncated: boolean,
+  diagnostics: Diagnostic[],
 ): SessionRef | null {
   const nativeId = nativeIdFromFilename(path)
   if (!nativeId) return null
+  // The id is the file's own name, and a filename may legally carry control or
+  // bidi characters. One that cannot round-trip through a uid would index a
+  // session `forget` then refuses to remove, leaving prune --client as the
+  // only way out.
+  if (!isSafeNativeId(nativeId)) {
+    diagnostics.push(warn(manifest.id, path, UNSAFE_NATIVE_ID))
+    return null
+  }
   const first = rows[0]
   if (!first) {
     return headTruncated
@@ -783,6 +792,7 @@ export const jsonlTranscript: FormatModule = {
                 && !parsed.malformed
                 && parsed.incompleteFinalLine
                 && stat.size > HEAD_BYTES,
+              diagnostics,
             )
             : manifest.jsonl.variant === 'codex'
               ? discoverCodex(manifest, path, stat, parsed.rows, diagnostics)
