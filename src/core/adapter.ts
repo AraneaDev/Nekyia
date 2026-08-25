@@ -5,9 +5,9 @@ import type { Config } from '../config'
 import { discoverLegacy, hydrateLegacy } from '../formats/opencode-legacy'
 import { readSidecar, type SidecarEntry } from '../formats/prompt-sidecar'
 import { FORMAT_MODULES } from '../formats/registry'
-import type { Manifest } from '../manifests/load'
+import type { Manifest, ManifestSource } from '../manifests/load'
 import { expandRoot, loadManifests, renderArgs } from '../manifests/load'
-import type { Diagnostic, ExecPlan, SessionDoc, SessionRef } from '../types'
+import type { Diagnostic, ExecPlan, Origin, SessionDoc, SessionRef } from '../types'
 
 /** One client, wired up: how to detect it, list its sessions, read one, and launch it. */
 export interface Adapter {
@@ -70,8 +70,18 @@ function rootForRef(roots: string[], ref: SessionRef): string | null {
   return null
 }
 
-function cloneRef(ref: SessionRef): SessionRef {
-  return { ...ref, sourcePaths: [...ref.sourcePaths] }
+function cloneRef(ref: SessionRef, origin: Origin): SessionRef {
+  return { ...ref, origin, sourcePaths: [...ref.sourcePaths] }
+}
+
+/**
+ * Maps a manifest's provenance onto the origin stamped on the refs it produces.
+ *
+ * `sniffed` is never returned here: it belongs to sessions found without a
+ * manifest, so an unknown source is reported as a built-in rather than guessed at.
+ */
+function originFor(source: ManifestSource | undefined): Origin {
+  return source?.kind === 'user' ? 'user-manifest' : 'manifest'
 }
 
 function emptyDoc(ref: SessionRef, truncated: boolean): SessionDoc {
@@ -103,8 +113,13 @@ function includeSidecarEntry(ref: SessionRef, path: string, entry: SidecarEntry)
   ref.fingerprint = JSON.stringify([ref.fingerprint, digest])
 }
 
-/** Wires one manifest into a working adapter, resolving its roots and format module. */
-export function buildAdapter(manifest: Manifest): Adapter {
+/**
+ * Wires one manifest into a working adapter, resolving its roots and format module.
+ *
+ * `origin` is stamped onto every discovered ref, because the format readers know
+ * only their own shape and not which manifest file asked for them.
+ */
+export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): Adapter {
   const roots = manifest.roots.map(expandRoot)
   const format = FORMAT_MODULES[manifest.format]
   const clientId = manifest.id
@@ -147,7 +162,7 @@ export function buildAdapter(manifest: Manifest): Adapter {
           const result = await format.discover(manifest, root)
           diagnostics.push(...result.diagnostics)
           if (result.diagnostics.some((item) => item.level !== 'ok')) authoritative = false
-          local = result.refs.map((ref) => ({ ref: cloneRef(ref), primary: true }))
+          local = result.refs.map((ref) => ({ ref: cloneRef(ref, origin), primary: true }))
         } catch (error) {
           authoritative = false
           diagnostics.push({
@@ -171,7 +186,7 @@ export function buildAdapter(manifest: Manifest): Adapter {
             const legacy = await discoverLegacy(manifest, root)
             diagnostics.push(...legacy.diagnostics)
             if (legacy.diagnostics.some((item) => item.level !== 'ok')) authoritative = false
-            local.push(...legacy.refs.map((ref) => ({ ref: cloneRef(ref), primary: false })))
+            local.push(...legacy.refs.map((ref) => ({ ref: cloneRef(ref, origin), primary: false })))
           } catch (error) {
             authoritative = false
             diagnostics.push({
@@ -215,14 +230,12 @@ export function buildAdapter(manifest: Manifest): Adapter {
       }
       if (root === null) return emptyDoc(ref, true)
 
-      let doc: SessionDoc
-      try {
-        doc = manifest.sqlite?.legacy && ref.sourcePaths[0]?.endsWith('.json')
-          ? await hydrateLegacy(manifest, root, ref, cfg)
-          : await format.hydrate(manifest, root, ref, cfg)
-      } catch {
-        doc = emptyDoc(ref, false)
-      }
+      // A reader failure must reach hydrateAll: it skips the upsert and leaves the
+      // previous fingerprint in place, so the session is retried on the next scan
+      // instead of being stamped as an empty document forever.
+      const doc = manifest.sqlite?.legacy && ref.sourcePaths[0]?.endsWith('.json')
+        ? await hydrateLegacy(manifest, root, ref, cfg)
+        : await format.hydrate(manifest, root, ref, cfg)
 
       try {
         const entry = sidecarFor(root).get(ref.nativeId)
@@ -244,13 +257,25 @@ export function buildAdapter(manifest: Manifest): Adapter {
       try {
         const useResume = manifest.tier === 'resume' && !!manifest.resume && !promptText
         const spec = useResume ? manifest.resume! : manifest.brief
-        if (!spec || !ref.cwd) return null
-        const values = { id: ref.nativeId, cwd: ref.cwd, prompt: promptText ?? '' }
+        if (!spec) return null
+        const sessionCwd = ref.cwd
+        // {cwd} is left unsupplied for a session that recorded no directory, so
+        // renderArgs keeps the placeholder verbatim rather than writing "null".
+        const values: Record<string, string> = {
+          id: ref.nativeId,
+          prompt: promptText ?? '',
+          ...(sessionCwd === null ? {} : { cwd: sessionCwd }),
+        }
+        // A spec.cwd that still asks for {cwd} after rendering never resolved, so it
+        // falls back to the session's own directory and the plan is refused below.
+        const rendered = spec.cwd === undefined ? null : renderArgs([spec.cwd], values)[0]!
+        const cwd = rendered !== null && !rendered.includes('{cwd}') ? rendered : sessionCwd
+        if (!cwd) return null
         return {
           kind: useResume ? 'resume' : 'brief',
           cmd: spec.cmd,
           args: renderArgs(spec.args, values),
-          cwd: ref.cwd,
+          cwd,
           ...(useResume ? {} : { prompt: promptText ?? '' }),
         }
       } catch {
@@ -262,6 +287,9 @@ export function buildAdapter(manifest: Manifest): Adapter {
 
 /** Builds an adapter for every loaded manifest, carrying forward the diagnostics rather than dropping a client silently. */
 export function buildAdapters(): { adapters: Adapter[]; diagnostics: Diagnostic[] } {
-  const { manifests, diagnostics } = loadManifests()
-  return { adapters: manifests.map(buildAdapter), diagnostics }
+  const { manifests, diagnostics, sources } = loadManifests()
+  const adapters = manifests.map(
+    (manifest) => buildAdapter(manifest, originFor(sources.get(manifest.id))),
+  )
+  return { adapters, diagnostics }
 }

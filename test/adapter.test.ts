@@ -73,7 +73,7 @@ test('plan fills known placeholders and preserves unknown placeholders', async (
   })
 })
 
-test('a throwing format never escapes discovery or hydration', async () => {
+test('a throwing format is contained in discovery but reported by hydration', async () => {
   const broken = agyManifest()
   broken.sqlite!.sessions = 'SELECT * FROM nope'
   const adapter = buildAdapter(broken)
@@ -85,11 +85,9 @@ test('a throwing format never escapes discovery or hydration', async () => {
   const good = buildAdapter(agyManifest())
   const { refs } = await good.discover()
   broken.sqlite!.text = 'SELECT * FROM nope WHERE id = ?1'
-  const doc = await adapter.hydrate(refs[0]!, DEFAULT_CONFIG)
-  expect(doc).toEqual({
-    ref: refs[0]!, prompts: ['i want domination instead of wordworth'],
-    prose: [], files: [], truncated: false,
-  })
+  // Swallowing this into an empty document would let the new fingerprint be
+  // written over the old one, so the session would never be hydrated again.
+  await expect(adapter.hydrate(refs[0]!, DEFAULT_CONFIG)).rejects.toThrow()
 })
 
 test('discovery explicitly reports warning-class store failures as non-authoritative', async () => {
