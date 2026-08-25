@@ -115,7 +115,7 @@ test('excluded directories never reach the index', async () => {
   db.close()
 })
 
-test('an excluded previously indexed ref is reported missing', async () => {
+test('an excluded previously indexed ref is reported excluded, not missing', async () => {
   const db = IndexDb.open(':memory:')
   const indexed = ref('alpha', 'secret', { cwd: '/root/secret' })
   db.upsertRef(indexed)
@@ -124,7 +124,8 @@ test('an excluded previously indexed ref is reported missing', async () => {
     exclude: ['/root/secret'],
   }, [fakeAdapter('alpha', { refs: [indexed] })])
   expect(result.refs).toEqual([])
-  expect(result.missing).toEqual(['alpha:secret'])
+  expect(result.excluded).toEqual(['alpha:secret'])
+  expect(result.missing).toEqual([])
   db.close()
 })
 
@@ -173,7 +174,7 @@ test('transient adapter failures protect their unseen sessions from missing', as
   db.close()
 })
 
-test('excluded discovered refs become missing even when their client scan is partial', async () => {
+test('excluded discovered refs are reported excluded even when their client scan is partial', async () => {
   const db = IndexDb.open(':memory:')
   const excluded = ref('partial', 'excluded', { cwd: '/root/secret' })
   db.upsertRef(excluded)
@@ -190,7 +191,8 @@ test('excluded discovered refs become missing even when their client scan is par
   ])
 
   expect(result.refs).toEqual([])
-  expect(result.missing).toEqual(['partial:excluded'])
+  expect(result.excluded).toEqual(['partial:excluded'])
+  expect(result.missing).toEqual([])
   db.close()
 })
 

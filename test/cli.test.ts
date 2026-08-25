@@ -144,6 +144,32 @@ test('partial rebuild discovery never destroys an unseen indexed session', async
   db.close()
 })
 
+test('a newly excluded session is deleted from the index, not just flagged missing', async () => {
+  const db = IndexDb.open(':memory:')
+  const secret: SessionRef = {
+    uid: 'claude:secret', client: 'claude', nativeId: 'secret', cwd: '/root/secret/proj',
+    gitBranch: null, title: 'secret', startedAt: 1, endedAt: 2, turns: 1,
+    parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/secret'],
+    fingerprint: 'one',
+  }
+  db.upsertHydrated({ ref: secret, prompts: ['confidential handover'], prose: [], files: [], truncated: false })
+  const adapter: Adapter = {
+    id: 'claude', manifest: {} as Adapter['manifest'], detect: () => true,
+    discover: async () => ({ refs: [secret], authoritative: true, diagnostics: [] }),
+    hydrate: async () => { throw new Error('not reached') }, plan: () => null,
+  }
+
+  const code = await reindexWith(db, { ...DEFAULT_CONFIG, exclude: ['/root/secret/**'] }, {
+    adapters: [adapter], diagnostics: [],
+  }, { quiet: true })
+
+  expect(code).toBe(0)
+  expect(db.getRef(secret.uid)).toBeNull()
+  expect(db.allUids()).toEqual([])
+  expect(db.ftsSearch('confidential')).toEqual([])
+  db.close()
+})
+
 test('manifest construction errors abort before normal or rebuild indexing mutates old data', async () => {
   for (const rebuild of [false, true]) {
     const db = IndexDb.open(':memory:')
