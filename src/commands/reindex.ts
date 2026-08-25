@@ -101,6 +101,11 @@ export async function reindexWith(
   const discovered = await scan(db, cfg, adapterSet.adapters)
   const discoveryDiagnostics = [...adapterSet.diagnostics, ...discovered.diagnostics]
 
+  // An exclusion is a retention decision, so it hard-deletes: the row, its
+  // stored text and its search entries go before anything else touches the
+  // database. scan keeps the two lists disjoint, so nothing is deleted here
+  // and then marked below, or the reverse.
+  db.deleteSessions(discovered.excluded)
   // Missing is reversible state. Rebuild never hard-deletes old rows: each
   // successfully hydrated replacement commits atomically, while a failure
   // leaves the previous fingerprint and searchable document available.

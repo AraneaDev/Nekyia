@@ -3,11 +3,17 @@ import type { Diagnostic, SessionRef } from '../types'
 import type { Adapter, AdapterDiscovery } from './adapter'
 import type { IndexDb } from './db'
 
-/** What one discovery pass learned: everything visible, what changed and so needs hydrating, and what has disappeared. */
+/** What one discovery pass learned: everything visible, what changed and so needs hydrating, what has disappeared, and what the config now excludes. */
 export interface Scan {
   refs: SessionRef[]
   changed: SessionRef[]
   missing: string[]
+  /**
+   * Indexed uids whose source is still on disk but is now covered by an
+   * exclusion. Kept apart from `missing` because the two demand opposite
+   * treatment: an exclusion is an instruction to delete, not an absence.
+   */
+  excluded: string[]
   diagnostics: Diagnostic[]
 }
 
@@ -25,7 +31,8 @@ function errorMessage(error: unknown): string {
  * Only fingerprints change detection: sessions whose fingerprint still
  * matches are never re-read. A client that could not be fully enumerated has
  * its sessions withheld from the missing list, so a transient read failure
- * cannot delete real history.
+ * cannot delete real history. Sessions the config excludes are reported in
+ * `excluded` instead, which is a deliberate deletion rather than an absence.
  */
 export async function scan(db: IndexDb, cfg: Config, adapters: Adapter[]): Promise<Scan> {
   const known = db.getFingerprints()
@@ -105,14 +112,23 @@ export async function scan(db: IndexDb, cfg: Config, adapters: Adapter[]): Promi
   const missingBeforeScan = db.getMissingUids()
   const changed = refs.filter((ref) =>
     known.get(ref.uid) !== ref.fingerprint || missingBeforeScan.has(ref.uid))
-  const missing = [...known.keys()]
+  const indexed = [...known.keys()]
+  // Seeing a ref and rejecting it on the exclusion list is a positive
+  // observation, so it holds even for a client whose scan was partial.
+  const excluded = indexed
+    .filter((uid) => !refsByUid.has(uid) && excludedUids.has(uid))
+    .sort()
+  const missing = indexed
     .filter((uid) => {
       const separator = uid.indexOf(':')
       const client = separator > 0 ? uid.slice(0, separator) : ''
+      // Excluded uids are reported once, in `excluded`: the caller deletes
+      // those outright, and a uid in both lists would be flagged and dropped.
       return !refsByUid.has(uid)
-        && (excludedUids.has(uid) || !protectedClients.has(client))
+        && !excludedUids.has(uid)
+        && !protectedClients.has(client)
     })
     .sort()
 
-  return { refs, changed, missing, diagnostics }
+  return { refs, changed, missing, excluded, diagnostics }
 }
