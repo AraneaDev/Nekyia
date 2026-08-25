@@ -136,3 +136,59 @@ test('last returns launch validation errors without spawning', async () => {
   expect(ran).toBe(false)
   expect(errors).toEqual(['the directory no longer exists'])
 })
+
+test('last reports an index it could not inspect rather than guessing', async () => {
+  const errors: string[] = []
+  const code = await runLast(dependencies({
+    indexExists: () => { throw new Error('EACCES: permission denied') },
+    runPlan: async () => { throw new Error('must not launch without an index') },
+    error: (text) => { errors.push(text) },
+  }))
+
+  expect(code).toBe(1)
+  expect(errors).toEqual(['could not inspect index state: EACCES: permission denied'])
+})
+
+test('last refuses to run when a client manifest is invalid, and points at doctor', async () => {
+  const errors: string[] = []
+  const code = await runLast(dependencies({
+    buildAdapters: () => ({
+      adapters: [],
+      diagnostics: [{ client: 'kilo', level: 'error', path: null, message: 'unknown format' }],
+    }),
+    runPlan: async () => { throw new Error('must not launch on a broken manifest set') },
+    error: (text) => { errors.push(text) },
+  }))
+
+  expect(code).toBe(1)
+  expect(errors).toEqual(['client manifests are invalid; run "nekyia doctor" for details'])
+})
+
+test('last runs when manifests report only warnings, which are not fatal', async () => {
+  // The guard keys on error level alone. A warning means one client's view is
+  // incomplete, which is not a reason to refuse every other client's sessions.
+  const code = await runLast(dependencies({
+    buildAdapters: () => ({
+      adapters: [adapter({
+        kind: 'resume', cmd: 'claude', args: ['--resume', 'new'], cwd: '/work/project',
+      })],
+      diagnostics: [{ client: 'kilo', level: 'warn', path: null, message: 'store unreadable' }],
+    }),
+    runPlan: async () => 0,
+    error: (text) => { throw new Error(`unexpected error output: ${text}`) },
+  }))
+
+  expect(code).toBe(0)
+})
+
+test('last reports client manifests it could not load at all', async () => {
+  const errors: string[] = []
+  const code = await runLast(dependencies({
+    buildAdapters: () => { throw new Error('manifest directory vanished') },
+    runPlan: async () => { throw new Error('must not launch without adapters') },
+    error: (text) => { errors.push(text) },
+  }))
+
+  expect(code).toBe(1)
+  expect(errors).toEqual(['could not load client manifests: manifest directory vanished'])
+})
