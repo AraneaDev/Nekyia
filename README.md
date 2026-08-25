@@ -36,12 +36,12 @@ a brief, not a resumed state.
 
 - **One Search Surface**: query Claude Code, Codex, GitHub Copilot CLI, opencode, Kilo Code, Codebuff, and Antigravity histories together
 - **Verified Resume**: attach to the selected session by ID only where that exact command was tested
-- **Deterministic Handovers**: start search-tier clients with every indexed user prompt, touched files, branch context, and bounded assistant prose
+- **Deterministic Handovers**: start search-tier clients with every indexed user prompt, touched files, branch context, bounded assistant prose, and a note of whatever had to be left out
 - **Two-Phase Indexing**: discover cheap fingerprints first, then hydrate only sessions that changed
 - **Fast Local Search**: SQLite FTS5 combines weighted prompt relevance with recency decay
 - **Exact File History**: ask which sessions touched one file, resolved against each session's own directory
 - **Interactive and Scriptable**: use the virtualized Ink picker or plain, JSON-capable CLI commands
-- **Privacy Controls**: forget one session, prune deleted sources, or exclude whole directory globs
+- **Privacy Controls**: forget one session, prune deleted sources, or exclude a directory and everything under it
 - **Extensible Manifests**: describe another client locally and use the conservative sniffer to scaffold a draft
 - **Local by Design**: no network service, API key, telemetry, model-written summary, or tool-output indexing
 
@@ -142,12 +142,12 @@ deterministic handover, and starts a new client session with that context.
 | --- | --- |
 | type | Filter as you go; the match is lit in each title |
 | `up` / `down` | Move the cursor, or scroll the history while it is open |
-| `enter` | Resume the session, or start a briefed one for a search-tier client |
+| `enter` | Resume the session, or start a briefed one once you confirm it |
 | `ctrl+o` | Open the session's history, and close it again |
 | `tab` | Widen to everywhere, or narrow to the project under the cursor |
 | `ctrl+f` | Cycle the clients your index actually holds |
 | `ctrl+p` / `ctrl+y` | Copy the opening prompt, or the command that would run |
-| `esc` | Close the history if it is open, otherwise quit |
+| `esc` | Back out of a confirmation, or close the history, or quit |
 
 The picker lays itself out against the terminal it is drawn in, so a narrow window
 gets the same interface rather than a broken one:
@@ -170,19 +170,6 @@ gets the same interface rather than a broken one:
 | `nekyia exclude <glob>` | Add an index-time directory exclusion |
 
 Run `nekyia --help` for search filters, sort modes, limits, and command-specific options.
-
-## Picker keys
-
-| Key | Action |
-| --- | --- |
-| Type | Search indexed session text |
-| Up / Down | Move through results |
-| Enter | Resume, or confirm a fresh briefed session |
-| Tab | Toggle this directory / everywhere |
-| Ctrl+F | Cycle the clients your index actually holds |
-| Ctrl+P | Copy the first indexed prompt |
-| Ctrl+Y | Copy the verified resume command when one exists |
-| Escape | Cancel confirmation or quit |
 
 ## Supported clients
 
@@ -283,20 +270,21 @@ user manifest directory or contributing it.
 
 ```bash
 bun install --frozen-lockfile
+bun run lint
 bun run typecheck
 bun run test
 bun pm pack --dry-run
 ```
 
-CI runs the frozen install, typecheck, full suite, and package check on Linux and macOS.
+CI runs the frozen install, lint, typecheck, full suite, and package check on Linux and macOS.
 Releases use Conventional Commits and Release Please.
 
 ## Roadmap
 
 These clients still need hands-on testing before I ship a built-in manifest: Aider,
-Goose, Crush, Cursor CLI, GitHub Copilot CLI, Qwen Code, Continue CLI, Droid,
-Amazon Q Developer CLI, Plandex, OpenHands, Amp, Warp Agent, Grok CLI, Rovo Dev,
-Auggie, Trae, Cline CLI, and Zed.
+Goose, Crush, Cursor CLI, Qwen Code, Continue CLI, Droid, Amazon Q Developer CLI,
+Plandex, OpenHands, Amp, Warp Agent, Grok CLI, Rovo Dev, Auggie, Trae, Cline CLI,
+and Zed.
 
 I also plan compiled standalone binaries through `bun build --compile` for Linux and
 macOS on x64 and arm64. They are not part of this pre-release, so Bun is required.
