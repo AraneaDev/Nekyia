@@ -286,7 +286,7 @@ function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowPr
   )
 }
 
-export function List({
+export const List = React.memo(function List({
   rows, selected, height, now, columns = 92, query = '',
   rowComponent: RowComponent = DefaultListRow,
 }: {
@@ -320,4 +320,4 @@ export function List({
       })}
     </Box>
   )
-}
+})

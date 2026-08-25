@@ -249,22 +249,20 @@ export function Preview({ lines, offset = 0, maxLines = 12 }: {
   const start = Math.max(0, Math.min(offset, Math.max(0, lines.length - 1)))
   const shown = lines.slice(start, start + Math.max(1, maxLines))
   return (
-    <Box flexDirection="column">
-      {shown.map((line, index) => (
-        <Box key={`${start + index}:${line.label ?? ''}:${line.text}`} flexDirection="row">
-          {line.label !== undefined
-            ? <Box width={LABEL_COLUMNS} flexShrink={0}><Text dimColor>{line.label}</Text></Box>
-            : null}
-          <Text
-            wrap="truncate-end"
-            dimColor={line.dim}
-            bold={line.bold}
-            color={line.color}
-          >
-            {line.text}
-          </Text>
-        </Box>
-      ))}
+    <Box>
+      <Text wrap="truncate-end">
+        {shown.map((line, index) => (
+          <React.Fragment key={start + index}>
+            {line.label !== undefined
+              ? <Text dimColor>{line.label.padEnd(LABEL_COLUMNS)}</Text>
+              : null}
+            <Text dimColor={line.dim} bold={line.bold} color={line.color}>
+              {line.text || ' '}
+            </Text>
+            {index + 1 < shown.length ? '\n' : null}
+          </React.Fragment>
+        ))}
+      </Text>
     </Box>
   )
 }

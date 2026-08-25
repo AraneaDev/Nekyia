@@ -34,7 +34,17 @@ export interface PickDependencies {
 }
 
 export function mountPicker(props: AppProps, renderer: typeof render = render): PickerInstance {
-  return renderer(React.createElement(App, props), { alternateScreen: true })
+  return renderer(React.createElement(App, props), {
+    alternateScreen: true,
+    // History scrolling changes a viewport, not the surrounding chrome. Let
+    // Ink patch only changed terminal rows instead of erasing and rewriting
+    // the complete screen for every held-arrow frame.
+    incrementalRendering: true,
+    // Ink already owns frame scheduling. Keeping one 60 Hz limiter avoids the
+    // uneven cadence caused by stacking an application timer on its default
+    // 30 Hz renderer throttle.
+    maxFps: 60,
+  })
 }
 
 const defaults: PickDependencies = {

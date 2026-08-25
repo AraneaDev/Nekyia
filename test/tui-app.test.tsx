@@ -434,14 +434,18 @@ test('25 MiB native-id, cwd and arg values are rejected before bounded control s
   }
 })
 
-test('production picker mount enables Ink alternate-screen ownership', () => {
+test('production picker mount enables efficient full-screen rendering', () => {
   let options: unknown
   const fakeRender = ((_node: React.ReactNode, value: unknown) => {
     options = value
     return { waitUntilExit: async () => {}, unmount: () => {} }
   }) as never
   mountPicker({} as never, fakeRender)
-  expect(options).toEqual({ alternateScreen: true })
+  expect(options).toEqual({
+    alternateScreen: true,
+    incrementalRendering: true,
+    maxFps: 60,
+  })
 })
 
 test('clipboard absence and rejection are reported without claiming success', async () => {
@@ -864,7 +868,7 @@ test('ctrl+o opens the history, scrolls it, and hands focus back', async () => {
 
   // Down scrolls the history rather than moving the list selection.
   for (let i = 0; i < 40; i++) view.stdin.write('\u001b[B')
-  await tick(45)
+  await tick()
   const scrolled = view.lastFrame()!
   expect(scrolled).not.toContain('prompt line 0')
   expect(scrolled).toContain('reply line')
@@ -946,7 +950,7 @@ test('scrolling stops at the end of the history instead of running past it', asy
   view.stdin.write('\u000f')
   await tick()
   for (let i = 0; i < 50; i++) view.stdin.write('\u001b[B')
-  await tick(45)
+  await tick()
   // A history shorter than the pane cannot be scrolled off the top.
   expect(view.lastFrame()!).toContain('a short session')
   view.unmount()
