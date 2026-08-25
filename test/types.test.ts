@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { forgetIn } from '../src/commands/privacy'
+import { IndexDb } from '../src/core/db'
+import type { SessionRef } from '../src/types'
 import {
   MAX_CLIENT_ID_LENGTH,
   MAX_NATIVE_ID_LENGTH,
@@ -57,14 +58,42 @@ test('the widest client and the widest native id still make one addressable uid'
   expect(isSafeNativeId(parseUid(uid).nativeId)).toBe(true)
 })
 
-test('forget bounds a uid at exactly the length the producers are held to', () => {
-  // A producer that accepted a longer native id would index sessions that
-  // forget then refuses as malformed. privacy.ts owns the check a user
-  // actually hits, so the two numbers are pinned to each other here.
-  const source = readFileSync(
-    join(import.meta.dir, '..', 'src', 'commands', 'privacy.ts'),
-    'utf8',
-  )
-  const declared = /const MAX_UID = ([\d_]+)/.exec(source)?.[1]?.replaceAll('_', '')
-  expect(Number(declared)).toBe(MAX_UID_LENGTH)
+function indexed(db: IndexDb, uid: string, client: string): void {
+  const ref: SessionRef = {
+    uid,
+    client,
+    nativeId: parseUid(uid).nativeId,
+    cwd: '/root/proj',
+    gitBranch: null,
+    title: null,
+    startedAt: 0,
+    endedAt: 0,
+    turns: null,
+    parentNativeId: null,
+    tier: 'search',
+    origin: 'manifest',
+    sourcePaths: ['/x'],
+    fingerprint: 'f',
+  }
+  db.upsertRef(ref)
+}
+
+test('forget accepts the widest uid a producer can make, and nothing wider', () => {
+  // A producer that accepted a longer native id would index sessions forget
+  // then refuses as malformed, leaving prune --client as the only way out.
+  // privacy.ts owns the check a user actually hits, so the bound is exercised
+  // through forget rather than compared against a second copy of the number.
+  const client = 'c'.repeat(MAX_CLIENT_ID_LENGTH)
+  const widest = makeUid(client, 'n'.repeat(MAX_NATIVE_ID_LENGTH))
+  expect(widest.length).toBe(MAX_UID_LENGTH)
+
+  const db = IndexDb.open(':memory:')
+  try {
+    indexed(db, widest, client)
+    expect(forgetIn(db, widest)).toBe(true)
+    indexed(db, `${widest}n`, client)
+    expect(forgetIn(db, `${widest}n`)).toBe(false)
+  } finally {
+    db.close()
+  }
 })

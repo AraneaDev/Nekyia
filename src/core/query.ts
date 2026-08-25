@@ -10,7 +10,6 @@ export interface QueryOpts {
   sort?: 'auto' | 'recent' | 'relevance'
   limit?: number
   includeMissing?: boolean
-  includeSniffed?: boolean
   /** Injectable for deterministic tests. */
   now?: number
 }
@@ -243,16 +242,13 @@ export function query(db: IndexDb, cfg: Config, opts: QueryOpts = {}): Row[] {
       ? config.hiddenClients.filter((client): client is string => typeof client === 'string')
       : [],
   )
-  const showSniffed = config.showSniffed === true
   const halfLifeDays = finite(config.halfLifeDays)
   const cwd = typeof unsafeOpts.cwd === 'string' && unsafeOpts.cwd.trim() ? unsafeOpts.cwd : null
   const client = typeof unsafeOpts.client === 'string' && unsafeOpts.client ? unsafeOpts.client : null
   const includeMissing = unsafeOpts.includeMissing === true
-  const includeSniffed = unsafeOpts.includeSniffed === true
 
   const kept = allRows.filter((row) => {
     if (!includeMissing && row.missing) return false
-    if (row.origin === 'sniffed' && !(includeSniffed || showSniffed)) return false
     if (hiddenClients.has(row.client)) return false
     if (client && row.client !== client) return false
     if (cwd && !underScope(row.cwd, cwd)) return false

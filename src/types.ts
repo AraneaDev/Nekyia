@@ -60,7 +60,7 @@ export function isSafeNativeId(value: unknown): value is string {
 export type Tier = 'resume' | 'search' | 'detected'
 
 /** Where a client definition came from, so diagnostics can say whether the user or Nekyia is responsible for it. */
-export type Origin = 'manifest' | 'user-manifest' | 'sniffed'
+export type Origin = 'manifest' | 'user-manifest'
 
 /** The cheap half of a session: metadata and a fingerprint, read during discovery without opening the transcript. */
 export interface SessionRef {

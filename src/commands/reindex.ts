@@ -5,8 +5,8 @@ import { IndexDb } from '../core/db'
 import { scan } from '../core/discover'
 import { hydrateAll } from '../core/hydrate'
 import { indexPath, loadConfig, type Config } from '../config'
-import { loadManifests } from '../manifests/load'
-import type { Diagnostic, SessionRef } from '../types'
+import { loadManifests, type ManifestSource } from '../manifests/load'
+import type { Diagnostic, Origin, SessionRef } from '../types'
 
 /** Controls an index refresh, including whether to discard and rebuild. */
 export interface ReindexOptions {
@@ -47,11 +47,19 @@ export function safeOverrideRoot(base: string, clientId: string): string | null 
   return candidate
 }
 
+/**
+ * Mirrors the provenance mapping `buildAdapters` applies, so a client wired up
+ * here reports the same origin it would when the whole set is built at once.
+ */
+function originFor(source: ManifestSource | undefined): Origin {
+  return source?.kind === 'user' ? 'user-manifest' : 'manifest'
+}
+
 /** Re-points every manifest root at a fixture tree. Test hook only. */
 function adaptersForRun(): AdapterSet {
   const base = process.env.NEKYIA_ROOT_OVERRIDE
   if (!base) return buildAdapters()
-  const { manifests, diagnostics } = loadManifests()
+  const { manifests, diagnostics, sources } = loadManifests()
   const adapters: Adapter[] = []
   for (const manifest of manifests) {
     const root = safeOverrideRoot(base, manifest.id)
@@ -64,7 +72,7 @@ function adaptersForRun(): AdapterSet {
       })
       continue
     }
-    adapters.push(buildAdapter({ ...manifest, roots: [root] }))
+    adapters.push(buildAdapter({ ...manifest, roots: [root] }, originFor(sources.get(manifest.id))))
   }
   return { adapters, diagnostics }
 }

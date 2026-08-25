@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { MAX_CONFIG_ITEMS, indexPath, updateConfig, type Config } from '../config'
 import { IndexDb } from '../core/db'
 import { expandRoot } from '../manifests/load'
-import { isSafeClientId, parseUid } from '../types'
+import { MAX_UID_LENGTH, isSafeClientId, parseUid } from '../types'
 
 /** Narrows what prune removes. With neither field set, prune deletes nothing rather than everything. */
 export interface PruneOptions {
@@ -11,14 +11,13 @@ export interface PruneOptions {
   client?: string
 }
 
-const MAX_UID = 4_096
 const MAX_GLOB = 4_096
 const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
 /** Everything Bun's Glob treats as a pattern rather than a literal path character. */
 const GLOB_META = /[*?[\]{}!\\]/
 
 function validUid(uid: string): boolean {
-  if (uid.length === 0 || uid.length > MAX_UID || UNSAFE_TEXT.test(uid)) return false
+  if (uid.length === 0 || uid.length > MAX_UID_LENGTH || UNSAFE_TEXT.test(uid)) return false
   try {
     const parsed = parseUid(uid)
     return validClient(parsed.client)

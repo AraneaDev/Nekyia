@@ -22,8 +22,9 @@ import {
   loadManifests,
   validateManifest,
   type Manifest,
+  type ManifestSource,
 } from '../manifests/load'
-import type { Diagnostic } from '../types'
+import type { Diagnostic, Origin } from '../types'
 
 /** Selects what doctor reports and in what shape. */
 export interface DoctorOptions {
@@ -82,8 +83,17 @@ function overrideManifest(manifest: Manifest, base: string | undefined): Manifes
   return { ...manifest, roots: [candidate] }
 }
 
+/**
+ * Mirrors the provenance mapping `buildAdapters` applies, so a client wired up
+ * here reports the same origin it would when the whole set is built at once.
+ */
+function originFor(source: ManifestSource | undefined): Origin {
+  return source?.kind === 'user' ? 'user-manifest' : 'manifest'
+}
+
 function manifestAdapters(
   manifests: Manifest[],
+  sources: Map<string, ManifestSource>,
   diagnostics: Diagnostic[],
 ): Map<string, Adapter> {
   const result = new Map<string, Adapter>()
@@ -100,7 +110,7 @@ function manifestAdapters(
       continue
     }
     try {
-      result.set(manifest.id, buildAdapter(selected))
+      result.set(manifest.id, buildAdapter(selected, originFor(sources.get(manifest.id))))
     } catch (error) {
       diagnostics.push({
         client: manifest.id,
@@ -269,7 +279,7 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<number> {
   const cfg = loadConfig()
   const loaded = loadManifests()
   const diagnostics: Diagnostic[] = [...loaded.diagnostics]
-  const adapters = manifestAdapters(loaded.manifests, diagnostics)
+  const adapters = manifestAdapters(loaded.manifests, loaded.sources, diagnostics)
   const clients: Array<Record<string, unknown>> = []
 
   for (const manifest of loaded.manifests) {
@@ -321,7 +331,6 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<number> {
       exclude: safeList(cfg.exclude),
       halfLifeDays: cfg.halfLifeDays,
       hiddenClients: safeList(cfg.hiddenClients),
-      showSniffed: cfg.showSniffed,
     },
     clients,
     index,

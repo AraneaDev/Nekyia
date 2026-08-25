@@ -30,8 +30,6 @@ export interface Config {
   maxFileBytes: number
   /** Client names hidden from normal results. */
   hiddenClients: string[]
-  /** Whether sniffed sessions are shown. */
-  showSniffed: boolean
 }
 
 /** The settings used when no config file exists, or when the one on disk cannot be trusted. */
@@ -40,7 +38,6 @@ export const DEFAULT_CONFIG: Config = {
   halfLifeDays: 14,
   maxFileBytes: 25 * 1024 * 1024,
   hiddenClients: [],
-  showSniffed: true,
 }
 
 const MAX_CONFIG_BYTES = 1024 * 1024
@@ -48,8 +45,17 @@ const MAX_CONFIG_BYTES = 1024 * 1024
 export const MAX_CONFIG_ITEMS = 256
 const MAX_CONFIG_STRING = 4096
 const CONFIG_FIELDS = new Set([
-  'exclude', 'halfLifeDays', 'maxFileBytes', 'hiddenClients', 'showSniffed',
+  'exclude', 'halfLifeDays', 'maxFileBytes', 'hiddenClients',
 ])
+/**
+ * Fields Nekyia no longer honours but still accepts on disk.
+ *
+ * A strict read rejects unknown keys, so retiring a field outright would turn
+ * every config an older version wrote into an error the next time it was
+ * updated. A retired field is tolerated and then dropped: nothing assigns it,
+ * so the next write simply leaves it out.
+ */
+const RETIRED_CONFIG_FIELDS = new Set(['showSniffed'])
 const LOCK_ATTEMPTS = 50
 const LOCK_WAIT_MS = 10
 const LOCK_STALE_MS = 30_000
@@ -139,7 +145,9 @@ function parseConfig(raw: string, strict: boolean): Config {
     if (strict) throw new Error('config must be a JSON object')
     return config
   }
-  if (strict && Object.keys(parsed).some((key) => !CONFIG_FIELDS.has(key))) {
+  if (strict && Object.keys(parsed).some(
+    (key) => !CONFIG_FIELDS.has(key) && !RETIRED_CONFIG_FIELDS.has(key),
+  )) {
     throw new Error('config contains unknown fields')
   }
 
@@ -159,7 +167,6 @@ function parseConfig(raw: string, strict: boolean): Config {
   assign('halfLifeDays', isFiniteNumber, (value) => value)
   assign('maxFileBytes', isFiniteNumber, (value) => value)
   assign('hiddenClients', isStringArray, (value) => [...value])
-  assign('showSniffed', (value): value is boolean => typeof value === 'boolean', (value) => value)
   return config
 }
 
@@ -167,8 +174,7 @@ function configBytes(config: Config): Buffer {
   if (!isStringArray(config.exclude)
     || !isFiniteNumber(config.halfLifeDays)
     || !isFiniteNumber(config.maxFileBytes)
-    || !isStringArray(config.hiddenClients)
-    || typeof config.showSniffed !== 'boolean') {
+    || !isStringArray(config.hiddenClients)) {
     throw new Error('config exceeds limits or contains invalid values')
   }
   const bytes = Buffer.from(`${JSON.stringify(config, null, 2)}\n`)
