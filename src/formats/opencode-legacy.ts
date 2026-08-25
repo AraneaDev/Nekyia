@@ -10,8 +10,9 @@ import { DEFAULT_CONFIG } from '../config'
 import type { Config } from '../config'
 import type { Manifest } from '../manifests/load'
 import type { Diagnostic, SessionDoc, SessionRef } from '../types'
-import { makeUid } from '../types'
+import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
 import { collectPaths } from './paths'
+import { parseSqlTimeNullable } from './sqlite-store'
 
 const MAX_JSON_BYTES = 4 * 1024 * 1024
 
@@ -41,14 +42,21 @@ function optionalString(value: unknown): string | null | undefined {
   return normalized ?? undefined
 }
 
-function finiteTime(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function objectTime(value: unknown, ...keys: string[]): number | null {
+/**
+ * Reads the first of `keys` that holds a timestamp, in the unit the manifest declares.
+ *
+ * This reader and the SQLite one serve the same manifests, so they read
+ * `timeUnit` through the same function. Assuming milliseconds here would place
+ * a seconds-based store 56 years before the sessions its sibling reports.
+ */
+function objectTime(
+  value: unknown,
+  unit: 'ms' | 's' | 'iso',
+  ...keys: string[]
+): number | null {
   if (!isObject(value)) return null
   for (const key of keys) {
-    const timestamp = finiteTime(value[key])
+    const timestamp = parseSqlTimeNullable(value[key], unit)
     if (timestamp !== null) return timestamp
   }
   return null
@@ -225,6 +233,7 @@ export async function discoverLegacy(
   const legacy = manifest.sqlite?.legacy
   if (!legacy) return { refs, diagnostics }
 
+  const timeUnit = manifest.sqlite?.timeUnit ?? 'ms'
   const base = safeLegacyBase(root, legacy.path)
   if (base === null) {
     diagnostics.push(diagnostic(manifest.id, resolve(root, legacy.path), 'legacy path is outside manifest root'))
@@ -267,9 +276,20 @@ export async function discoverLegacy(
         diagnostics.push(diagnostic(manifest.id, path, 'invalid session shape'))
         continue
       }
+      // The id comes from a stored document, so it is not trusted to be
+      // addressable. A session whose uid `forget` would refuse is left
+      // unindexed rather than indexed and unremovable.
+      if (!isSafeNativeId(nativeId)) {
+        diagnostics.push(diagnostic(
+          manifest.id,
+          path,
+          'session id is empty, over-long, or carries control or bidi characters',
+        ))
+        continue
+      }
 
-      const created = objectTime(value.time, 'created') ?? Math.floor(parsed.mtimeMs)
-      const updated = objectTime(value.time, 'updated') ?? created
+      const created = objectTime(value.time, timeUnit, 'created') ?? Math.floor(parsed.mtimeMs)
+      const updated = objectTime(value.time, timeUnit, 'updated') ?? created
       const sourcePaths = relevantSourcePaths(base, path, nativeId)
       discovered.push({
         key: relative(base, path),
@@ -305,7 +325,7 @@ export async function discoverLegacy(
   return { refs, diagnostics }
 }
 
-function orderedJsonMetadata(base: string, directory: string): {
+function orderedJsonMetadata(base: string, directory: string, unit: 'ms' | 's' | 'iso'): {
   rows: NamedJson[]
 } {
   const rows: NamedJson[] = []
@@ -318,7 +338,7 @@ function orderedJsonMetadata(base: string, directory: string): {
       file,
       path,
       time: parsed.ok
-        ? (objectTime(parsed.value.time, 'created', 'start') ?? Number.MAX_SAFE_INTEGER)
+        ? (objectTime(parsed.value.time, unit, 'created', 'start') ?? Number.MAX_SAFE_INTEGER)
         : Number.MAX_SAFE_INTEGER,
       size: parsed.size,
       readable: parsed.ok,
@@ -346,7 +366,8 @@ export async function hydrateLegacy(
 
   const sessionId = normalizedString(ref.nativeId)
   if (sessionId === null) return { ref, prompts, prose, files: [], truncated: false }
-  const messages = orderedJsonMetadata(base, join(base, 'message', sessionId))
+  const timeUnit = manifest.sqlite?.timeUnit ?? 'ms'
+  const messages = orderedJsonMetadata(base, join(base, 'message', sessionId), timeUnit)
   const maxBytes = Number.isFinite(config.maxFileBytes)
     ? Math.max(0, Math.floor(config.maxFileBytes))
     : 0
@@ -387,7 +408,7 @@ export async function hydrateLegacy(
     }
     charge(messageRow.size)
 
-    const parts = orderedJsonMetadata(base, join(base, 'part', messageId))
+    const parts = orderedJsonMetadata(base, join(base, 'part', messageId), timeUnit)
     for (const partRow of parts.rows) {
       if (!partRow.readable) {
         charge(partRow.size)
@@ -420,7 +441,15 @@ export async function hydrateLegacy(
           truncated = true
           continue
         }
-        for (const path of collectPaths(part.state.input)) files.add(path)
+        for (const path of collectPaths(part.state.input)) {
+          // The per-session ceiling the SQLite reader enforces, applied here
+          // too: a partial file list must never be reported as a complete one.
+          if (files.size >= MAX_SESSION_FILES) {
+            truncated = true
+            break
+          }
+          files.add(path)
+        }
       }
     }
   }

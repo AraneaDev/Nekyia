@@ -285,3 +285,85 @@ test('oversized part files are skipped and mark hydration truncated without losi
   expect(doc.prose).toEqual([])
   expect(doc.truncated).toBe(true)
 })
+
+test('legacy discovery reads time in the unit the manifest declares', async () => {
+  const root = makeLegacyRoot()
+  put(root, join('storage', 'session', 'proj', 'ses_seconds.json'), {
+    id: 'ses_seconds',
+    projectID: 'proj',
+    directory: '/root/proj',
+    title: 'a seconds-based store',
+    time: { created: 1_787_640_881, updated: 1_787_640_941 },
+  })
+  const seconds = validateManifest({
+    schema: 1, id: 'legacy', name: 'legacy', roots: [root],
+    format: 'sqlite-store', tier: 'search',
+    sqlite: {
+      file: 'unused.db', sessions: 'SELECT 1', timeUnit: 's', legacy: { path: 'storage' },
+    },
+  })
+
+  const { refs } = await discoverLegacy(seconds, root)
+
+  // Both readers serve the same manifest. Reading these as milliseconds would
+  // date the session to 1970 while its SQLite sibling reports 2026.
+  expect(refs[0]!.startedAt).toBe(1_787_640_881_000)
+  expect(refs[0]!.endedAt).toBe(1_787_640_941_000)
+})
+
+test('a legacy session id that could never round-trip through a uid is refused', async () => {
+  const root = makeLegacyRoot()
+  const path = join('storage', 'session', 'proj', 'bad.json')
+  put(root, path, {
+    id: 'ses\u202ebad',
+    projectID: 'proj',
+    directory: '/root/proj',
+    title: 'a hostile id',
+    time: { created: 1, updated: 2 },
+  })
+
+  const { refs, diagnostics } = await discoverLegacy(tempManifest(root), root)
+
+  expect(refs).toEqual([])
+  expect(diagnostics).toHaveLength(1)
+  expect(diagnostics[0]!.level).toBe('warn')
+  expect(diagnostics[0]!.path).toBe(join(root, path))
+  expect(diagnostics[0]!.message).toContain('session id is empty, over-long')
+  // The offending id is never echoed back into a terminal.
+  expect(diagnostics[0]!.message).not.toContain('\u202e')
+})
+
+test('legacy hydration stops recovering paths at the per-session ceiling', async () => {
+  const root = makeLegacyRoot()
+  put(root, join('storage', 'session', 'proj', 'ses_many.json'), {
+    id: 'ses_many',
+    projectID: 'proj',
+    directory: '/root/proj',
+    title: 'many files',
+    time: { created: 1, updated: 2 },
+  })
+  put(root, join('storage', 'message', 'ses_many', 'msg_1.json'), {
+    id: 'msg_1', sessionID: 'ses_many', role: 'assistant', time: { created: 1 },
+  })
+  put(root, join('storage', 'part', 'msg_1', 'prt_1.json'), {
+    id: 'prt_1',
+    sessionID: 'ses_many',
+    messageID: 'msg_1',
+    type: 'tool',
+    state: {
+      input: {
+        edits: Array.from({ length: 1100 }, (_unused, index) => ({
+          filePath: `/root/proj/file-${index}.ts`,
+        })),
+      },
+    },
+  })
+  const manifest = tempManifest(root)
+
+  const { refs } = await discoverLegacy(manifest, root)
+  const doc = await hydrateLegacy(manifest, root, refs[0]!, DEFAULT_CONFIG)
+
+  // The same ceiling the SQLite reader enforces, reported the same way.
+  expect(doc.files).toHaveLength(1024)
+  expect(doc.truncated).toBe(true)
+})

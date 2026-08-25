@@ -9,7 +9,7 @@ import type { FileHandle } from 'node:fs/promises'
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
 import { Glob } from 'bun'
 import type { Config } from '../config'
-import { makeUid } from '../types'
+import { isSafeNativeId, makeUid } from '../types'
 import type { Diagnostic, SessionDoc, SessionRef } from '../types'
 import type { FormatModule } from './jsonl-transcript'
 
@@ -549,6 +549,19 @@ export const jsonDir: FormatModule = {
         nativeId = nativeId?.trim() || basename(dir).trim()
         if (!nativeId) {
           diagnostics.push(warning(manifest.id, dir, 'skipped: no usable session id'))
+          continue
+        }
+        // Whether it was extracted from run-state.json or taken from the
+        // directory name, the id is content Nekyia did not choose. One that
+        // cannot round-trip through a uid would index a session `forget` then
+        // refuses to remove, so it is dropped and reported instead. The id
+        // itself is never echoed: it is the untrusted value.
+        if (!isSafeNativeId(nativeId)) {
+          diagnostics.push(warning(
+            manifest.id,
+            dir,
+            'skipped: session id is over-long or carries control or bidi characters',
+          ))
           continue
         }
 

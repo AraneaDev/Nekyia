@@ -1,5 +1,15 @@
 import { expect, test } from 'bun:test'
-import { isSafeClientId, makeUid, parseUid } from '../src/types'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import {
+  MAX_CLIENT_ID_LENGTH,
+  MAX_NATIVE_ID_LENGTH,
+  MAX_UID_LENGTH,
+  isSafeClientId,
+  isSafeNativeId,
+  makeUid,
+  parseUid,
+} from '../src/types'
 
 test('makeUid joins client and native id', () => {
   expect(makeUid('claude', '9e64fb9e')).toBe('claude:9e64fb9e')
@@ -26,4 +36,35 @@ test('client ids share one bounded control-safe contract', () => {
   for (const value of ['', 'bad:id', 'bad\n', 'bad\u202e', 'x'.repeat(257)]) {
     expect(isSafeClientId(value)).toBe(false)
   }
+})
+
+test('native ids answer to the same control-safe contract client ids do', () => {
+  expect(isSafeNativeId('019f71e8-26f9-7943')).toBe(true)
+  // parseUid splits on the first colon, so the native half may hold more.
+  expect(isSafeNativeId('a:b:c')).toBe(true)
+  expect(isSafeNativeId('n'.repeat(MAX_NATIVE_ID_LENGTH))).toBe(true)
+  for (const value of [
+    '', 'bad\u0000', 'bad\n', 'bad\u202e', 'bad\u200f', 'n'.repeat(MAX_NATIVE_ID_LENGTH + 1),
+  ]) {
+    expect(isSafeNativeId(value)).toBe(false)
+  }
+})
+
+test('the widest client and the widest native id still make one addressable uid', () => {
+  const uid = makeUid('c'.repeat(MAX_CLIENT_ID_LENGTH), 'n'.repeat(MAX_NATIVE_ID_LENGTH))
+  expect(uid.length).toBe(MAX_UID_LENGTH)
+  expect(isSafeClientId(parseUid(uid).client)).toBe(true)
+  expect(isSafeNativeId(parseUid(uid).nativeId)).toBe(true)
+})
+
+test('forget bounds a uid at exactly the length the producers are held to', () => {
+  // A producer that accepted a longer native id would index sessions that
+  // forget then refuses as malformed. privacy.ts owns the check a user
+  // actually hits, so the two numbers are pinned to each other here.
+  const source = readFileSync(
+    join(import.meta.dir, '..', 'src', 'commands', 'privacy.ts'),
+    'utf8',
+  )
+  const declared = /const MAX_UID = ([\d_]+)/.exec(source)?.[1]?.replaceAll('_', '')
+  expect(Number(declared)).toBe(MAX_UID_LENGTH)
 })

@@ -79,6 +79,7 @@ test('rejects malformed jsonl configuration', () => {
     [{ glob: '*.jsonl', variant: 'generic', generic: { idFrom: 'filename', cwdPath: 42 } }, 'jsonl.generic.cwdPath'],
     [{ glob: '*.jsonl', variant: 'generic', generic: { idFrom: 'filename', userRoles: ['user', 42] } }, 'jsonl.generic.userRoles'],
     [{ glob: '*.jsonl', variant: 'generic', generic: { idFrom: 'filename', assistantRoles: ['assistant', 42] } }, 'jsonl.generic.assistantRoles'],
+    [{ glob: '*.jsonl', variant: 'generic', generic: { idFrom: 'filename', tsUnit: 'minutes' } }, 'jsonl.generic.tsUnit'],
   ] as const
 
   for (const [jsonl, field] of cases) {
@@ -205,4 +206,26 @@ test('bounds total directory entries even when none are manifests', () => {
     item.message.includes('scan stopped after 1024 entries')
     && item.message.includes('additional entries were not inspected')
   ))).toBe(true)
+})
+
+test('a generic jsonl manifest may declare the unit of its timestamps', () => {
+  // Without this a seconds-based transcript is read as milliseconds and lands
+  // in 1970, while every other format already carries its own unit.
+  for (const tsUnit of ['ms', 's', 'iso'] as const) {
+    const manifest = validateManifest({
+      ...minimalManifest,
+      jsonl: {
+        glob: '*.jsonl',
+        variant: 'generic',
+        generic: { idFrom: 'filename', tsPath: 'ts', tsUnit },
+      },
+    })
+    expect(manifest.jsonl?.generic?.tsUnit).toBe(tsUnit)
+  }
+
+  const silent = validateManifest({
+    ...minimalManifest,
+    jsonl: { glob: '*.jsonl', variant: 'generic', generic: { idFrom: 'filename', tsPath: 'ts' } },
+  })
+  expect(silent.jsonl?.generic).not.toHaveProperty('tsUnit')
 })

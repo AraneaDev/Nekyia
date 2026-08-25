@@ -34,6 +34,8 @@ export interface JsonlSpec {
     idFrom: 'filename' | string
     cwdPath?: string
     tsPath?: string
+    /** Unit of the field `tsPath` names. Absent means milliseconds, which is what every manifest written before this field relied on. */
+    tsUnit?: 'ms' | 's' | 'iso'
     rolePath?: string
     textPath?: string
     userRoles?: string[]
@@ -211,6 +213,14 @@ function validateJsonl(value: unknown): JsonlSpec {
     const tsPath = expectOptionalString(supplied.tsPath, 'jsonl.generic.tsPath')
     const rolePath = expectOptionalString(supplied.rolePath, 'jsonl.generic.rolePath')
     const textPath = expectOptionalString(supplied.textPath, 'jsonl.generic.textPath')
+    if (
+      supplied.tsUnit !== undefined
+      && supplied.tsUnit !== 'ms'
+      && supplied.tsUnit !== 's'
+      && supplied.tsUnit !== 'iso'
+    ) {
+      throw new Error('jsonl.generic.tsUnit must be "ms", "s", or "iso"')
+    }
     if (supplied.userRoles !== undefined && (
       !Array.isArray(supplied.userRoles)
       || !supplied.userRoles.every((role) => typeof role === 'string')
@@ -227,6 +237,7 @@ function validateJsonl(value: unknown): JsonlSpec {
       idFrom,
       ...(cwdPath === undefined ? {} : { cwdPath }),
       ...(tsPath === undefined ? {} : { tsPath }),
+      ...(supplied.tsUnit === undefined ? {} : { tsUnit: supplied.tsUnit }),
       ...(rolePath === undefined ? {} : { rolePath }),
       ...(textPath === undefined ? {} : { textPath }),
       ...(supplied.userRoles === undefined ? {} : { userRoles: supplied.userRoles }),

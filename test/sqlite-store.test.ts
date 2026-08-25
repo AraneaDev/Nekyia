@@ -604,3 +604,133 @@ test('a manifest with only a files query still hydrates', async () => {
   expect(doc.files).toEqual(['/root/proj/only.ts'])
   expect(doc.prompts).toEqual([])
 })
+
+const PART_SQL = 'SELECT m.data AS message_data, p.data AS part_data FROM part p JOIN message m ON m.id = p.message_id WHERE p.session_id = ?1 ORDER BY p.time_created'
+
+function partStore(prefix: string, message: string, parts: string[]): string {
+  const root = mkdtempSync(join(tmpdir(), prefix))
+  tempDirs.push(root)
+  const db = new Database(join(root, 'sessions.db'), { create: true })
+  db.exec(`
+    CREATE TABLE message(id TEXT, session_id TEXT, data TEXT);
+    CREATE TABLE part(message_id TEXT, session_id TEXT, time_created INTEGER, data TEXT);
+  `)
+  db.run('INSERT INTO message VALUES (?1, ?2, ?3)', ['m1', 'one', message])
+  parts.forEach((part, index) => {
+    db.run('INSERT INTO part VALUES (?1, ?2, ?3, ?4)', ['m1', 'one', index, part])
+  })
+  db.close()
+  return root
+}
+
+function partManifest(id: string, root: string) {
+  return validateManifest({
+    schema: 1, id, name: id, roots: [root],
+    format: 'sqlite-store', tier: 'search',
+    sqlite: {
+      file: 'sessions.db', sessions: "SELECT 'one' AS id",
+      text: PART_SQL, textShape: 'opencode-part',
+    },
+  })
+}
+
+test('part projection charges a repeated message only once', async () => {
+  const message = JSON.stringify({ id: 'msg_1', role: 'assistant' })
+  const parts = ['first answer', 'second answer', 'third answer']
+    .map((text) => JSON.stringify({ type: 'text', text }))
+  const root = partStore('nekyia-sqlite-part-charge-', message, parts)
+  const manifest = partManifest('part-charge', root)
+
+  // The source SQL repeats the owning message on every part row, so the honest
+  // budget is the message plus its parts. Charging the message once per row
+  // would bill it three times over and drop prose the cap allows.
+  const budget = Buffer.byteLength(message)
+    + parts.reduce((total, part) => total + Buffer.byteLength(part), 0)
+  const { refs } = await sqliteStore.discover(manifest, root)
+  const doc = await sqliteStore.hydrate(
+    manifest,
+    root,
+    refs[0]!,
+    { ...DEFAULT_CONFIG, maxFileBytes: budget },
+  )
+
+  expect(doc.prose).toEqual(['first answer', 'second answer', 'third answer'])
+  expect(doc.truncated).toBe(false)
+})
+
+test('a part row whose message carries no id keeps paying for that message', async () => {
+  const message = JSON.stringify({ role: 'assistant' })
+  const parts = ['first answer', 'second answer']
+    .map((text) => JSON.stringify({ type: 'text', text }))
+  const root = partStore('nekyia-sqlite-part-anon-', message, parts)
+  const manifest = partManifest('part-anon', root)
+
+  // Without an id there is nothing to group the rows of one message on, so each
+  // row keeps paying in full. Over-charging a message that cannot be identified
+  // is deliberate: merging every unidentifiable row would under-charge instead.
+  const budget = Buffer.byteLength(message)
+    + parts.reduce((total, part) => total + Buffer.byteLength(part), 0)
+  const { refs } = await sqliteStore.discover(manifest, root)
+  const doc = await sqliteStore.hydrate(
+    manifest,
+    root,
+    refs[0]!,
+    { ...DEFAULT_CONFIG, maxFileBytes: budget },
+  )
+
+  expect(doc.prose).toEqual(['first answer'])
+  expect(doc.truncated).toBe(true)
+})
+
+test('paths recovered from tool inputs stop at the per-session ceiling', async () => {
+  const message = JSON.stringify({ id: 'msg_1', role: 'assistant' })
+  const part = JSON.stringify({
+    type: 'tool',
+    state: {
+      input: {
+        edits: Array.from({ length: 1100 }, (_unused, index) => ({
+          filePath: `/root/proj/file-${index}.ts`,
+        })),
+      },
+    },
+  })
+  const root = partStore('nekyia-sqlite-tool-files-', message, [part])
+  const manifest = partManifest('tool-files', root)
+  const { refs } = await sqliteStore.discover(manifest, root)
+  const doc = await sqliteStore.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
+
+  // A files query is already bounded this way. A tool input is the path most
+  // likely to run away, and a partial list must never look like a whole one.
+  expect(doc.files).toHaveLength(1024)
+  expect(doc.truncated).toBe(true)
+})
+
+test('a session id that could never round-trip through a uid is refused, and says so', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-sqlite-unsafe-id-'))
+  tempDirs.push(root)
+  const db = new Database(join(root, 'sessions.db'), { create: true })
+  db.exec('CREATE TABLE sessions(id TEXT, ended_at INTEGER)')
+  db.run('INSERT INTO sessions VALUES (?1, ?2)', ['ses_fine', 1])
+  db.run('INSERT INTO sessions VALUES (?1, ?2)', ['ses\u202ebad', 2])
+  db.run('INSERT INTO sessions VALUES (?1, ?2)', ['ses\u0007bad', 3])
+  db.run('INSERT INTO sessions VALUES (?1, ?2)', ['x'.repeat(4_096), 4])
+  db.close()
+  const manifest = validateManifest({
+    schema: 1, id: 'unsafe-id', name: 'unsafe id', roots: [root],
+    format: 'sqlite-store', tier: 'search',
+    sqlite: { file: 'sessions.db', sessions: 'SELECT * FROM sessions' },
+  })
+
+  const { refs, diagnostics } = await sqliteStore.discover(manifest, root)
+
+  // `forget` refuses such a uid, so indexing the session would leave
+  // `prune --client` as the only way to remove it.
+  expect(refs.map((ref) => ref.nativeId)).toEqual(['ses_fine'])
+  expect(diagnostics).toHaveLength(3)
+  for (const entry of diagnostics) {
+    expect(entry.level).toBe('warn')
+    expect(entry.message).toContain('session skipped')
+    // The offending id is never echoed back into a terminal.
+    expect(entry.message).not.toContain('\u202e')
+  }
+})

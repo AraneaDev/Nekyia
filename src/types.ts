@@ -3,7 +3,8 @@ export type ClientId = string
 
 /** Upper bound on a client id, so a hostile manifest cannot produce unbounded uids. */
 export const MAX_CLIENT_ID_LENGTH = 256
-const UNSAFE_CLIENT_ID = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+/** Control and bidi characters, which neither half of a uid may contain. Mirrors the class every command that accepts a uid enforces. */
+const UNSAFE_UID_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
 
 /** Client ids must safely round-trip through UIDs and terminal diagnostics. */
 export function isSafeClientId(value: unknown): value is ClientId {
@@ -11,7 +12,42 @@ export function isSafeClientId(value: unknown): value is ClientId {
     && value.length > 0
     && value.length <= MAX_CLIENT_ID_LENGTH
     && !value.includes(':')
-    && !UNSAFE_CLIENT_ID.test(value)
+    && !UNSAFE_UID_TEXT.test(value)
+}
+
+/**
+ * Widest uid the commands that accept one will take.
+ *
+ * `forget`, `show` and the CLI refuse anything longer, so a uid over this
+ * length names a session no user can ever reach.
+ */
+export const MAX_UID_LENGTH = 4_096
+
+/**
+ * Upper bound on a native session id.
+ *
+ * A uid is `client:nativeId`, so the widest client id and its separator have to
+ * fit beside it. Bounding the native id against the widest client possible
+ * keeps the guarantee independent of which client produced the session.
+ */
+export const MAX_NATIVE_ID_LENGTH = MAX_UID_LENGTH - 1 - MAX_CLIENT_ID_LENGTH
+
+/**
+ * Native ids must survive the same round trip client ids do.
+ *
+ * The native id is the untrusted half of a uid: it comes from transcript
+ * content rather than from a manifest. A session whose id fails this check
+ * would still be indexed, searchable and offered in the picker while
+ * `nekyia forget <uid>` refused it as malformed, leaving `prune --client`,
+ * which deletes every session of that client, as the only way to remove it.
+ * Producers therefore reject such a session instead of sanitising the id:
+ * sanitising could collapse two distinct sessions onto a single uid.
+ */
+export function isSafeNativeId(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= MAX_NATIVE_ID_LENGTH
+    && !UNSAFE_UID_TEXT.test(value)
 }
 
 /**
@@ -45,6 +81,14 @@ export interface SessionRef {
   sourcePaths: string[]
   fingerprint: string
 }
+
+/**
+ * Per-session ceiling on recorded paths, so one runaway session cannot bloat the index.
+ *
+ * Every reader that fills `SessionDoc.files` shares it, and marks the document
+ * truncated on reaching it rather than quietly returning a partial list.
+ */
+export const MAX_SESSION_FILES = 1024
 
 /**
  * The expensive half of a session, produced by hydration.

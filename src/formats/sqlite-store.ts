@@ -3,21 +3,25 @@ import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Config } from '../config'
 import type { Diagnostic, SessionDoc, SessionRef } from '../types'
-import { makeUid } from '../types'
+import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
 import type { FormatModule } from './jsonl-transcript'
 import { collectPaths } from './paths'
 
 type SqlRow = Record<string, unknown>
 const MAX_PROJECTED_JSON_BYTES = 4 * 1024 * 1024
-/** Per-session ceiling on recorded paths, so one runaway session cannot bloat the index. */
-const MAX_SESSION_FILES = 1024
 
 function sensibleString(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim().length === 0 || value.includes('\0')) return null
   return value.trim()
 }
 
-function parseSqlTimeNullable(
+/**
+ * Reads a timestamp in the unit a manifest declares, or null when it cannot be trusted.
+ *
+ * Exported so the legacy JSON reader honours the same manifest's `timeUnit`
+ * exactly as this one does, rather than assuming milliseconds of its own.
+ */
+export function parseSqlTimeNullable(
   value: unknown,
   unit: 'ms' | 's' | 'iso' = 'ms',
 ): number | null {
@@ -156,14 +160,41 @@ function structuredProjection(sql: string, shape: 'opencode-part' | 'opencode-me
       ordered_source AS MATERIALIZED (
         SELECT row_number() OVER () AS source_ordinal, * FROM raw_source
       ),
-      source AS (
+      typed_source AS MATERIALIZED (
         SELECT
           source_ordinal,
           CASE WHEN json_valid(message_data) THEN message_data END AS message_json,
           CASE WHEN json_valid(part_data) THEN part_data END AS part_json,
-          length(CAST(COALESCE(message_data, '') AS BLOB))
-            + length(CAST(COALESCE(part_data, '') AS BLOB)) AS projected_source_bytes
+          length(CAST(COALESCE(message_data, '') AS BLOB)) AS message_source_bytes,
+          length(CAST(COALESCE(part_data, '') AS BLOB)) AS part_source_bytes
         FROM ordered_source
+      ),
+      source AS (
+        SELECT
+          source_ordinal,
+          message_json,
+          part_json,
+          message_source_bytes + part_source_bytes AS full_source_bytes,
+          -- A part query repeats its owning message once per part, so charging
+          -- the message on every row would bill an N-part message N times and
+          -- exhaust the caller's budget long before the transcript ends. Only
+          -- the first row of each message pays for it, exactly as the
+          -- opencode-message-json shape charges part 0.
+          --
+          -- A row whose message JSON is unusable, either invalid or carrying no
+          -- id, has no identity to group on. The second partition key hands
+          -- every such row a partition of its own, so it keeps paying per row:
+          -- over-charging a message that cannot be identified is safer than
+          -- collapsing all unidentifiable rows into one partition and charging
+          -- the whole group once.
+          CASE WHEN row_number() OVER (
+            PARTITION BY
+              json_extract(message_json, '$.id'),
+              CASE WHEN json_extract(message_json, '$.id') IS NULL THEN source_ordinal END
+            ORDER BY source_ordinal
+          ) = 1 THEN message_source_bytes ELSE 0 END
+            + part_source_bytes AS projected_source_bytes
+        FROM typed_source
       )
       SELECT
         json_extract(message_json, '$.role') AS projected_role,
@@ -174,7 +205,7 @@ function structuredProjection(sql: string, shape: 'opencode-part' | 'opencode-me
               json_extract(message_json, '$.role') = 'user'
               OR (
                 json_extract(message_json, '$.role') = 'assistant'
-                AND projected_source_bytes <= ?2
+                AND full_source_bytes <= ?2
               )
             )
           THEN json_extract(part_json, '$.text')
@@ -355,6 +386,19 @@ export const sqliteStore: FormatModule = {
       for (const row of rows) {
         const nativeId = sensibleString(row.id)
         if (nativeId === null) continue
+        // The id is transcript content, so it can carry anything. One that
+        // cannot round-trip through a uid would index a session that `forget`
+        // then refuses to remove, so the session is dropped and reported. The
+        // id itself is never echoed: it is the untrusted value.
+        if (!isSafeNativeId(nativeId)) {
+          diagnostics.push(diagnostic(
+            manifest.id,
+            'warn',
+            dbPath,
+            'session skipped: id is empty, over-long, or carries control or bidi characters',
+          ))
+          continue
+        }
         const endedAt = parseSqlTimeNullable(row.ended_at, spec.timeUnit) ?? 0
         const parsedStartedAt = row.started_at === undefined
           ? null
@@ -448,7 +492,16 @@ export const sqliteStore: FormatModule = {
           const input = projectedInput(row.projected_input)
           if (input === null && row.projected_input != null) truncated = true
           if (input !== null) {
-            for (const path of collectPaths(input)) files.add(path)
+            for (const path of collectPaths(input)) {
+              // The same ceiling collectRecordedFiles enforces. Tool inputs are
+              // the unguarded path most likely to run away, and stopping
+              // silently would hide a partial file list behind a complete one.
+              if (files.size >= MAX_SESSION_FILES) {
+                truncated = true
+                break
+              }
+              files.add(path)
+            }
           }
         }
       }
