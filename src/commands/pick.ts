@@ -11,6 +11,35 @@ import type { ExecPlan } from '../types'
 import { runReindex } from './reindex'
 import { needsConsent } from './firstrun'
 
+/**
+ * How long the launch waits on a clipboard write that has not finished.
+ *
+ * A helper normally exits in a few milliseconds; half a second is long enough
+ * to cover a cold one and short enough that a stuck one delays the client
+ * rather than holding the terminal hostage.
+ */
+const CLIPBOARD_DRAIN_MS = 500
+
+/**
+ * Waits for a copy to finish, but never for longer than `ms`.
+ *
+ * The picker has already reported any failure to the user, so a rejection here
+ * is nothing to say twice; the launch goes ahead either way.
+ */
+async function settleWithin(promise: Promise<void>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      promise,
+      new Promise<void>((resolve) => { timer = setTimeout(resolve, ms) }),
+    ])
+  } catch {
+    // Already announced in the picker.
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 /** The subset of Ink's render handle the picker lifecycle needs. */
 export interface PickerInstance {
   waitUntilExit(): Promise<unknown>
@@ -120,6 +149,7 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
 
   let picker: PickerInstance | undefined
   let pending: ExecPlan | null = null
+  let pendingCopy: Promise<void> | null = null
   let lifecycleError: unknown
   try {
     const cfg = deps.loadConfig()
@@ -131,7 +161,11 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
       cwd: deps.cwd(),
       now: deps.now(),
       indexedAt: deps.indexedAt(path),
-      onExec: (plan) => { pending ??= plan },
+      onExec: (plan, copy) => {
+        if (pending) return
+        pending = plan
+        pendingCopy = copy ?? null
+      },
     })
     await picker.waitUntilExit()
   } catch (error) {
@@ -154,6 +188,12 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
     return 1
   }
   if (!pending) return 0
+
+  // Ink has let go of the terminal but the client has not taken it yet, which is
+  // the only moment a copy can finish safely: the OSC 52 fallback writes an
+  // escape sequence to stdout, which the launched client would otherwise receive,
+  // and the helper process dies with this one when the launch replaces it.
+  if (pendingCopy) await settleWithin(pendingCopy, CLIPBOARD_DRAIN_MS)
 
   let checked: RunResult
   try {

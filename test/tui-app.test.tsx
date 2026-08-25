@@ -5,11 +5,12 @@ import { DEFAULT_CONFIG } from '../src/config'
 import { mountPicker, runPick, type PickDependencies } from '../src/commands/pick'
 import { buildAdapter, type Adapter } from '../src/core/adapter'
 import { IndexDb } from '../src/core/db'
+import { query } from '../src/core/query'
 import { validateManifest } from '../src/manifests/load'
 import {
   App, fitKeys, previewLines, safeCommandForClipboard, type CommandCopyWork,
 } from '../src/tui/App'
-import { shareLines } from '../src/tui/Preview'
+import { buildPreviewLines, shareLines } from '../src/tui/Preview'
 import { createHostClipboard, type ClipboardRuntime } from '../src/tui/clipboard'
 import type { ExecPlan, SessionRef } from '../src/types'
 
@@ -1014,4 +1015,283 @@ test('runPick reports a client that could not be launched', async () => {
 
   expect(code).toBe(1)
   expect(errors).toEqual(['could not launch the client: spawn failed'])
+})
+
+/** Counts the session rows actually on screen; each one opens with the gutter glyph. */
+function listRowsOf(frame: string): number {
+  return frame.split('\n').filter((line) => /^[▌│]\s/u.test(line)).length
+}
+
+test('tab, backspace and delete leave the reader instead of moving the ground under it', async () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:aa', nativeId: 'aa', title: 'reconnect work' })
+  db.upsertDoc({
+    ref,
+    prompts: Array.from({ length: 40 }, (_, i) => `prompt line ${i}`),
+    prose: [], files: [], truncated: false,
+  })
+  seed(db, { uid: 'claude:zz', nativeId: 'zz', cwd: '/somewhere/else', title: 'far away work' })
+
+  // Ink blanks `input` for all three keys, so the printable-key guard cannot
+  // see them: each one used to change the list while the reader stayed open on
+  // a different session at the offset it had been left at.
+  for (const key of ['\t', '\u007f', '\u001b[3~']) {
+    const view = render(
+      <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} />,
+    )
+    await tick()
+    view.stdin.write('\u000f')
+    await tick()
+    for (let i = 0; i < 8; i++) view.stdin.write('\u001b[B')
+    await tick()
+    expect(view.lastFrame()!).toContain('up/down scroll')
+
+    view.stdin.write(key)
+    await tick()
+    const frame = view.lastFrame()!
+    expect(frame).not.toContain('up/down scroll')
+    expect(frame).toContain('ctrl+o history')
+    // The reader reopens at the top rather than at the offset it was left at.
+    view.stdin.write('\u000f')
+    await tick()
+    expect(view.lastFrame()!).toContain('prompt line 0')
+    view.unmount()
+  }
+  // And tab still did its own job on the way out.
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} />,
+  )
+  await tick()
+  view.stdin.write('\u000f')
+  await tick()
+  view.stdin.write('\t')
+  await tick()
+  expect(view.lastFrame()!).toContain('far away work')
+  view.unmount()
+  db.close()
+})
+
+test('scrolling past the end costs nothing to come back from', async () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:mid', nativeId: 'mid', title: 'a scrollable session' })
+  db.upsertDoc({
+    ref,
+    prompts: Array.from({ length: 30 }, (_, i) => `prompt line ${i}`),
+    prose: [], files: [], truncated: false,
+  })
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} />,
+  )
+  await tick()
+  view.stdin.write('\u000f')
+  await tick()
+  expect(previewOf(view.lastFrame()!)).toContain('a scrollable session')
+
+  for (let i = 0; i < 60; i++) view.stdin.write('\u001b[B')
+  await tick()
+  expect(previewOf(view.lastFrame()!)).not.toContain('a scrollable session')
+
+  // Forty presses back is further than the pane can have travelled, so the top
+  // must be back. It was not: the down presses banked invisible scroll debt
+  // that the up presses paid off before the pane moved a single line.
+  for (let i = 0; i < 40; i++) view.stdin.write('\u001b[A')
+  await tick()
+  expect(previewOf(view.lastFrame()!)).toContain('a scrollable session')
+  view.unmount()
+  db.close()
+})
+
+test('a short terminal spends its rows on the list rather than on decoration', async () => {
+  const db = IndexDb.open(':memory:')
+  for (let i = 0; i < 12; i++) {
+    const ref = seed(db, { uid: `claude:${i}`, nativeId: String(i), title: `session number ${i}` })
+    db.upsertDoc({ ref, prompts: [`prompt ${i}`], prose: [`reply ${i}`], files: [], truncated: false })
+  }
+
+  // Eleven rows of fixed chrome left every one of these heights with a single
+  // usable list row. The preview is kept at all of them; the spacer rows and
+  // the rule are what get handed back.
+  const expected: Record<number, number> = { 8: 1, 10: 2, 12: 4, 14: 6, 20: 7 }
+  for (const rows of [8, 10, 12, 14, 20]) {
+    const view = render(<App
+      db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+      {...opts} rows={rows} columns={100}
+    />)
+    await tick()
+    const frame = view.lastFrame()!
+    expect(listRowsOf(frame)).toBe(expected[rows]!)
+    expect(frame.split('\n').length).toBeLessThanOrEqual(rows)
+    // Whatever else is dropped, the preview stays: this line is drawn nowhere
+    // but the pane under the list.
+    expect(frame).toContain('/root/proj · main · now ago')
+    // The rule is decoration, so it is the first thing a short terminal loses.
+    const hasRule = frame.split('\n').some((line) => /^─+$/u.test(line.trim()))
+    expect(hasRule).toBe(rows >= 16)
+    view.unmount()
+  }
+  db.close()
+})
+
+test('a long query keeps its tail on one row instead of taking rows from the list', async () => {
+  const db = IndexDb.open(':memory:')
+  for (let i = 0; i < 12; i++) {
+    seed(db, { uid: `claude:${i}`, nativeId: String(i), title: `session number ${i}` })
+  }
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    {...opts} rows={14} columns={100}
+  />)
+  await tick()
+  const before = listRowsOf(view.lastFrame()!)
+  expect(before).toBeGreaterThan(1)
+
+  // 320 characters of a term every row carries, so the list still matches and
+  // the only thing under test is what the prompt does with the width.
+  view.stdin.write('session '.repeat(40))
+  await tick(80)
+  const lines = view.lastFrame()!.split('\n')
+  // The prompt is bounded to the terminal, not to the 512 it may store, so it
+  // occupies exactly one row and takes none from the list.
+  expect(lines.filter((line) => line.includes('session session')).length).toBe(1)
+  expect(listRowsOf(lines.join('\n'))).toBe(before)
+  // The tail is what stayed: the end of what was just typed, with the overflow
+  // fallen off the left rather than the other way round.
+  expect(lines[1]!).toContain('…')
+  expect(lines[1]!.trimEnd().endsWith('session')).toBe(true)
+  view.unmount()
+  db.close()
+})
+
+test('a session whose transcript has gone says so instead of vanishing', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:gone', nativeId: 'gone', title: 'work on a deleted transcript' })
+  db.markMissing(['claude:gone'])
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  const frame = view.lastFrame()!
+  // Dropping it turns "the file is gone" into "the session never existed".
+  expect(frame).toContain('work on a deleted transcript')
+  expect(frame).toContain('source transcript no longer on disk')
+  view.unmount()
+  db.close()
+})
+
+test('a count past the query limit is reported as such, and one session is one', async () => {
+  const empty = IndexDb.open(':memory:')
+  const none = render(
+    <App db={empty} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  expect(none.lastFrame()!).toContain('0 sessions')
+  none.unmount()
+  empty.close()
+
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:one', nativeId: 'one' })
+  const one = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  expect(one.lastFrame()!).toContain('1 session ')
+  expect(one.lastFrame()!).not.toContain('1 sessions')
+  one.unmount()
+
+  for (let i = 0; i < 501; i++) seed(db, { uid: `claude:n${i}`, nativeId: `n${i}` })
+  const many = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  // Telling someone holding thousands of sessions that they have 500 is simply
+  // untrue, and it hides every row past the limit behind a confident number.
+  expect(many.lastFrame()!).toContain('500+ sessions')
+  many.unmount()
+  db.close()
+})
+
+test('ctrl+o with nothing selected does not open a mode with nothing in it', async () => {
+  const db = IndexDb.open(':memory:')
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
+  )
+  await tick()
+  view.stdin.write('\u000f')
+  await tick()
+  const frame = view.lastFrame()!
+  // The reader's footer promised keys that do nothing, and its escape closed
+  // something invisible instead of quitting, so the first press looked dead.
+  expect(frame).not.toContain('up/down scroll')
+  expect(frame).toContain('esc quit')
+  expect(frame).toContain('No sessions indexed yet')
+  view.unmount()
+  db.close()
+})
+
+test('the preview head uses the whole pane, not the width the label gutter costs', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, {
+    uid: 'claude:wide', nativeId: 'wide',
+    cwd: '/root/a-project-directory-with-a-name-long-enough-to-fill-the-pane',
+  })
+  const row = query(db, DEFAULT_CONFIG, { limit: 1, now: NOW })[0]!
+  const lines = buildPreviewLines(db, row, { columns: 40, maxLines: 12, now: NOW })
+  const meta = lines[1]!
+  // Nothing draws a gutter for a head line, so charging it for one left the
+  // line cut nine columns short with nine columns of pane sitting empty.
+  expect(meta.label).toBeUndefined()
+  expect(Bun.stringWidth(meta.text)).toBe(40)
+  // Block bodies do hang off the gutter and still pay for it.
+  const body = lines.find((line) => line.label !== undefined && line.text)!
+  expect(Bun.stringWidth(body.text)).toBeLessThanOrEqual(40 - 9)
+  db.close()
+})
+
+test('runPick settles a copy still in flight before the client takes the terminal', async () => {
+  const events: string[] = []
+  let finishCopy = () => {}
+  const copy = new Promise<void>((resolve) => {
+    finishCopy = () => { events.push('copied'); resolve() }
+  })
+  const plan: ExecPlan = { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/root/proj' }
+  const code = await runPick(launchingDeps({
+    mount: (props) => {
+      props.onExec(plan, copy)
+      return {
+        waitUntilExit: async () => { events.push('wait') },
+        unmount: () => {
+          events.push('unmount')
+          // The helper only reports back after Ink has let go of the terminal.
+          setTimeout(finishCopy, 5)
+        },
+      }
+    },
+    runPlan: async () => { events.push('run'); return 0 },
+  }))
+
+  expect(code).toBe(0)
+  // An OSC 52 sequence written after this point lands in the launched client's
+  // terminal, and the helper process dies with this one when the launch
+  // replaces it, so the copy is silently lost.
+  expect(events).toEqual(['wait', 'unmount', 'copied', 'run'])
+})
+
+test('a clipboard helper that never returns delays the launch rather than blocking it', async () => {
+  const events: string[] = []
+  const started = Date.now()
+  const code = await runPick(launchingDeps({
+    mount: (props) => {
+      props.onExec(
+        { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/root/proj' },
+        new Promise<void>(() => {}),
+      )
+      return { waitUntilExit: async () => {}, unmount: () => { events.push('unmount') } }
+    },
+    runPlan: async () => { events.push('run'); return 0 },
+  }))
+
+  expect(code).toBe(0)
+  expect(events).toEqual(['unmount', 'run'])
+  // Bounded: a stuck helper is a delay before the client starts, never a hang.
+  expect(Date.now() - started).toBeLessThan(3_000)
 })

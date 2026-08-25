@@ -337,6 +337,26 @@ test('a match is split out of the title so it can be lit', () => {
   expect(matchSpans('fix the retry budget', 'absent')).toEqual(['fix the retry budget', '', ''])
 })
 
+test('a title whose case does not fold one-to-one is still cut where the match is', () => {
+  // 'İ' is one code unit and lowercases to two, so a search run over a
+  // lowercased copy hands back offsets that no longer line up with the title.
+  expect(matchSpans('İstanbul deploy retry', 'retry'))
+    .toEqual(['İstanbul deploy ', 'retry', ''])
+  // The same drift used to land mid-surrogate, splitting one emoji across two
+  // Text nodes with different colours: two replacement glyphs, one column wide.
+  expect(matchSpans('İ😀x', '😀')).toEqual(['İ', '😀', 'x'])
+  // Whatever is cut out is exactly what was there: the three spans rebuild the
+  // title, which is the property a drifting offset breaks.
+  for (const [title, needle] of [
+    ['İstanbul deploy retry', 'retry'], ['İ😀x', '😀'], ['ẞtraße retry', 'RETRY'],
+  ] as [string, string][]) {
+    expect(matchSpans(title, needle).join('')).toBe(title)
+  }
+  // A query full of regex metacharacters is matched as the text it is.
+  expect(matchSpans('fix a.*b now', 'a.*b')).toEqual(['fix ', 'a.*b', ' now'])
+  expect(matchSpans('fix aXXb now', 'a.*b')).toEqual(['fix aXXb now', '', ''])
+})
+
 test('age reads as a gradient from today to long ago', () => {
   const hour = 3_600_000
   expect(ageEmphasis(NOW - hour, NOW)).toEqual({ dim: false, bold: true })

@@ -6,16 +6,24 @@ import { buildBrief } from '../core/brief'
 import type { IndexDb } from '../core/db'
 import { shellQuote } from '../core/resume'
 import type { ExecPlan } from '../types'
-import { boundedDisplayText, List } from './List'
+import { boundedDisplayText, boundedPathTail, List, MAX_DISPLAY_COLUMNS } from './List'
 import { projectName, relTime } from '../render'
 import { buildPreviewLines, Preview } from './Preview'
-import { useSessions } from './useSessions'
+import { SESSION_DISPLAY_LIMIT, useSessions } from './useSessions'
 import { createHostClipboard, type ClipboardLike } from './clipboard'
 
 const CLIENTS = [undefined, 'claude', 'codex', 'opencode', 'kilo', 'codebuff', 'agy'] as const
 const SEARCH_COLUMNS = 512
 /** First-paint estimate of non-list chrome; layout measurement corrects it immediately. */
 const CHROME_SEED = 12
+/**
+ * Below this height the decorative chrome costs more than it gives. Full chrome
+ * is eleven rows, so sixteen is the first height that still leaves the list four
+ * rows; under it the separating rule and the two blank spacer rows are dropped
+ * and the list gets them back. The preview stays: a list you can see and a
+ * session you cannot is the wrong half to keep.
+ */
+const COMPACT_CHROME_ROWS = 16
 
 /**
  * Content lines the preview may claim. Derived from the terminal alone, never
@@ -223,7 +231,16 @@ export interface AppProps {
   adapters: Adapter[]
   cwd: string
   now: number
-  onExec: (plan: ExecPlan) => void
+  /**
+   * Hands the chosen launch to the host.
+   *
+   * `pendingCopy` is a clipboard write still in flight, if one is. The host must
+   * settle it before the client takes the terminal over: the OSC 52 fallback
+   * writes its escape sequence to stdout, and the helper process is a child of
+   * this one, so an unawaited copy either lands in the client's terminal or dies
+   * with the picker.
+   */
+  onExec: (plan: ExecPlan, pendingCopy?: Promise<void>) => void
   /** null explicitly disables copying; undefined uses the host clipboard when present. */
   clipboard?: ClipboardLike | null
   /** Injectable factory keeps host clipboard selection testable without side effects. */
@@ -252,29 +269,37 @@ export function App({
   const detailRef = useRef<DOMElement | null>(null)
   const [inspecting, setInspecting] = useState(false)
   const [scroll, setScroll] = useState(0)
+  const sessions = useSessions(db, cfg, cwd)
+  const selectedRow = sessions.rows[sessions.selected]
+  // Inspecting with nothing selected is a mode with nothing in it, whose footer
+  // promises keys that do nothing and whose escape closes something invisible
+  // instead of quitting. Every branch reads this instead of the raw flag, so the
+  // reader cannot be entered or left standing without a row under it.
+  const reading = inspecting && Boolean(selectedRow)
   // Reading the history is worth most of the screen; the list keeps a few rows
   // so you can still see what you are reading about. Whichever pane is not
   // growing gets a fixed height, and both are measured rather than computed,
   // so no arithmetic here can drift from what Yoga actually laid out.
   const listHeight = useMeasuredHeight(
     listRef,
-    Math.max(1, inspecting ? INSPECT_LIST_ROWS : terminalHeight - CHROME_SEED),
+    Math.max(1, reading ? INSPECT_LIST_ROWS : terminalHeight - CHROME_SEED),
   )
   const detailLines = useMeasuredHeight(
     detailRef,
-    Math.max(1, inspecting ? terminalHeight - INSPECT_LIST_ROWS - 7 : previewLines(terminalHeight)),
+    Math.max(1, reading ? terminalHeight - INSPECT_LIST_ROWS - 7 : previewLines(terminalHeight)),
   )
-  const sessions = useSessions(db, cfg, cwd)
   const [confirm, setConfirm] = useState<Confirmation | null>(null)
   const [note, setNote] = useState('')
   const executing = useRef(false)
   const mounted = useRef(true)
-  const selectedRow = sessions.rows[sessions.selected]
+  // The clipboard write still running, if any. Held so the launch can settle it
+  // rather than racing the client for the terminal.
+  const pendingCopy = useRef<Promise<void> | null>(null)
   const detail = useMemo(
     () => buildPreviewLines(db, selectedRow, {
-      columns: terminalWidth, maxLines: detailLines, full: inspecting, now,
+      columns: terminalWidth, maxLines: detailLines, full: reading, now,
     }),
-    [db, selectedRow, terminalWidth, detailLines, inspecting, now],
+    [db, selectedRow, terminalWidth, detailLines, reading, now],
   )
   const maxScroll = Math.max(0, detail.length - detailLines)
   // Selecting another session, or leaving inspect, starts the reader at the top.
@@ -297,7 +322,7 @@ export function App({
   function emit(plan: ExecPlan): void {
     if (executing.current) return
     executing.current = true
-    onExec(plan)
+    onExec(plan, pendingCopy.current ?? undefined)
     exit()
   }
 
@@ -366,7 +391,7 @@ export function App({
       `).get(COPY_PROMPT_CHARS, row.uid) as { prompts: string | null } | null
       const prompt = sanitizePromptForClipboard(result?.prompts?.split(/\r?\n/u, 1)[0] ?? '')
       if (!prompt) { announce('no indexed prompt for this session'); return }
-      void writeClipboard(prompt, 'first prompt copied')
+      pendingCopy.current = writeClipboard(prompt, 'first prompt copied')
     } catch {
       announce('could not read the first prompt')
     }
@@ -387,7 +412,7 @@ export function App({
     }
     const command = safeCommandForClipboard(plan)
     if (!command) { announce('resume command unsafe to copy'); return }
-    void writeClipboard(command, 'resume command copied')
+    pendingCopy.current = writeClipboard(command, 'resume command copied')
   }
 
   function cycleClient(): void {
@@ -408,13 +433,21 @@ export function App({
       setScroll(0)
       return
     }
-    if (inspecting) {
+    if (reading) {
       // Escape closes what it opened before it closes the picker.
       if (key.escape) { setInspecting(false); setScroll(0); return }
+      // Clamped where the offset is stored, not only where it is drawn: an
+      // unbounded count turns later up-presses into paying off invisible debt,
+      // and the pane sits still while the key does nothing.
       if (key.upArrow) { setScroll((at) => Math.max(0, at - 1)); return }
-      if (key.downArrow) { setScroll((at) => at + 1); return }
+      if (key.downArrow) { setScroll((at) => Math.min(maxScroll, at + 1)); return }
       if (key.pageUp) { setScroll((at) => Math.max(0, at - detailLines)); return }
-      if (key.pageDown) { setScroll((at) => at + detailLines); return }
+      if (key.pageDown) { setScroll((at) => Math.min(maxScroll, at + detailLines)); return }
+      // Ink blanks `input` for tab, backspace and delete, so the printable-key
+      // check below cannot see them. They change the query or the scope, which
+      // moves the ground under the reader, so they close it first and then fall
+      // through to do their own job.
+      if (key.tab || key.backspace || key.delete) { setInspecting(false); setScroll(0) }
       // Anything that changes the list would move the ground under the reader,
       // so typing leaves the history and goes back to searching.
       if (input && !key.ctrl && !key.meta) { setInspecting(false); setScroll(0) }
@@ -454,8 +487,18 @@ export function App({
   }
 
   const shownSearch = boundedDisplayText(sessions.text, SEARCH_COLUMNS)
+  // SEARCH_COLUMNS is the storage cap, not a width. The line has to fit the
+  // terminal as well, or it wraps and takes the extra rows out of the list. The
+  // tail is what is kept: the end of what was just typed stays on screen and the
+  // overflow falls off the left, the way a path keeps its file name.
+  const searchTail = boundedPathTail(shownSearch, Math.max(1, terminalWidth - 2))
   const shownClient = sessions.client ? boundedDisplayText(sessions.client, 32) : ''
   const shownNote = boundedDisplayText(note, 120)
+  // A short terminal spends most of its height on chrome, so the spacer rows and
+  // the rule are handed back to the list. The preview is kept at every height:
+  // a list you can read about a session you cannot see is the wrong half to keep.
+  const compact = terminalHeight < COMPACT_CHROME_ROWS
+  const ruleColumns = Math.min(MAX_DISPLAY_COLUMNS, terminalWidth)
   // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,
   // decides who yields space. The list takes the slack the preview leaves; both
   // clip rather than pushing the frame past the last row and scrolling the top away.
@@ -470,7 +513,12 @@ export function App({
     && now - indexedAt >= STALE_INDEX_MS
     ? `index ${relTime(indexedAt, now)} old`
     : ''
-  const context = [`${sessions.rows.length} sessions`, scope, shownClient, shownNote, indexAge]
+  // A count that stops at the query's own limit reads as the size of the index,
+  // which for a large one is simply untrue. Say that it runs past instead.
+  const found = sessions.overflowed
+    ? `${SESSION_DISPLAY_LIMIT}+ sessions`
+    : `${sessions.rows.length} session${sessions.rows.length === 1 ? '' : 's'}`
+  const context = [found, scope, shownClient, shownNote, indexAge]
     .filter(Boolean).join(' · ')
   // The first key names what enter does to the row under the cursor, so the
   // hint matches the outcome instead of always promising a resume.
@@ -482,7 +530,7 @@ export function App({
   const sparse = !empty && narrowed && sessions.rows.length <= 1
   // Named, not drawn. A reader who does not already know that ⇥ means tab
   // cannot find the key, and the hints elsewhere say "press tab" in words.
-  const keys: [string, string][] = inspecting
+  const keys: [string, string][] = reading
     ? [
       ['up/down', 'scroll'], ['pgup/pgdn', 'page'],
       ['enter', enterLabel], ['ctrl+o', 'close'], ['esc', 'close'],
@@ -510,13 +558,13 @@ export function App({
       </Box>
       <Box flexShrink={0}>
         <Text color="cyan">{'▸ '}</Text>
-        <Text>{shownSearch}</Text>
+        <Text wrap="truncate-end">{searchTail}</Text>
         <Text dimColor>{shownSearch ? '' : 'type to search'}</Text>
       </Box>
       <Box
-        ref={listRef} marginTop={1}
-        flexGrow={inspecting ? 0 : 1} flexShrink={1}
-        height={inspecting ? INSPECT_LIST_ROWS : undefined} minHeight={1}
+        ref={listRef} marginTop={compact ? 0 : 1}
+        flexGrow={reading ? 0 : 1} flexShrink={1}
+        height={reading ? INSPECT_LIST_ROWS : undefined} minHeight={1}
         flexDirection="column" overflow="hidden"
       >
         {empty
@@ -530,20 +578,22 @@ export function App({
       </Box>
       {selectedRow ? (
         <>
-          <Box flexShrink={0} marginTop={1}>
-            <Text dimColor>{'─'.repeat(Math.max(1, terminalWidth))}</Text>
-          </Box>
+          {compact ? null : (
+            <Box flexShrink={0} marginTop={1}>
+              <Text dimColor>{'─'.repeat(Math.max(1, ruleColumns))}</Text>
+            </Box>
+          )}
           <Box
             ref={detailRef}
-            flexGrow={inspecting ? 1 : 0} flexShrink={1} minHeight={1}
-            height={inspecting ? undefined : previewLines(terminalHeight)}
+            flexGrow={reading ? 1 : 0} flexShrink={1} minHeight={1}
+            height={reading ? undefined : previewLines(terminalHeight)}
             flexDirection="column" overflow="hidden"
           >
             <Preview lines={detail} offset={offset} maxLines={detailLines} />
           </Box>
         </>
       ) : null}
-      {sparse && !inspecting ? <SparseHint project={scope} /> : null}
+      {sparse && !reading ? <SparseHint project={scope} /> : null}
       <Box flexShrink={0} marginTop={1}>
         <Text wrap="truncate-end">
           {fitKeys(keys, terminalWidth).map(([key, label], index) => (
