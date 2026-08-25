@@ -10,6 +10,18 @@ import { collectPaths } from './paths'
 import { userPromptText } from '../render'
 
 const HEAD_BYTES = 16 * 1024
+/**
+ * How far into a Codex rollout discovery reads.
+ *
+ * Codex writes the whole system prompt into the `session_meta` row, so that
+ * single first line runs past 16 KiB on current releases: measured over 97 real
+ * rollouts, 95 of them had a first line between 16 and 19 KiB and none reached
+ * 64 KiB, and at 16 KiB not one of the 97 yielded an id. A second-chance read
+ * was measured against this flat bound and lost, because the retry fires on
+ * nearly every file: 196 ms against 138 ms over 1000 rollouts of that shape.
+ * Only the Codex variant pays the wider read.
+ */
+const CODEX_HEAD_BYTES = 64 * 1024
 const MAX_ROW_CHARS = 4 * 1024 * 1024
 const INJECTED_INPUT_PREFIXES = [
   '<recommended_plugins>',
@@ -159,6 +171,46 @@ function nativeIdFromFilename(path: string): string {
   return name.slice(0, name.length - extname(name).length)
 }
 
+/**
+ * The rollout id Codex spells into the filename, or null when the name does not
+ * end in one.
+ *
+ * A rollout is named after the thread it records, so the name is the one place
+ * the id survives when the metadata row itself is unreadable: too long for the
+ * head read, or written by a Codex old enough to have used a different metadata
+ * shape. The match is deliberately a full uuid rather than "whatever trails the
+ * last dash", so an unrelated file that happens to sit under the glob cannot
+ * mint a session out of its own name.
+ */
+const CODEX_ROLLOUT_ID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
+
+function codexIdFromFilename(path: string): string | null {
+  return CODEX_ROLLOUT_ID.exec(basename(path))?.[1] ?? null
+}
+
+/**
+ * Whether a Codex `session_meta` row describes a worker rather than a session a
+ * person sat in front of.
+ *
+ * Codex files subagent threads and SDK workers beside real sessions, in the same
+ * directory and the same format. They cannot be resumed by hand and they swamp
+ * the picker: of 97 rollouts on the machine this was measured on, 89 were
+ * subagent threads sharing only two `session_id` values between them, so they
+ * would not even survive indexing as distinct sessions.
+ *
+ * Only markers that name the worker outright are trusted, because a wrong
+ * exclusion hides a session the user really had. `source.subagent` and
+ * `thread_source` are what current Codex writes; the SDK's exec workers predate
+ * both and are recognised by their own originator, never by `source === 'exec'`
+ * alone, since that is also what a person running `codex exec` gets.
+ */
+function isCodexWorkerMetadata(payload: JsonObject): boolean {
+  const source = payload.source
+  if (isObject(source) && Object.hasOwn(source, 'subagent')) return true
+  if (payload.thread_source === 'subagent') return true
+  return source === 'exec' && payload.originator === 'codex_sdk_ts'
+}
+
 function warn(client: string, path: string | null, error: unknown): Diagnostic {
   return {
     client,
@@ -168,8 +220,8 @@ function warn(client: string, path: string | null, error: unknown): Diagnostic {
   }
 }
 
-async function readHead(path: string): Promise<string> {
-  return Bun.file(path).slice(0, HEAD_BYTES).text()
+async function readHead(path: string, maxBytes: number): Promise<string> {
+  return Bun.file(path).slice(0, maxBytes).text()
 }
 
 function parseHead(text: string): {
@@ -286,11 +338,28 @@ function discoverClaude(
   return baseRef(manifest, path, stat, nativeId, startedAt, cwd, branch, title)
 }
 
+/**
+ * The id a Codex metadata row claims, or null when it claims none.
+ *
+ * `session_id` is preferred because it is the field every Codex release has
+ * written and the one already indexed. `id` is the newer name for the same
+ * thing and is read as a fallback, so a rollout that only carries the new field
+ * is still found rather than skipped.
+ */
+function codexMetadataId(payload: JsonObject): string | null {
+  if (typeof payload.session_id === 'string' && payload.session_id.length > 0) {
+    return payload.session_id
+  }
+  if (typeof payload.id === 'string' && payload.id.length > 0) return payload.id
+  return null
+}
+
 function discoverCodex(
   manifest: Manifest,
   path: string,
   stat: { size: number; mtime: Date },
   rows: JsonObject[],
+  headTruncated: boolean,
   diagnostics: Diagnostic[],
 ): SessionRef | null {
   let nativeId: string | null = null
@@ -301,25 +370,46 @@ function discoverCodex(
 
   for (const row of rows) {
     const payload = isObject(row.payload) ? row.payload : undefined
-    if (!hasMetadata && row.type === 'session_meta' && payload
-      && typeof payload.session_id === 'string' && payload.session_id.length > 0) {
-      // The id is transcript content, so it can hold anything. One that cannot
-      // round-trip through a uid would index a session `forget` then refuses to
-      // remove, leaving prune --client as the only way out.
-      if (!isSafeNativeId(payload.session_id)) {
-        diagnostics.push(warn(manifest.id, path, UNSAFE_NATIVE_ID))
-        return null
+    if (!hasMetadata && row.type === 'session_meta' && payload) {
+      // A worker thread is dropped outright rather than falling through to the
+      // filename, which would index the very rollouts this recognises.
+      if (isCodexWorkerMetadata(payload)) return null
+      const id = codexMetadataId(payload)
+      if (id !== null) {
+        // The id is transcript content, so it can hold anything. One that cannot
+        // round-trip through a uid would index a session `forget` then refuses to
+        // remove, leaving prune --client as the only way out.
+        if (!isSafeNativeId(id)) {
+          diagnostics.push(warn(manifest.id, path, UNSAFE_NATIVE_ID))
+          return null
+        }
+        nativeId = id
+        if (typeof payload.cwd === 'string') cwd = payload.cwd
+        startedAt = parsedTimestamp(row.timestamp) ?? startedAt
+        hasMetadata = true
       }
-      nativeId = payload.session_id
-      if (typeof payload.cwd === 'string') cwd = payload.cwd
-      startedAt = parsedTimestamp(row.timestamp) ?? startedAt
-      hasMetadata = true
     }
     if (title === null && row.type === 'response_item' && payload?.type === 'message'
       && payload.role === 'user') {
       const text = codexInputText(payload.content)
       if (text) title = firstLine(text)
+    } else if (title === null && row.type === 'message' && row.role === 'user') {
+      // Codex once wrote the response items themselves, one per line, with no
+      // envelope around them.
+      const text = codexInputText(row.content)
+      if (text) title = firstLine(text)
     }
+  }
+
+  if (nativeId === null && (headTruncated || rows.length > 0)) {
+    // No metadata row was readable, but the file held something: either the row
+    // ran past the head read or this rollout predates the metadata row. The
+    // filename still names the thread. An empty or unreadable file is left
+    // alone, so a stub rollout does not become a session with nothing in it.
+    const recovered = codexIdFromFilename(path)
+    // A uuid always clears the uid bound; the check is kept so no id reaches an
+    // index without passing through the one gate.
+    if (recovered !== null && isSafeNativeId(recovered)) nativeId = recovered
   }
 
   return nativeId === null
@@ -711,8 +801,12 @@ function hydrateCodex(
   files: Set<string>,
   onFilesTruncated: () => void,
 ): number {
-  if (row.type !== 'response_item') return 0
-  const payload = isObject(row.payload) ? row.payload : undefined
+  // A row that is not an envelope is read as the response item itself, which is
+  // how Codex wrote rollouts before `response_item` existed. The type and role
+  // below still have to match, so no other row shape is picked up by this.
+  const payload = row.type === 'response_item'
+    ? isObject(row.payload) ? row.payload : undefined
+    : row
   if (!payload) return 0
 
   if (payload.type === 'function_call') {
@@ -780,7 +874,8 @@ export const jsonlTranscript: FormatModule = {
         try {
           const file = Bun.file(path)
           const stat = await file.stat()
-          const parsed = parseHead(await readHead(path))
+          const headBytes = manifest.jsonl.variant === 'codex' ? CODEX_HEAD_BYTES : HEAD_BYTES
+          const parsed = parseHead(await readHead(path, headBytes))
           if (parsed.malformed) diagnostics.push(warn(manifest.id, path, 'malformed JSONL row'))
           const ref = manifest.jsonl.variant === 'claude'
             ? discoverClaude(
@@ -795,7 +890,14 @@ export const jsonlTranscript: FormatModule = {
               diagnostics,
             )
             : manifest.jsonl.variant === 'codex'
-              ? discoverCodex(manifest, path, stat, parsed.rows, diagnostics)
+              ? discoverCodex(
+                manifest,
+                path,
+                stat,
+                parsed.rows,
+                parsed.incompleteFinalLine && stat.size > headBytes,
+                diagnostics,
+              )
               : discoverGeneric(manifest, path, stat, parsed.rows, diagnostics)
           if (ref) refs.push(ref)
         } catch (error) {

@@ -953,3 +953,236 @@ test('paths recovered from Claude tool calls stop at the per-session ceiling', a
     expect(doc.truncated).toBe(true)
   })
 })
+
+const codexAnyGlob = validateManifest({
+  ...codex,
+  jsonl: { glob: '*.jsonl', variant: 'codex' },
+})
+
+function rolloutName(id: string): string {
+  return `rollout-2026-08-02T09-00-00-${id}.jsonl`
+}
+
+/** A Codex `session_meta` row, with whatever worker markers a case needs bolted on. */
+function codexMeta(id: string, extra: Record<string, unknown> = {}): unknown {
+  return {
+    timestamp: '2026-08-02T09:00:00.000Z',
+    type: 'session_meta',
+    payload: { session_id: id, id, cwd: '/root/proj', ...extra },
+  }
+}
+
+function codexUserMessage(text: string): unknown {
+  return {
+    type: 'response_item',
+    payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] },
+  }
+}
+
+/**
+ * The rollout kinds Codex writes side by side, and which of them is a session a
+ * person could actually return to.
+ *
+ * A wrong exclusion here hides work someone really did, so every marker that
+ * drops a rollout is pinned next to a case it resembles and that is kept.
+ */
+const WORKER_MATRIX: {
+  name: string
+  id: string
+  markers: Record<string, unknown>
+  kept: boolean
+}[] = [
+  {
+    name: 'an interactive CLI session',
+    id: '11111111-1111-4111-8111-111111111111',
+    markers: { source: 'cli', thread_source: 'user', originator: 'codex-tui' },
+    kept: true,
+  },
+  {
+    // A person running `codex exec` themselves: the same source string the SDK
+    // worker carries, so the source alone must never be enough to hide it.
+    name: 'a user-invoked codex exec run',
+    id: '22222222-2222-4222-8222-222222222222',
+    markers: { source: 'exec', thread_source: 'user', originator: 'codex_cli_rs' },
+    kept: true,
+  },
+  {
+    name: 'an SDK worker',
+    id: '33333333-3333-4333-8333-333333333333',
+    markers: { source: 'exec', originator: 'codex_sdk_ts' },
+    kept: false,
+  },
+  {
+    name: 'a subagent rollout',
+    id: '44444444-4444-4444-8444-444444444444',
+    markers: {
+      source: { subagent: { thread_spawn: { depth: 1, agent_nickname: 'Cicero' } } },
+      thread_source: 'subagent',
+    },
+    kept: false,
+  },
+  {
+    // Older Codex releases wrote no source at all. An unlabelled rollout counts
+    // as a session until it says otherwise.
+    name: 'a session with no source field',
+    id: '55555555-5555-4555-8555-555555555555',
+    markers: {},
+    kept: true,
+  },
+]
+
+test('Codex indexes real sessions and leaves worker rollouts out of the picker', async () => {
+  await inTempDir(async (root) => {
+    for (const entry of WORKER_MATRIX) {
+      writeJsonl(join(root, rolloutName(entry.id)), [
+        codexMeta(entry.id, entry.markers),
+        codexUserMessage(`work for ${entry.name}`),
+      ])
+    }
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(codexAnyGlob, root)
+
+    expect(diagnostics).toEqual([])
+    expect(refs.map((ref) => ref.nativeId).sort()).toEqual(
+      WORKER_MATRIX.filter((entry) => entry.kept).map((entry) => entry.id).sort(),
+    )
+    for (const entry of WORKER_MATRIX.filter((one) => one.kept)) {
+      expect(refs.find((ref) => ref.nativeId === entry.id)?.title)
+        .toBe(`work for ${entry.name}`)
+    }
+  })
+})
+
+test('a Codex session_meta row past the old head read is still discovered', async () => {
+  await inTempDir(async (root) => {
+    const id = '66666666-6666-4666-8666-666666666666'
+    // Current Codex writes the whole system prompt into session_meta, which puts
+    // that row past 16 KiB on every real rollout measured.
+    writeJsonl(join(root, rolloutName(id)), [
+      codexMeta(id, { base_instructions: { text: 'You are Codex. '.repeat(2000) } }),
+      codexUserMessage('rewrite the transport layer'),
+    ])
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(codexAnyGlob, root)
+
+    expect(diagnostics).toEqual([])
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({
+      nativeId: id,
+      cwd: '/root/proj',
+      title: 'rewrite the transport layer',
+      startedAt: Date.parse('2026-08-02T09:00:00.000Z'),
+    })
+  })
+})
+
+test('a Codex rollout whose metadata outruns even the wider head falls back to its filename', async () => {
+  await inTempDir(async (root) => {
+    const id = '77777777-7777-4777-8777-777777777777'
+    writeJsonl(join(root, rolloutName(id)), [
+      codexMeta(id, { base_instructions: { text: 'You are Codex. '.repeat(10000) } }),
+      codexUserMessage('this row is never reached'),
+    ])
+
+    const { refs } = await jsonlTranscript.discover(codexAnyGlob, root)
+
+    // The metadata was unreadable, but the file names the thread it records, so
+    // the session is still resumable rather than silently missing.
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({ nativeId: id, cwd: null, title: null })
+  })
+})
+
+test('Codex reads the newer id field when a rollout carries no session_id', async () => {
+  await inTempDir(async (root) => {
+    const path = join(root, 'codex.jsonl')
+    writeJsonl(path, [{
+      timestamp: '2026-08-02T09:00:00.000Z',
+      type: 'session_meta',
+      payload: { id: 'thread-only-id', cwd: '/root/proj' },
+    }])
+    const manifest = validateManifest({
+      ...codex,
+      tier: 'search',
+      resume: undefined,
+      jsonl: { glob: 'codex.jsonl', variant: 'codex' },
+    })
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(manifest, root)
+
+    expect(diagnostics).toEqual([])
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({ nativeId: 'thread-only-id', cwd: '/root/proj' })
+  })
+})
+
+test('a codex id field that could never round-trip through a uid is refused', async () => {
+  await inTempDir(async (root) => {
+    const path = join(root, 'codex.jsonl')
+    writeJsonl(path, [{
+      timestamp: '2026-08-01T00:00:00.000Z',
+      type: 'session_meta',
+      payload: { id: 'ses\u0007bad', cwd: '/root/proj' },
+    }])
+    const manifest = validateManifest({
+      ...codex,
+      tier: 'search',
+      resume: undefined,
+      jsonl: { glob: 'codex.jsonl', variant: 'codex' },
+    })
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(manifest, root)
+
+    // The fallback field is transcript content like any other, so it is held to
+    // the bound session_id is held to.
+    expect(refs).toEqual([])
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.level).toBe('warn')
+    expect(diagnostics[0]!.path).toBe(path)
+    expect(diagnostics[0]!.message).toContain('session skipped')
+    expect(diagnostics[0]!.message).not.toContain('\u0007')
+  })
+})
+
+test('a Codex rollout written without the response_item envelope is still read', async () => {
+  await inTempDir(async (root) => {
+    const id = '88888888-8888-4888-8888-888888888888'
+    writeJsonl(join(root, rolloutName(id)), [
+      {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'port the old rollout' }],
+      },
+      {
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'Ported it.' }],
+      },
+      { type: 'function_call', arguments: JSON.stringify({ filePath: '/root/proj/src/old.ts' }) },
+    ])
+
+    const { refs } = await jsonlTranscript.discover(codexAnyGlob, root)
+    const doc = await jsonlTranscript.hydrate(codexAnyGlob, root, refs[0]!, DEFAULT_CONFIG)
+
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({ nativeId: id, title: 'port the old rollout' })
+    expect(doc.prompts).toEqual(['port the old rollout'])
+    expect(doc.prose).toEqual(['Ported it.'])
+    expect(doc.files).toEqual(['/root/proj/src/old.ts'])
+  })
+})
+
+test('an empty or unnamed Codex rollout is not turned into a session', async () => {
+  await inTempDir(async (root) => {
+    writeFileSync(join(root, rolloutName('99999999-9999-4999-8999-999999999999')), '')
+    // A file under the glob that names no thread cannot become one.
+    writeJsonl(join(root, 'rollout-notes.jsonl'), [
+      { type: 'event_msg', payload: { type: 'task_started' } },
+    ])
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(codexAnyGlob, root)
+
+    expect(refs).toEqual([])
+    expect(diagnostics).toEqual([])
+  })
+})
