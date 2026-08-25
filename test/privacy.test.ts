@@ -15,12 +15,12 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { DEFAULT_CONFIG, configDir, indexPath, loadConfig, updateConfig } from '../src/config'
 import { IndexDb } from '../src/core/db'
 import type { SessionRef } from '../src/types'
-import { addExclude, forgetIn, pruneIn } from '../src/commands/privacy'
+import { addExclude, excludePatterns, forgetIn, pruneIn } from '../src/commands/privacy'
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts')
 let temporary: string
@@ -131,6 +131,40 @@ test('addExclude appends without duplication and never aliases caller arrays', (
   const duplicate = addExclude(changed, '/root/client-work/**')
   expect(duplicate.exclude).toEqual(changed.exclude)
   expect(duplicate.exclude).not.toBe(changed.exclude)
+})
+
+test('a bare directory excludes the directory and its subtree, a glob is stored verbatim', () => {
+  expect(excludePatterns('/home/u/secret')).toEqual(['/home/u/secret', '/home/u/secret/**'])
+  expect(excludePatterns('/home/u/secret/')).toEqual(['/home/u/secret', '/home/u/secret/**'])
+  expect(excludePatterns('/work/private/**')).toEqual(['/work/private/**'])
+})
+
+test('a leading tilde is expanded before the pattern is stored', () => {
+  expect(excludePatterns('~/secret/**')).toEqual([join(homedir(), 'secret/**')])
+  expect(excludePatterns('~')).toEqual([homedir(), join(homedir(), '**')])
+  expect(excludePatterns('~notatilde')).toEqual(['~notatilde', '~notatilde/**'])
+})
+
+test('addExclude refuses to cross the config item cap, even one entry at a time', () => {
+  const full = {
+    ...DEFAULT_CONFIG,
+    exclude: Array.from({ length: 256 }, (_, index) => `/x/${index}/**`),
+    hiddenClients: [],
+  }
+  expect(() => addExclude(full, '/one-too-many/**')).toThrow('too many exclusions')
+  expect(addExclude(full, '/x/0/**').exclude).toHaveLength(256)
+})
+
+test('excluding a bare directory stores both patterns and stays idempotent', () => {
+  const first = run(['exclude', '/root/secret'])
+  expect(first.exitCode).toBe(0)
+  expect(first.stderr.toString()).toContain('excluded /root/secret and /root/secret/**')
+  expect(loadConfig().exclude).toEqual(['/root/secret', '/root/secret/**'])
+
+  const second = run(['exclude', '/root/secret'])
+  expect(second.exitCode).toBe(0)
+  expect(second.stderr.toString()).toContain('already excluded')
+  expect(loadConfig().exclude).toEqual(['/root/secret', '/root/secret/**'])
 })
 
 test('forget and prune do not create an absent index', () => {
@@ -321,6 +355,57 @@ test('an abandoned recovery guard fails busy instead of being broken', () => {
   const guard = join(configDir(), '.config.lock.recovery')
   mkdirSync(guard, { mode: 0o700 })
   const result = run(['exclude', '/guarded/**'])
+  expect(result.exitCode).toBe(1)
+  expect(result.stderr.toString()).toContain('config recovery is busy')
+  expect(result.stderr.toString()).toContain(guard)
+  expect(lstatSync(guard).isDirectory()).toBe(true)
+  expect(existsSync(join(configDir(), 'config.json'))).toBe(false)
+})
+
+test('a recovery guard stranded by a dead process is recovered, not wedged forever', () => {
+  const old = new Date(Date.now() - 60_000)
+  const stranded: Array<[string, (guard: string) => void]> = [
+    ['a written owner', (guard) => {
+      const owner = join(guard, 'owner')
+      writeFileSync(owner, JSON.stringify({
+        token: '00000000-0000-0000-0000-000000000000', pid: 2_147_483_647,
+      }), { mode: 0o600 })
+      utimesSync(owner, old, old)
+    }],
+    // Killed between creating the directory and creating the owner file.
+    ['no owner', () => {}],
+    // Killed between creating the owner file and writing it.
+    ['an unwritten owner', (guard) => {
+      const owner = join(guard, 'owner')
+      writeFileSync(owner, '', { mode: 0o600 })
+      utimesSync(owner, old, old)
+    }],
+  ]
+  for (const [name, strand] of stranded) {
+    rmSync(configDir(), { recursive: true, force: true })
+    mkdirSync(configDir(), { recursive: true })
+    const guard = join(configDir(), '.config.lock.recovery')
+    mkdirSync(guard, { mode: 0o700 })
+    strand(guard)
+    utimesSync(guard, old, old)
+    const result = run(['exclude', `/recovered/${name.replace(/ /g, '-')}/**`])
+    expect(result.exitCode).toBe(0)
+    expect(readdirSync(configDir()).sort()).toEqual(['config.json'])
+  }
+})
+
+test('a stale-looking recovery guard whose owner is alive is never broken', () => {
+  mkdirSync(configDir(), { recursive: true })
+  const guard = join(configDir(), '.config.lock.recovery')
+  mkdirSync(guard, { mode: 0o700 })
+  const owner = join(guard, 'owner')
+  writeFileSync(owner, JSON.stringify({
+    token: '00000000-0000-0000-0000-000000000000', pid: process.pid,
+  }), { mode: 0o600 })
+  const old = new Date(Date.now() - 60_000)
+  utimesSync(owner, old, old)
+  utimesSync(guard, old, old)
+  const result = run(['exclude', '/live-guard/**'])
   expect(result.exitCode).toBe(1)
   expect(result.stderr.toString()).toContain('config recovery is busy')
   expect(lstatSync(guard).isDirectory()).toBe(true)
