@@ -435,14 +435,18 @@ test('25 MiB native-id, cwd and arg values are rejected before bounded control s
   }
 })
 
-test('production picker mount enables Ink alternate-screen ownership', () => {
+test('production picker mount enables alternate-screen ownership and cheap repaints', () => {
   let options: unknown
   const fakeRender = ((_node: React.ReactNode, value: unknown) => {
     options = value
     return { waitUntilExit: async () => {}, unmount: () => {} }
   }) as never
   mountPicker({} as never, fakeRender)
-  expect(options).toEqual({ alternateScreen: true })
+  expect(options).toEqual({
+    alternateScreen: true,
+    incrementalRendering: true,
+    maxFps: 60,
+  })
 })
 
 test('clipboard absence and rejection are reported without claiming success', async () => {

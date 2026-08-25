@@ -459,6 +459,53 @@ test('the bare picker builds on first run and then continues into Ink', async ()
   expect(events).toEqual(['index', 'pick', 'unmount', 'close'])
 })
 
+test('the bare picker continues when first-run indexing produced a partial index', async () => {
+  const events: string[] = []
+  const messages: string[] = []
+  let exists = false
+  let consentNeeded = true
+  const db = { close: () => { events.push('close') } } as unknown as IndexDb
+  const code = await runPick({
+    isTTY: () => true,
+    needsConsent: () => consentNeeded,
+    indexPath: () => '/index.db',
+    indexExists: () => exists,
+    ensureIndex: async () => {
+      events.push('index')
+      exists = true
+      consentNeeded = false
+      return 1
+    },
+    openDb: () => db,
+    mount: () => ({
+      waitUntilExit: async () => { events.push('pick') },
+      unmount: () => { events.push('unmount') },
+    }),
+    error: (message) => { messages.push(message) },
+  })
+  expect(code).toBe(0)
+  expect(events).toEqual(['index', 'pick', 'unmount', 'close'])
+  expect(messages).toEqual(['indexing completed with errors; continuing with the available sessions'])
+})
+
+test('a partial index that left no consent marker still refuses the picker', async () => {
+  const messages: string[] = []
+  let mounted = false
+  const code = await runPick({
+    isTTY: () => true,
+    needsConsent: () => true,
+    indexPath: () => '/index.db',
+    indexExists: () => true,
+    ensureIndex: async () => 3,
+    openDb: () => ({ close: () => {} }) as unknown as IndexDb,
+    mount: () => { mounted = true; return { waitUntilExit: async () => {}, unmount: () => {} } },
+    error: (message) => { messages.push(message) },
+  })
+  expect(code).toBe(3)
+  expect(mounted).toBe(false)
+  expect(messages).toEqual(['no session index found; first-run indexing did not complete'])
+})
+
 test('a non-TTY picker refuses before attempting first-run indexing', async () => {
   let indexed = false
   expect(await runPick({

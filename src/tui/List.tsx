@@ -181,8 +181,15 @@ function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowPr
   )
 }
 
-/** Draws the visible window of sessions, virtualized so a large index costs no more to render than a small one. */
-export function List({
+/**
+ * Draws the visible window of sessions, virtualized so a large index costs no
+ * more to render than a small one.
+ *
+ * Memoized because scrolling the history moves an offset the list knows nothing
+ * about: every prop here is a primitive or a memoized identity, so a detail step
+ * that leaves them alone should not rebuild a screen of rows.
+ */
+export const List = React.memo(function List({
   rows, selected, height, now, columns = 92, query = '',
   rowComponent: RowComponent = DefaultListRow,
 }: {
@@ -216,4 +223,4 @@ export function List({
       })}
     </Box>
   )
-}
+})
