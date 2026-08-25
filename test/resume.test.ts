@@ -213,3 +213,38 @@ test('runPlan still launches when stdin cannot be paused', async () => {
     paused.mockRestore()
   }
 })
+
+test('runPlan owns the signals only while the child runs', async () => {
+  const before = { int: process.listenerCount('SIGINT'), term: process.listenerCount('SIGTERM') }
+  const signalled: unknown[] = []
+  let finish: (code: number) => void = () => {}
+  const exited = new Promise<number>((resolve) => { finish = resolve })
+
+  const run = runPlan(ok, {
+    spawn: () => ({ exited, kill: (signal?: unknown) => { signalled.push(signal) } }),
+  })
+  expect(process.listenerCount('SIGINT')).toBe(before.int + 1)
+  expect(process.listenerCount('SIGTERM')).toBe(before.term + 1)
+
+  // The tty already delivered SIGINT to the whole process group, so the parent
+  // handler must swallow it rather than pass it on a second time.
+  process.emit('SIGINT')
+  expect(signalled).toEqual([])
+  // A SIGTERM aimed at nekyia alone never reaches the child's group.
+  process.emit('SIGTERM')
+  expect(signalled).toEqual(['SIGTERM'])
+
+  finish(0)
+  expect(await run).toBe(0)
+  expect(process.listenerCount('SIGINT')).toBe(before.int)
+  expect(process.listenerCount('SIGTERM')).toBe(before.term)
+})
+
+test('runPlan survives a launcher whose process cannot be killed', async () => {
+  let finish: (code: number) => void = () => {}
+  const exited = new Promise<number>((resolve) => { finish = resolve })
+  const run = runPlan(ok, { spawn: () => ({ exited }) })
+  expect(() => process.emit('SIGTERM')).not.toThrow()
+  finish(5)
+  expect(await run).toBe(5)
+})
