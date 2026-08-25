@@ -15,6 +15,8 @@ export interface FtsHit {
 }
 
 const SCHEMA_VERSION = 1
+/** How long a statement waits for another process's lock; SQLite otherwise gives up instantly. */
+const BUSY_TIMEOUT_MS = 5_000
 
 interface SessionRow {
   uid: string
@@ -41,6 +43,24 @@ interface TextRow {
   prose: string
 }
 
+/**
+ * Reads the stored provenance, degrading to no known source when the column is unreadable.
+ *
+ * The field is written as a JSON array by this module, but a truncated write or
+ * a hand-edited index would otherwise throw a SyntaxError out of every read that
+ * maps rows through here, including a search over the whole table.
+ */
+function parseSourcePaths(value: string): string[] {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === 'string')) return []
+  return parsed as string[]
+}
+
 /** Maps a raw index row onto the shared session shape, keeping snake_case confined to this module. */
 export function rowToRef(row: SessionRow): StoredRef {
   return {
@@ -56,7 +76,7 @@ export function rowToRef(row: SessionRow): StoredRef {
     parentNativeId: row.parent_native_id,
     tier: row.tier,
     origin: row.origin,
-    sourcePaths: JSON.parse(row.source_paths) as string[],
+    sourcePaths: parseSourcePaths(row.source_paths),
     fingerprint: row.fingerprint,
     missing: Boolean(row.missing),
   }
@@ -100,6 +120,7 @@ export class IndexDb {
 
     const db = new Database(path, { readwrite: true, create })
     try {
+      db.exec(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}`)
       db.exec('PRAGMA journal_mode=WAL')
       db.exec('PRAGMA synchronous=NORMAL')
 
@@ -159,6 +180,9 @@ export class IndexDb {
     // writable SQLite connection at all.
     const inspection = new Database(path, { readonly: true, strict: true })
     try {
+      // A connection-level setting, not a write to the file, so it is safe on a
+      // foreign database and on a read-only handle.
+      inspection.exec(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}`)
       IndexDb.validateExistingSchema(inspection)
     } finally {
       inspection.close()
@@ -166,6 +190,7 @@ export class IndexDb {
     IndexDb.validatePath(path, false)
     const db = new Database(path, { readwrite: true, create: false, strict: true })
     try {
+      db.exec(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}`)
       IndexDb.validateExistingSchema(db)
       return new IndexDb(db)
     } catch (error) {
@@ -180,6 +205,7 @@ export class IndexDb {
     IndexDb.validatePath(path, false)
     const db = new Database(path, { readonly: true, strict: true })
     try {
+      db.exec(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}`)
       const hasMeta = db.query(`
         SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'meta'
       `).get() !== null
