@@ -828,6 +828,30 @@ test('a codex session id that could never round-trip through a uid is refused', 
   })
 })
 
+test('a claude transcript whose filename cannot make a uid is refused', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'projects', 'proj')
+    mkdirSync(directory, { recursive: true })
+    // A filename is content Nekyia did not choose, and Linux allows anything
+    // but a slash and a NUL in one. The id comes straight from it here.
+    const path = join(directory, 'ses\u0007bad.jsonl')
+    writeJsonl(path, [{
+      timestamp: '2026-08-01T00:00:00.000Z',
+      cwd: '/root/proj',
+      message: { role: 'user', content: 'hello' },
+    }])
+
+    const { refs, diagnostics } = await jsonlTranscript.discover(claude, root)
+
+    expect(refs).toEqual([])
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]!.level).toBe('warn')
+    expect(diagnostics[0]!.path).toBe(path)
+    expect(diagnostics[0]!.message).toContain('session skipped')
+    expect(diagnostics[0]!.message).not.toContain('\u0007')
+  })
+})
+
 test('a generic session id with bidi characters is refused, and doctor is told', async () => {
   await inTempDir(async (root) => {
     const path = join(root, 'session.jsonl')
