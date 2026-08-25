@@ -27,7 +27,7 @@ export interface FileFacet {
   path: string
 }
 
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 /** The oldest stamped schema this build still opens. Older indexes are migrated up to SCHEMA_VERSION. */
 const MIN_SCHEMA_VERSION = 1
 /** How long a statement waits for another process's lock; SQLite otherwise gives up instantly. */
@@ -83,6 +83,28 @@ const SCHEMA_V1 = `
   CREATE INDEX IF NOT EXISTS session_file_path_idx ON session_file(path);
 `
 
+const SESSION_COLUMNS_V1 = [
+  'uid', 'client', 'native_id', 'cwd', 'git_branch', 'title', 'started_at', 'ended_at',
+  'turns', 'parent_native_id', 'tier', 'origin', 'source_paths', 'fingerprint', 'missing',
+  'truncated', 'hydrated',
+]
+const SESSION_COLUMNS_V2 = [...SESSION_COLUMNS_V1, 'degraded']
+const LEGACY_SESSION_TURN_COLUMNS = ['uid', 'ordinal', 'role', 'text']
+
+function tableColumns(db: Database, table: string): string[] | null {
+  const object = db.query(
+    "SELECT type FROM sqlite_master WHERE name = ? AND type = 'table'",
+  ).get(table) as { type: string } | null
+  if (!object) return null
+  // Table names are internal constants, never caller input.
+  return (db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>)
+    .map((row) => row.name)
+}
+
+function sameColumns(found: string[] | null, expected: string[]): boolean {
+  return found?.join('\0') === expected.join('\0')
+}
+
 /**
  * One step per schema version: `MIGRATIONS[n]` takes an index from version n-1 to n.
  *
@@ -92,9 +114,6 @@ const SCHEMA_V1 = `
  * version the file does not have. A brand new index walks the same ladder,
  * which is what keeps a freshly created database column-for-column identical to
  * a migrated one.
- *
- * Adding version 3 means adding a `3:` step here, a `3:` entry to
- * SESSION_COLUMNS, and raising SCHEMA_VERSION. Nothing else changes.
  */
 const MIGRATIONS: Record<number, (db: Database) => void> = {
   1: (db) => { db.exec(SCHEMA_V1) },
@@ -102,13 +121,19 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
   // whatever `truncated` they were stamped with and start out not degraded.
   // The next hydration of each session writes the split values.
   2: (db) => { db.exec('ALTER TABLE session ADD COLUMN degraded INTEGER NOT NULL DEFAULT 0') },
+  // A short-lived development build also stamped its incompatible ordered-turn
+  // schema as version 2. Recognise only that exact shape, complete the released
+  // version-2 migration, and leave its extra table intact. Any other mismatch
+  // remains an error rather than being guessed at or silently stamped valid.
+  3: (db) => {
+    if (sameColumns(tableColumns(db, 'session'), SESSION_COLUMNS_V2)) return
+    if (!sameColumns(tableColumns(db, 'session'), SESSION_COLUMNS_V1)
+      || !sameColumns(tableColumns(db, 'session_turn'), LEGACY_SESSION_TURN_COLUMNS)) {
+      throw new Error('index schema columns do not match: session')
+    }
+    db.exec('ALTER TABLE session ADD COLUMN degraded INTEGER NOT NULL DEFAULT 0')
+  },
 }
-
-const SESSION_COLUMNS_V1 = [
-  'uid', 'client', 'native_id', 'cwd', 'git_branch', 'title', 'started_at', 'ended_at',
-  'turns', 'parent_native_id', 'tier', 'origin', 'source_paths', 'fingerprint', 'missing',
-  'truncated', 'hydrated',
-]
 
 /**
  * The `session` columns each schema version leaves behind, in the order SQLite reports them.
@@ -118,7 +143,8 @@ const SESSION_COLUMNS_V1 = [
  */
 const SESSION_COLUMNS: Record<number, string[]> = {
   1: SESSION_COLUMNS_V1,
-  2: [...SESSION_COLUMNS_V1, 'degraded'],
+  2: SESSION_COLUMNS_V2,
+  3: SESSION_COLUMNS_V2,
 }
 
 /**
@@ -307,6 +333,7 @@ export class IndexDb {
 
       const index = new IndexDb(db)
       index.migrate()
+      IndexDb.validateExistingSchema(db)
       return index
     } catch (error) {
       db.close()
@@ -333,13 +360,9 @@ export class IndexDb {
       session_file: ['uid', 'path'],
     }
     for (const [table, columns] of Object.entries(expected)) {
-      const object = db.query(
-        "SELECT type FROM sqlite_master WHERE name = ? AND type = 'table'",
-      ).get(table) as { type: string } | null
-      if (!object) throw new Error(`index schema table is missing: ${table}`)
-      // Table names are internal constants, never caller input.
-      const found = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
-      if (found.map((row) => row.name).join('\0') !== columns.join('\0')) {
+      const found = tableColumns(db, table)
+      if (!found) throw new Error(`index schema table is missing: ${table}`)
+      if (!sameColumns(found, columns)) {
         throw new Error(`index schema columns do not match: ${table}`)
       }
     }

@@ -127,11 +127,11 @@ test('open rejects a newer schema version without overwriting it', () => {
   try {
     const raw=new Database(path, { create: true })
     raw.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)')
-    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '3')
+    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '4')
     raw.close()
-    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 3')
+    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 4')
     const check=new Database(path)
-    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '3' })
+    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '4' })
     check.close()
   } finally {
     opened?.close(); rmSync(dir, { recursive: true, force: true })
@@ -267,7 +267,7 @@ function sessionColumns(path: string): string[] {
   }
 }
 
-test('a real version 1 index migrates to version 2 with every row intact', () => {
+test('a real version 1 index migrates to version 3 with every row intact', () => {
   const { dir, path } = temporaryPath()
   try {
     writeV1Index(path)
@@ -275,7 +275,7 @@ test('a real version 1 index migrates to version 2 with every row intact', () =>
 
     const db = IndexDb.open(path, false)
     try {
-      expect(storedVersion(path)).toBe('2')
+      expect(storedVersion(path)).toBe('3')
       expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded'])
 
       const stored = db.getRef('claude:old')!
@@ -293,7 +293,7 @@ test('a real version 1 index migrates to version 2 with every row intact', () =>
       expect(db.allUids()).toEqual(['claude:old'])
       expect(db.ftsSearch('legacyprompt').map((hit) => hit.uid)).toEqual(['claude:old'])
       expect(db.uidsTouchingFile('src/legacy')).toEqual(['claude:old'])
-      expect(db.schemaVersion()).toBe(2)
+      expect(db.schemaVersion()).toBe(3)
     } finally {
       db.close()
     }
@@ -314,10 +314,63 @@ test('a migrated index and a freshly created one have the same session columns',
     IndexDb.open(migrated.path, false).close()
     IndexDb.open(fresh.path).close()
     expect(sessionColumns(migrated.path)).toEqual(sessionColumns(fresh.path))
-    expect(storedVersion(fresh.path)).toBe('2')
+    expect(storedVersion(fresh.path)).toBe('3')
   } finally {
     rmSync(migrated.dir, { recursive: true, force: true })
     rmSync(fresh.dir, { recursive: true, force: true })
+  }
+})
+
+test('the conflicting development version 2 schema is repaired without losing rows', () => {
+  const { dir, path } = temporaryPath()
+  try {
+    writeV1Index(path)
+    const raw = new Database(path)
+    raw.query("UPDATE meta SET value = '2' WHERE key = 'schema_version'").run()
+    raw.exec(`
+      CREATE TABLE session_turn (
+        uid TEXT NOT NULL,
+        ordinal INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        text TEXT NOT NULL,
+        PRIMARY KEY (uid, ordinal)
+      )
+    `)
+    raw.query('INSERT INTO session_turn (uid, ordinal, role, text) VALUES (?, ?, ?, ?)')
+      .run('claude:old', 0, 'user', 'preserved development turn')
+    raw.close()
+
+    const db = IndexDb.open(path, false)
+    try {
+      expect(db.schemaVersion()).toBe(3)
+      expect(db.getRef('claude:old')?.degraded).toBe(false)
+      expect(db.ftsSearch('legacyprompt').map((hit) => hit.uid)).toEqual(['claude:old'])
+      expect(db.raw().query('SELECT * FROM session_turn').all()).toEqual([{
+        uid: 'claude:old', ordinal: 0, role: 'user', text: 'preserved development turn',
+      }])
+    } finally {
+      db.close()
+    }
+    expect(storedVersion(path)).toBe('3')
+    expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an unknown malformed version 2 schema is not guessed into version 3', () => {
+  const { dir, path } = temporaryPath()
+  try {
+    writeV1Index(path)
+    const raw = new Database(path)
+    raw.query("UPDATE meta SET value = '2' WHERE key = 'schema_version'").run()
+    raw.close()
+
+    expect(() => IndexDb.open(path, false)).toThrow('index schema columns do not match: session')
+    expect(storedVersion(path)).toBe('2')
+    expect(sessionColumns(path)).toEqual(V1_COLUMNS)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })
 
