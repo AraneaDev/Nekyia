@@ -13,6 +13,18 @@ interface StoredText {
 
 const DEFAULT_MAX_CHARS = 40_000
 const FILE_LIMIT = 40
+const PROSE_OMITTED_LINE = 'The end of the session was omitted to fit the character budget.'
+
+/**
+ * The marker that stands in for files the brief does not list, or null when the
+ * list is complete. Past the hard cap the real total is unknown, so the marker
+ * deliberately claims no number it cannot support.
+ */
+function fileMarkerFor(remaining: number, capped: boolean): string | null {
+  if (capped) return '- (more files omitted)'
+  if (remaining <= 0) return null
+  return `- (${remaining} more file${remaining === 1 ? '' : 's'} omitted)`
+}
 
 // Keep line feeds and tabs, but do not let indexed text execute terminal controls.
 function safeText(value: string): string {
@@ -43,7 +55,9 @@ function budgetOf(value: number | undefined): number {
  * The v1 index stores each text facet newline-delimited, so line boundaries are
  * not treated as trustworthy prompt/message boundaries here. Prompt text is
  * carried verbatim (apart from terminal controls); prose is trimmed by its
- * oldest stored lines first.
+ * oldest stored lines first. Whatever the budget or the file cap leaves out is
+ * announced by a marker line, because the receiving model acts on this text and
+ * must never read a shortened list as a complete one.
  */
 export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): string | null {
   const ref = db.getRef(uid)
@@ -57,15 +71,28 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
 
   const prompts = safeText(text.prompts ?? '')
   const prose = safeText(text.prose ?? '').split('\n').filter((line) => line.length > 0)
-  const files = (db.raw().query(`
+  // One row past the cap, so a session with exactly FILE_LIMIT files is
+  // distinguishable from one the cap truncated. Only the cap is ever rendered.
+  const fileRows = db.raw().query(`
     SELECT DISTINCT path FROM session_file
     WHERE uid = ?
     ORDER BY path COLLATE BINARY
-    LIMIT ${FILE_LIMIT}
-  `).all(uid) as Array<{ path: string }>).map((row) => oneLine(row.path)).filter(Boolean)
+    LIMIT ${FILE_LIMIT + 1}
+  `).all(uid) as Array<{ path: string }>
+  const cappedByLimit = fileRows.length > FILE_LIMIT
+  const files = fileRows.slice(0, FILE_LIMIT).map((row) => oneLine(row.path)).filter(Boolean)
   const budget = budgetOf(opts.maxChars)
 
-  const render = (proseStart: number, fileCount: number, overBudget = false): string => {
+  // The markers are parameters rather than something render() derives, so that
+  // the mandatory-body measurement below can ask for a brief without them and
+  // then price each marker in as an entry of its own.
+  const render = (
+    proseStart: number,
+    fileCount: number,
+    fileMarker: string | null,
+    proseOmitted: boolean,
+    overBudget = false,
+  ): string => {
     const out: string[] = [
       '# Handover from a previous session',
       '',
@@ -88,13 +115,16 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
     if (prompts) out.push(prompts)
     else out.push('(No user prompts were retained in the index.)')
 
-    if (fileCount > 0) {
+    if (fileCount > 0 || fileMarker) {
       out.push('', '## Files touched', '')
       for (let index = 0; index < fileCount; index++) out.push(`- ${files[index]}`)
+      if (fileMarker) out.push(fileMarker)
     }
     if (proseStart < prose.length) {
       out.push('', '## Where it ended', '')
       for (let index = proseStart; index < prose.length; index++) out.push(prose[index]!)
+    } else if (proseOmitted) {
+      out.push('', PROSE_OMITTED_LINE)
     }
     return out.join('\n')
   }
@@ -102,29 +132,65 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
   // Measure the mandatory portion once. Each optional array entry contributes
   // one joining newline plus its own length, allowing exact linear selection
   // without repeatedly slicing and rebuilding the whole brief.
-  let body = render(prose.length, 0)
-  if (body.length > budget) return render(prose.length, 0, true)
+  let body = render(prose.length, 0, null, false)
+  // Prompts are never dropped, so this brief is already past the budget. It
+  // still says what it left out: an over-budget handover is no less misleading
+  // for presenting an empty file list as the whole truth.
+  if (body.length > budget) {
+    return render(prose.length, 0, fileMarkerFor(files.length, cappedByLimit), prose.length > 0, true)
+  }
 
+  // A marker line is priced exactly like the entries it stands in for, so an
+  // omission notice can never be the thing that pushes the brief over budget.
   const FILE_HEADING_COST = 3 + '## Files touched'.length
-  const allFilesCost = files.length === 0
+  const PROSE_OMITTED_COST = 2 + PROSE_OMITTED_LINE.length // blank line + the notice
+  const PROSE_HEADING_COST = 3 + '## Where it ended'.length
+  const markerCost = (marker: string | null): number => (marker === null ? 0 : 1 + marker.length)
+
+  const allFilesMarker = fileMarkerFor(0, cappedByLimit)
+  const allFilesCost = files.length === 0 && allFilesMarker === null
     ? 0
-    : FILE_HEADING_COST + files.reduce((total, file) => total + 3 + file.length, 0)
+    : FILE_HEADING_COST + markerCost(allFilesMarker)
+      + files.reduce((total, file) => total + 3 + file.length, 0)
   let fileCount = files.length
+  let fileMarker = allFilesMarker
   let selectedLength = body.length + allFilesCost
   const filesNeedTrimming = selectedLength > budget
   if (filesNeedTrimming) {
+    // Trimming always leaves something out, so room for the file marker is
+    // reserved at every step: a path is admitted only when the marker for
+    // whatever is still left over fits beside it. That marker shrinks as paths
+    // are admitted, so the pass stays linear and the final cost is the one the
+    // last admission already checked.
+    //
+    // Trimming also means the tail has no room, since prose is only selected
+    // when the file list came through whole. The notice that the tail is gone
+    // is therefore reserved ahead of the paths: a closing state that vanishes
+    // unannounced costs the reader more than one more path does.
+    const proseReserve = prose.length > 0 && body.length + PROSE_OMITTED_COST <= budget
+      ? PROSE_OMITTED_COST
+      : 0
     fileCount = 0
-    selectedLength = body.length
+    let filesCost = FILE_HEADING_COST
     while (fileCount < files.length) {
-      const nextCost = (fileCount === 0 ? FILE_HEADING_COST : 0)
-        + 3 + files[fileCount]!.length // newline + "- " + path
-      if (selectedLength + nextCost > budget) break
-      selectedLength += nextCost
+      const nextCost = 3 + files[fileCount]!.length // newline + "- " + path
+      const nextMarker = fileMarkerFor(files.length - (fileCount + 1), cappedByLimit)
+      if (body.length + proseReserve + filesCost + nextCost + markerCost(nextMarker) > budget) break
+      filesCost += nextCost
       fileCount++
+    }
+    fileMarker = fileMarkerFor(files.length - fileCount, cappedByLimit)
+    selectedLength = body.length + filesCost + markerCost(fileMarker)
+    // Reached only with no file admitted: not even the heading and the marker
+    // fit beside the reserved notice, so the section goes entirely rather than
+    // half-stated.
+    if (selectedLength + proseReserve > budget) {
+      fileCount = 0
+      fileMarker = null
+      selectedLength = body.length
     }
   }
 
-  const PROSE_HEADING_COST = 3 + '## Where it ended'.length
   let proseStart = prose.length
   if (!filesNeedTrimming && prose.length > 0 && selectedLength + PROSE_HEADING_COST <= budget) {
     let proseCost = PROSE_HEADING_COST
@@ -136,6 +202,11 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
     }
   }
 
-  body = render(proseStart, fileCount)
+  // Nothing of the tail survived the budget: say so where the tail would have
+  // been, if the notice itself fits. Cost is the blank line plus the notice.
+  const proseOmitted = prose.length > 0 && proseStart === prose.length
+    && selectedLength + PROSE_OMITTED_COST <= budget
+
+  body = render(proseStart, fileCount, fileMarker, proseOmitted)
   return body
 }
