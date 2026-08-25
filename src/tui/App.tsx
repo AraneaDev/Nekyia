@@ -14,6 +14,8 @@ import { createHostClipboard, type ClipboardLike } from './clipboard'
 
 const CLIENTS = [undefined, 'claude', 'codex', 'opencode', 'kilo', 'codebuff', 'agy'] as const
 const SEARCH_COLUMNS = 512
+/** Cap held-key history repaints while preserving every accumulated line. */
+const HISTORY_SCROLL_FRAME_MS = 32
 /** First-paint estimate of non-list chrome; layout measurement corrects it immediately. */
 const CHROME_SEED = 12
 
@@ -248,6 +250,8 @@ export function App({
   const [note, setNote] = useState('')
   const executing = useRef(false)
   const mounted = useRef(true)
+  const queuedScroll = useRef(0)
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const selectedRow = sessions.rows[sessions.selected]
   const detail = useMemo(
     () => buildPreviewLines(db, selectedRow, {
@@ -263,7 +267,36 @@ export function App({
     [clipboard, clipboardFactory],
   )
 
-  useEffect(() => () => { mounted.current = false }, [])
+  function cancelQueuedScroll(): void {
+    queuedScroll.current = 0
+    if (scrollTimer.current !== null) clearTimeout(scrollTimer.current)
+    scrollTimer.current = null
+  }
+
+  function applyScroll(delta: number): void {
+    setScroll((at) => Math.max(0, at + delta))
+  }
+
+  function queueScroll(delta: number): void {
+    if (scrollTimer.current === null) {
+      // A single tap should feel immediate. Repeats arriving during the next
+      // frame are accumulated and committed together when the timer fires.
+      applyScroll(delta)
+      scrollTimer.current = setTimeout(() => {
+        scrollTimer.current = null
+        const accumulated = queuedScroll.current
+        queuedScroll.current = 0
+        if (mounted.current && accumulated !== 0) applyScroll(accumulated)
+      }, HISTORY_SCROLL_FRAME_MS)
+      return
+    }
+    queuedScroll.current += delta
+  }
+
+  useEffect(() => () => {
+    mounted.current = false
+    cancelQueuedScroll()
+  }, [])
 
   function announce(message: string): void {
     if (mounted.current) setNote(message)
@@ -383,20 +416,27 @@ export function App({
     }
     if (key.ctrl && input === 'c') { exit(); return }
     if (key.ctrl && input === 'o') {
+      cancelQueuedScroll()
       setInspecting((previous) => !previous)
       setScroll(0)
       return
     }
     if (inspecting) {
       // Escape closes what it opened before it closes the picker.
-      if (key.escape) { setInspecting(false); setScroll(0); return }
-      if (key.upArrow) { setScroll((at) => Math.max(0, at - 1)); return }
-      if (key.downArrow) { setScroll((at) => at + 1); return }
-      if (key.pageUp) { setScroll((at) => Math.max(0, at - detailLines)); return }
-      if (key.pageDown) { setScroll((at) => at + detailLines); return }
+      if (key.escape) { cancelQueuedScroll(); setInspecting(false); setScroll(0); return }
+      if (key.upArrow) { queueScroll(-1); return }
+      if (key.downArrow) { queueScroll(1); return }
+      if (key.pageUp) {
+        cancelQueuedScroll(); setScroll((at) => Math.max(0, at - detailLines)); return
+      }
+      if (key.pageDown) {
+        cancelQueuedScroll(); setScroll((at) => at + detailLines); return
+      }
       // Anything that changes the list would move the ground under the reader,
       // so typing leaves the history and goes back to searching.
-      if (input && !key.ctrl && !key.meta) { setInspecting(false); setScroll(0) }
+      if (input && !key.ctrl && !key.meta) {
+        cancelQueuedScroll(); setInspecting(false); setScroll(0)
+      }
     }
     if (key.escape) { exit(); return }
     if (key.upArrow) { sessions.move(-1); setScroll(0); return }

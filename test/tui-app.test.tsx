@@ -864,7 +864,7 @@ test('ctrl+o opens the history, scrolls it, and hands focus back', async () => {
 
   // Down scrolls the history rather than moving the list selection.
   for (let i = 0; i < 40; i++) view.stdin.write('\u001b[B')
-  await tick()
+  await tick(45)
   const scrolled = view.lastFrame()!
   expect(scrolled).not.toContain('prompt line 0')
   expect(scrolled).toContain('reply line')
@@ -946,7 +946,7 @@ test('scrolling stops at the end of the history instead of running past it', asy
   view.stdin.write('\u000f')
   await tick()
   for (let i = 0; i < 50; i++) view.stdin.write('\u001b[B')
-  await tick()
+  await tick(45)
   // A history shorter than the pane cannot be scrolled off the top.
   expect(view.lastFrame()!).toContain('a short session')
   view.unmount()
