@@ -7,6 +7,47 @@ const PATH_KEYS = new Set([
   'file',
 ])
 
+/**
+ * How much of a custom tool call is read, and how long a recovered path may be.
+ *
+ * A call body is transcript content, so both bounds exist to keep one runaway
+ * row from doing unbounded work. The path bound is the widest any filesystem
+ * accepts; anything longer is not a path this index can be asked about.
+ */
+const MAX_PATCH_INPUT_CHARS = 1024 * 1024
+const MAX_PATCH_PATH_CHARS = 4096
+
+/**
+ * Evidence that a call body really drives the apply_patch bridge.
+ *
+ * Codex writes the bridge either as a bare `apply_patch` command or as the
+ * `tools.apply_patch(...)` call it wraps around a patch string.
+ */
+const APPLY_PATCH_CALL = /(?:^|\W)(?:tools\.)?apply_patch(?:\W|$)/u
+
+/**
+ * Where one line ends in a patch body that arrived as text of its own.
+ *
+ * A call the tool contract names `apply_patch` carries the patch verbatim, so a
+ * backslash in it is a backslash: a Windows header must not be cut in half at
+ * its own separator.
+ */
+const PATCH_LINE_BREAK = /\r?\n/u
+
+/**
+ * Where one line ends in a patch Codex embedded in the source it hands a tool.
+ *
+ * The embedded form is the one that matters in practice: measured over 97
+ * rollouts, all 934 such calls spell their headers with escaped newlines and
+ * none spell them with a real one. Escapes are read the way the source itself
+ * reads them, so a doubled backslash is a literal backslash and only an odd run
+ * of them ends the line.
+ */
+const SOURCE_LINE_BREAK = /\r?\n|(?<=(?:^|[^\\])(?:\\\\)*)(?:\\r)?\\n/u
+
+/** The three patch headers that name a file, and nothing else in the grammar. */
+const PATCH_FILE_HEADER = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/u
+
 function isPlausiblePath(value: string): boolean {
   if (value.length <= 1 || /[\r\n]/.test(value)) return false
   if (!/\s/.test(value)) return true
@@ -40,4 +81,32 @@ export function collectPaths(value: unknown, out = new Set<string>()): string[] 
 
   walk(value)
   return [...out]
+}
+
+/**
+ * Recovers only apply_patch file headers from a Codex custom tool call.
+ *
+ * Modern Codex rollouts record the edit as source text rather than as
+ * structured JSON arguments, so the walk above finds nothing in them. Reading
+ * shell commands from that text would be ambiguous and unsafe, but apply_patch
+ * has a narrow line-oriented grammar: only the Add, Update and Delete headers
+ * are read, so hunks, patch contents and ordinary tool prose are ignored.
+ *
+ * A call the tool contract already names `apply_patch` carries a bare patch
+ * body, which never spells the command; any other call has to show that it
+ * invokes the bridge before its body is scanned at all, and is then read as the
+ * source text it is.
+ */
+export function collectPatchPaths(input: string, toolName?: string): string[] {
+  if (input.length > MAX_PATCH_INPUT_CHARS) return []
+  const isPatchCall = toolName === 'apply_patch'
+  if (!isPatchCall && !APPLY_PATCH_CALL.test(input)) return []
+
+  const paths = new Set<string>()
+  for (const line of input.split(isPatchCall ? PATCH_LINE_BREAK : SOURCE_LINE_BREAK)) {
+    const match = PATCH_FILE_HEADER.exec(line)
+    const path = match?.[1]?.trim()
+    if (path && path.length <= MAX_PATCH_PATH_CHARS && isPlausiblePath(path)) paths.add(path)
+  }
+  return [...paths]
 }
