@@ -936,3 +936,82 @@ test('an unknown index age is left unstated rather than guessed at', async () =>
   view.unmount()
   db.close()
 })
+
+/**
+ * A runPick dependency set that reaches the launch, with every failure path
+ * closed off. Each test opens exactly one of them, so a failure it did not ask
+ * for shows up as a thrown error rather than a silently different exit code.
+ */
+function launchingDeps(overrides: Partial<PickDependencies> = {}): PickDependencies {
+  const plan: ExecPlan = { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/root/proj' }
+  return {
+    isTTY: () => true,
+    needsConsent: () => false,
+    indexExists: () => true,
+    indexPath: () => '/index.db',
+    indexedAt: () => undefined,
+    loadConfig: () => DEFAULT_CONFIG,
+    buildAdapters: () => ({ adapters, diagnostics: [] }),
+    openDb: () => ({ close: () => {} }) as unknown as IndexDb,
+    cwd: () => '/root/proj',
+    now: () => NOW,
+    mount: (props) => {
+      props.onExec(plan)
+      return { waitUntilExit: async () => {}, unmount: () => {} }
+    },
+    checkPlan: () => ({ ok: true }),
+    runPlan: async () => 0,
+    ensureIndex: async () => { throw new Error('index already exists') },
+    error: (text) => { throw new Error(`unexpected error output: ${text}`) },
+    ...overrides,
+  }
+}
+
+test('runPick reports a launch it could not validate rather than launching it', async () => {
+  const errors: string[] = []
+  const code = await runPick(launchingDeps({
+    checkPlan: () => { throw new Error('stat exploded') },
+    runPlan: async () => { throw new Error('must not launch an unvalidated plan') },
+    error: (text) => { errors.push(text) },
+  }))
+
+  expect(code).toBe(1)
+  expect(errors).toEqual(['could not validate the launch: stat exploded'])
+})
+
+test('runPick refuses a plan the check rejected, and passes on the reason given', async () => {
+  const errors: string[] = []
+  const code = await runPick(launchingDeps({
+    checkPlan: () => ({ ok: false, reason: 'the directory /root/proj no longer exists' }),
+    runPlan: async () => { throw new Error('must not launch a rejected plan') },
+    error: (text) => { errors.push(text) },
+  }))
+
+  expect(code).toBe(1)
+  expect(errors).toEqual(['the directory /root/proj no longer exists'])
+})
+
+test('runPick still says something when the check rejects without a reason', async () => {
+  const errors: string[] = []
+  const code = await runPick(launchingDeps({
+    // A rejection carrying no reason must not surface as an empty line: the
+    // fallback is the only thing standing between the user and silence.
+    checkPlan: () => ({ ok: false }),
+    runPlan: async () => { throw new Error('must not launch a rejected plan') },
+    error: (text) => { errors.push(text) },
+  }))
+
+  expect(code).toBe(1)
+  expect(errors).toEqual(['the selected session cannot be launched'])
+})
+
+test('runPick reports a client that could not be launched', async () => {
+  const errors: string[] = []
+  const code = await runPick(launchingDeps({
+    runPlan: async () => { throw new Error('spawn failed') },
+    error: (text) => { errors.push(text) },
+  }))
+
+  expect(code).toBe(1)
+  expect(errors).toEqual(['could not launch the client: spawn failed'])
+})
