@@ -10,12 +10,22 @@ export interface SearchOptions {
   cwd?: string
   client?: string
   file?: string
+  /** Internal exact resolved-path filter used by the blame shorthand. */
+  exactFile?: string
   sort?: 'auto' | 'recent' | 'relevance'
   limit?: number
   json?: boolean
 }
 
-function publicRow(row: ReturnType<typeof query>[number]) {
+/**
+ * One result row as `--json` publishes it, provenance included.
+ *
+ * `sourcePaths` is where the session was read from, so an agent that wants more
+ * than the indexed summary can open the transcript itself. It stays an array:
+ * a session can span several files, and for the directory-backed clients it is
+ * not a single transcript at all.
+ */
+function publicRow(row: ReturnType<typeof query>[number], sourcePaths: string[]) {
   return {
     uid: row.uid,
     client: row.client,
@@ -31,6 +41,7 @@ function publicRow(row: ReturnType<typeof query>[number]) {
     origin: row.origin,
     score: row.score,
     collapsed: row.collapsed,
+    sourcePaths,
   }
 }
 
@@ -52,11 +63,20 @@ export async function runSearch(opts: SearchOptions = {}): Promise<number> {
       cwd: opts.cwd,
       client: opts.client,
       file: opts.file,
+      exactFile: opts.exactFile,
       sort: opts.sort,
       limit: opts.limit ?? 40,
     })
     if (opts.json) {
-      console.log(JSON.stringify(rows.map(publicRow), null, 2))
+      // The search itself reads the narrow row shape, which leaves provenance
+      // unread. Only the rows that are actually printed are read back in full,
+      // which a one-shot call bounded by `--limit` can afford and the picker,
+      // scanning every row per keystroke, could not.
+      console.log(JSON.stringify(
+        rows.map((row) => publicRow(row, db.getRef(row.uid)?.sourcePaths ?? [])),
+        null,
+        2,
+      ))
     } else if (rows.length === 0) {
       console.error('no sessions matched')
     } else {

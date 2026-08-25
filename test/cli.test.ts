@@ -50,9 +50,55 @@ test('index then search finds a session across clients', () => {
   expect(json.exitCode).toBe(0)
   const publicRow = JSON.parse(json.stdout.toString())[0]
   expect(publicRow.client).toBe('claude')
-  expect(publicRow.sourcePaths).toBeUndefined()
   expect(publicRow.fingerprint).toBeUndefined()
   expect(publicRow.missing).toBeUndefined()
+  // Provenance is published so that an agent given this JSON can read the raw
+  // transcript itself. It stays a list: a session can span several files.
+  expect(Array.isArray(publicRow.sourcePaths)).toBe(true)
+  expect(publicRow.sourcePaths).toEqual([
+    join(FIX, 'claude', 'projects', '-root-proj', '11111111-2222-3333-4444-555555555555.jsonl'),
+  ])
+  // The table stays exactly what it was: provenance is a JSON-only field.
+  expect(out.stdout.toString()).not.toContain('.jsonl')
+
+  const blamed = run(['blame', '/root/proj/src/sse.ts'], env)
+  expect(blamed.exitCode).toBe(0)
+  expect(blamed.stdout.toString()).toContain('sse reconnect')
+
+  const blamedJson = run(['blame', '/root/proj/src/sse.ts', '--json'], env)
+  expect(blamedJson.exitCode).toBe(0)
+  const blamedRows = JSON.parse(blamedJson.stdout.toString())
+  expect(blamedRows).toHaveLength(1)
+  expect(blamedRows[0].uid).toBe('claude:11111111-2222-3333-4444-555555555555')
+
+  // A path nothing touched matches nothing, and says so the way search does.
+  const empty = run(['blame', '/root/proj/src/nothing-here.ts'], env)
+  expect(empty.exitCode).toBe(0)
+  expect(empty.stdout.toString()).toBe('')
+  expect(empty.stderr.toString()).toContain('no sessions matched')
+
+  // The root has no basename to prefilter on, and no facet can ever equal it.
+  const root = run(['blame', '/', '--json'], env)
+  expect(root.exitCode).toBe(0)
+  expect(JSON.parse(root.stdout.toString())).toEqual([])
+})
+
+test('blame is a strict global recent file-search shorthand', () => {
+  const env = environment()
+  for (const args of [
+    ['blame'],
+    ['blame', 'one.ts', 'two.ts'],
+    ['blame', 'one.ts', '--all'],
+    ['blame', 'one.ts', '--sort', 'recent'],
+    ['blame', 'one.ts', '--file', 'two.ts'],
+    ['blame', 'one.ts', '--limit', 'wat'],
+    ['blame', 'one.ts', '--rebuild'],
+    ['blame', 'one\u0001.ts'],
+  ]) {
+    const result = run(args, env)
+    expect(result.exitCode).toBe(2)
+    expect(result.stderr.toString()).toContain('error:')
+  }
 })
 
 test('search without an index is clean and does not create a database', () => {

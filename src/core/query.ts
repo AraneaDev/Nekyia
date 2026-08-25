@@ -7,6 +7,8 @@ export interface QueryOpts {
   cwd?: string
   client?: string
   file?: string
+  /** Absolute lexical path matched exactly after resolving each facet against its session cwd. */
+  exactFile?: string
   sort?: 'auto' | 'recent' | 'relevance'
   limit?: number
   includeMissing?: boolean
@@ -106,6 +108,51 @@ function underScope(cwd: string | null, scope: string): boolean {
   if (!child || !parent) return false
   if (child === parent) return true
   return parent.endsWith('/') ? child.startsWith(parent) : child.startsWith(`${parent}/`)
+}
+
+/** True for a normalized path that already names a root: POSIX, UNC, or a drive letter. */
+function isAbsolutePath(value: string): boolean {
+  return value.startsWith('/') || /^[a-z]:\//u.test(value)
+}
+
+/**
+ * Turns one stored file facet into the absolute path it stands for.
+ *
+ * Clients record tool input as they received it, so a facet may be relative, and
+ * a relative facet only means something against the working directory of the
+ * session that recorded it. Returns null when nothing can anchor it.
+ */
+function resolveFacetPath(value: string, cwd: string | null): string | null {
+  const facet = normalizedPath(value)
+  if (!facet) return null
+  if (isAbsolutePath(facet)) return facet
+  if (!cwd) return null
+  const base = normalizedPath(cwd)
+  if (!base || !isAbsolutePath(base)) return null
+  return normalizedPath(`${base}/${facet}`)
+}
+
+/**
+ * The sessions whose facets resolve to exactly one absolute path.
+ *
+ * The basename prefilter keeps this off a full scan of `session_file`: only
+ * facets whose text contains the target's last segment can ever resolve to it,
+ * whatever directory they were written relative to.
+ */
+function uidsTouchingExactFile(
+  db: IndexDb,
+  exactFile: string,
+  rows: readonly SearchRef[],
+): Set<string> {
+  const basename = exactFile.split('/').at(-1) ?? ''
+  // A path that ends at its own root, `/`, has no segment to prefilter on, and
+  // no file facet can equal it. Searching for it would scan the whole table to
+  // match nothing.
+  if (!basename) return new Set()
+  const cwdByUid = new Map(rows.map((row) => [row.uid, row.cwd]))
+  return new Set(db.fileFacetsContaining(basename)
+    .filter((facet) => resolveFacetPath(facet.path, cwdByUid.get(facet.uid) ?? null) === exactFile)
+    .map((facet) => facet.uid))
 }
 
 /**
@@ -283,12 +330,25 @@ function search(
     if (scores.size === 0) return []
   }
 
+  const allRows = snapshot ?? db.searchRefs()
+  const components = componentsFor(allRows)
+
   const file = typeof unsafeOpts.file === 'string' && unsafeOpts.file.length > 0
     ? unsafeOpts.file
     : null
-  const fileUids = file ? new Set(db.uidsTouchingFile(file)) : null
-  const allRows = snapshot ?? db.searchRefs()
-  const components = componentsFor(allRows)
+  const exactFile = typeof unsafeOpts.exactFile === 'string'
+    ? normalizedPath(unsafeOpts.exactFile)
+    : null
+  let fileUids: Set<string> | null = null
+  if (unsafeOpts.exactFile !== undefined) {
+    // An invalid internal exact-path request fails closed rather than silently
+    // becoming an unfiltered search. The CLI always supplies an absolute path.
+    fileUids = exactFile && isAbsolutePath(exactFile)
+      ? uidsTouchingExactFile(db, exactFile, allRows)
+      : new Set()
+  } else if (file) {
+    fileUids = new Set(db.uidsTouchingFile(file))
+  }
 
   const config = cfg as unknown as Record<string, unknown>
   const hiddenClients = new Set(
