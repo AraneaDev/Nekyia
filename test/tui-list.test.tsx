@@ -6,7 +6,6 @@ import { DEFAULT_CONFIG } from '../src/config'
 import { IndexDb } from '../src/core/db'
 import type { Row } from '../src/core/query'
 import {
-  boundedDisplayText,
   clientColor,
   ageEmphasis,
   railThumb,
@@ -15,10 +14,10 @@ import {
   projectColor,
   ROW_FIXED_COLUMNS,
   titleColumns,
-  type DisplayWork,
   type ListRowProps,
   visibleWindow,
 } from '../src/tui/List'
+import { boundedDisplayText, type DisplayWork } from '../src/tui/text'
 import { useSessions, type SessionsState } from '../src/tui/useSessions'
 import type { SessionRef } from '../src/types'
 
@@ -180,13 +179,6 @@ test('oversized client and cwd fields are bounded before Ink sees them', () => {
   expect(frame).toContain('…')
   expect(frame).toContain('safe title')
   expect(Bun.stringWidth(frame)).toBeLessThanOrEqual(80)
-})
-
-test('the display bound keeps whole Unicode graphemes at the column edge', () => {
-  const family = '👨‍👩‍👧‍👦'
-  const output = boundedDisplayText(family.repeat(100), 10)
-  expect(output).toBe(family.repeat(5))
-  expect(Bun.stringWidth(output)).toBe(10)
 })
 
 test('bidi formatting controls are stripped from every untrusted display field', () => {

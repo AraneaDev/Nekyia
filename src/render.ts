@@ -1,5 +1,5 @@
 import type { Row } from './core/query'
-import { boundedDisplayText } from './tui/List'
+import { boundedDisplayText, padColumns } from './tui/text'
 
 const MIN = 60_000
 const HOUR = 3_600_000
@@ -39,11 +39,6 @@ const PROJECT_COLUMNS = 16
  * it bounds a transcript that opens with a whole pasted file.
  */
 const TITLE_COLUMNS = 120
-
-/** Pads to a terminal width; `padEnd` counts code units, which a wide character breaks. */
-function padColumns(value: string, columns: number): string {
-  return value + ' '.repeat(Math.max(0, columns - Bun.stringWidth(value)))
-}
 
 /**
  * Renders one search result as a fixed-width terminal line.
