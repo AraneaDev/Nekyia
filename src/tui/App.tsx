@@ -13,7 +13,6 @@ import { buildPreviewLines, Preview } from './Preview'
 import { SESSION_DISPLAY_LIMIT, useSessions } from './useSessions'
 import { createHostClipboard, type ClipboardLike } from './clipboard'
 
-const CLIENTS = [undefined, 'claude', 'codex', 'opencode', 'kilo', 'codebuff', 'agy'] as const
 const SEARCH_COLUMNS = 512
 /** First-paint estimate of non-list chrome; layout measurement corrects it immediately. */
 const CHROME_SEED = 12
@@ -416,11 +415,6 @@ export function App({
     pendingCopy.current = writeClipboard(command, 'resume command copied')
   }
 
-  function cycleClient(): void {
-    const index = CLIENTS.indexOf(sessions.client as typeof CLIENTS[number])
-    sessions.setClient(CLIENTS[(index + 1) % CLIENTS.length])
-  }
-
   useInput((input, key) => {
     if (executing.current) return
     if (confirm) {
@@ -465,7 +459,7 @@ export function App({
 
     if (key.ctrl && input === 'p') { copyPrompt(); return }
     if (key.ctrl && input === 'y') { copyCommand(); return }
-    if (key.ctrl && input === 'f') { cycleClient(); return }
+    if (key.ctrl && input === 'f') { sessions.cycleClient(); return }
     if (input && !key.ctrl && !key.meta) {
       sessions.setText(boundedDisplayText(`${sessions.text}${input}`, SEARCH_COLUMNS))
     }
@@ -545,7 +539,11 @@ export function App({
           ['ctrl+p', 'prompt'], ['ctrl+y', 'command'],
         ] as [string, string][]
         : []),
-      ['ctrl+f', 'client'], ['tab', 'scope'], ['esc', 'quit'],
+      // An index with no clients in it gives the cycle nothing to step to but
+      // the unfiltered list it is already on. Same rule as above: a hint that
+      // does nothing is worse than one that is missing.
+      ...(sessions.clientCycle.length > 1 ? [['ctrl+f', 'client']] as [string, string][] : []),
+      ['tab', 'scope'], ['esc', 'quit'],
     ]
 
   // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,

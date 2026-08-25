@@ -98,6 +98,24 @@ test('markMissing flags sessions without deleting them', () => {
   expect(db.getRef('claude:abc')?.missing).toBe(true); db.close()
 })
 
+test('indexedClients names each client the index holds once, in a stable order', () => {
+  const db = IndexDb.open(':memory:')
+  // An index with nothing in it names no clients rather than throwing.
+  expect(db.indexedClients()).toEqual([])
+
+  db.upsertRef(ref({ uid: 'opencode:1', client: 'opencode', nativeId: '1' }))
+  db.upsertRef(ref({ uid: 'claude:1', client: 'claude', nativeId: '1' }))
+  db.upsertRef(ref({ uid: 'claude:2', client: 'claude', nativeId: '2' }))
+  // Sorted and deduplicated, so the picker's cycle is the same on every run
+  // however the rows happened to be written.
+  expect(db.indexedClients()).toEqual(['claude', 'opencode'])
+
+  // A client is present only while it still has a session in the table.
+  db.deleteSessions(['claude:1', 'claude:2'])
+  expect(db.indexedClients()).toEqual(['opencode'])
+  db.close()
+})
+
 test('getMissingUids returns missing sessions and upsertRef clears them', () => {
   const db = IndexDb.open(':memory:')
   const item = ref()
