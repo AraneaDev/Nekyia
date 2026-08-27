@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.12](https://github.com/AraneaDev/Nekyia/compare/v0.0.11...v0.0.12) (2026-08-27)
+
+
+### Documentation
+
+* link the README to the project page ([c4f2105](https://github.com/AraneaDev/Nekyia/commit/c4f21053a790875a50bf6c8629341e7d5fcd5304))
+
 ## [0.0.11](https://github.com/AraneaDev/Nekyia/compare/v0.0.10...v0.0.11) (2026-08-25)
 
 
