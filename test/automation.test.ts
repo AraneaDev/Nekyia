@@ -29,7 +29,7 @@ test('Release Please is configured for conventional releases from main', () => {
   const config = JSON.parse(read('release-please-config.json')) as {
     packages: Record<string, Record<string, unknown>>
   }
-  expect(workflow).toContain('googleapis/release-please-action@v4')
+  expect(workflow).toContain('googleapis/release-please-action@v5')
   expect(workflow).toContain('branches: [main]')
   expect(config.packages['.']?.['package-name']).toBe('nekyia')
   expect(config.packages['.']?.['release-type']).toBe('node')
