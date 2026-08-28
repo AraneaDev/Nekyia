@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.13](https://github.com/AraneaDev/Nekyia/compare/v0.0.12...v0.0.13) (2026-08-28)
+
+
+### Continuous integration
+
+* move off the actions still running on Node 20 ([#33](https://github.com/AraneaDev/Nekyia/issues/33)) ([c0bb447](https://github.com/AraneaDev/Nekyia/commit/c0bb44793a5d761d844471e1c5f620dd22939d93))
+
 ## [0.0.12](https://github.com/AraneaDev/Nekyia/compare/v0.0.11...v0.0.12) (2026-08-27)
 
 
