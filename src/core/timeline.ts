@@ -31,8 +31,16 @@ export interface TimelineOpts {
 
 const KINDS = new Set<string>(['read', 'write', 'edit', 'delete', 'move', 'unknown'])
 
+/**
+ * Whether a resolved path sits at or under a directory.
+ *
+ * The trailing-slash guard is what makes `--dir /` mean the whole filesystem:
+ * a directory that already ends in a slash names a root, and appending a second
+ * one would match only UNC paths. `underScope` in `query.ts` reads the same.
+ */
 function under(resolved: string, dir: string): boolean {
-  return resolved === dir || resolved.startsWith(`${dir}/`)
+  if (resolved === dir) return true
+  return dir.endsWith('/') ? resolved.startsWith(dir) : resolved.startsWith(`${dir}/`)
 }
 
 /**
