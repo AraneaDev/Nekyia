@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.0.14](https://github.com/AraneaDev/Nekyia/compare/v0.0.13...v0.0.14) (2026-08-30)
+
+
+### Features
+
+* add nekyia timeline for directory file history ([7a64346](https://github.com/AraneaDev/Nekyia/commit/7a64346c20b357ed5be0541636c826aa38a49781))
+* add schema version 4 for ordered file events ([a44b33d](https://github.com/AraneaDev/Nekyia/commit/a44b33d5426298b740bf7bdab4c2dde64ee70833))
+* ask git which files it already has ([167b97c](https://github.com/AraneaDev/Nekyia/commit/167b97c67e0fcf32e35ec847a9566d2069d185f5))
+* query file events under a directory ([6654217](https://github.com/AraneaDev/Nekyia/commit/665421707cf64065537058430563e8bcc88a001a))
+* read operation kinds from claude and codex tool calls ([727f667](https://github.com/AraneaDev/Nekyia/commit/727f667b8722c66d52ee2c3fa199ce60aabd9900))
+* show file operations in order when inspecting a session ([ad9f9d5](https://github.com/AraneaDev/Nekyia/commit/ad9f9d57802127fe90bcc78dceb6300ad91091a4))
+* store ordered file events for a hydrated session ([518b08b](https://github.com/AraneaDev/Nekyia/commit/518b08bf02ba361a460440ab9dc138fd63160f5c))
+
+
+### Fixes
+
+* address Coderabbit review feedback ([e537b43](https://github.com/AraneaDev/Nekyia/commit/e537b43429bebe917795f2277701480e24f298c0))
+* keep the file event log independent of the file cap ([aac0fc3](https://github.com/AraneaDev/Nekyia/commit/aac0fc36cf51da8f090dfc32fbd9748e13138be9))
+* keep the file list complete past the event cap ([d674cff](https://github.com/AraneaDev/Nekyia/commit/d674cff67bebf7590a7cb756e2c333ee7b1ea42f))
+* make the timeline honest about what it prints ([93e366e](https://github.com/AraneaDev/Nekyia/commit/93e366e066750ac7bb4a608b51c2ff5f77bcb5c4))
+* treat null stdout as unreadable output ([0498b1c](https://github.com/AraneaDev/Nekyia/commit/0498b1c3ff7c9c44d98b8c8b6beb24f03cf346a9))
+
+
+### Performance
+
+* serve directory candidates from the path indices ([7c77004](https://github.com/AraneaDev/Nekyia/commit/7c7700415073d6e82574b7bccd0118c55ebfcff2))
+
+
+### Documentation
+
+* count only path-naming calls in the recovery census ([60ca140](https://github.com/AraneaDev/Nekyia/commit/60ca140030dd3280c1bace050d9a229642807df6))
+* keep the census evidence at the decision it supports ([bba9502](https://github.com/AraneaDev/Nekyia/commit/bba9502de2b558e3dddb5f44446d172c476cca20))
+* measure per-file recovery coverage against git ([0c779b5](https://github.com/AraneaDev/Nekyia/commit/0c779b5f8abc57ca23de9849aaf95c2eaceaeb06))
+* measure what session stores can actually recover ([042e28f](https://github.com/AraneaDev/Nekyia/commit/042e28f722576864b7dd9321bc032fb7aab9fe99))
+* resolve coderabbit docstring review comments ([fe0abea](https://github.com/AraneaDev/Nekyia/commit/fe0abea05a9c8bff76aaf69e5b2cb2fe81041b55))
+* rewrite generic docstrings with context-aware descriptions ([904f434](https://github.com/AraneaDev/Nekyia/commit/904f434582f51d917cec604f15f706c882583149))
+* say that a session can be asked what it did ([a8aef43](https://github.com/AraneaDev/Nekyia/commit/a8aef432ba2567c8a91a0f462ce23b2882183266))
+* scope the census conclusions to the store it measured ([5b6df31](https://github.com/AraneaDev/Nekyia/commit/5b6df3164691862841826a06f3dda3c7370993e5))
+* show what a timeline looks like ([5548fd4](https://github.com/AraneaDev/Nekyia/commit/5548fd4af8c0b266a3d52f68965b2cb81b44b804))
+
 ## [0.0.13](https://github.com/AraneaDev/Nekyia/compare/v0.0.12...v0.0.13) (2026-08-28)
 
 
