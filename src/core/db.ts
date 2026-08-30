@@ -783,22 +783,28 @@ export class IndexDb {
   /**
    * Sessions holding a path that already starts with this absolute prefix.
    *
-   * A prefix match, not a substring one, so both indexed `path` columns answer
-   * it without a scan. It is only half of a directory's candidates: a session
-   * that named its files relatively is found by its own working directory
-   * instead.
+   * Asked as a half-open range rather than a prefix `LIKE`, because both are
+   * prefix matches but only one is index-served: SQLite turns `LIKE` into an
+   * index range only when the column collation matches `case_sensitive_like`,
+   * which by default it does not, so the `LIKE` form scanned both tables and
+   * over-matched case besides. `'0'` is the character after `'/'`, so the range
+   * ends exactly where the directory does. A prefix that already ends in a
+   * slash names a root, and must not grow a second one.
+   *
+   * It is only half of a directory's candidates: a session that named its files
+   * relatively is found by its own working directory instead.
    */
   uidsUnderPrefix(prefix: string): string[] {
-    const literal = prefix.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
-    const like = `${literal}/%`
+    const low = prefix.endsWith('/') ? prefix : `${prefix}/`
+    const high = `${low.slice(0, -1)}0`
     const events = this.schemaVersion() >= FILE_EVENT_SCHEMA_VERSION
       ? this.db.query(
-        "SELECT DISTINCT uid FROM session_file_event WHERE path LIKE ? ESCAPE '\\'",
-      ).all(like) as Array<{ uid: string }>
+        'SELECT DISTINCT uid FROM session_file_event WHERE path >= ? AND path < ?',
+      ).all(low, high) as Array<{ uid: string }>
       : []
     const files = this.db.query(
-      "SELECT DISTINCT uid FROM session_file WHERE path LIKE ? ESCAPE '\\'",
-    ).all(like) as Array<{ uid: string }>
+      'SELECT DISTINCT uid FROM session_file WHERE path >= ? AND path < ?',
+    ).all(low, high) as Array<{ uid: string }>
     return [...new Set([...events, ...files].map((row) => row.uid))].sort()
   }
 

@@ -670,3 +670,41 @@ test('forget removes a session event log', () => {
   db.upsertDoc(doc(r,{ fileEvents: events, fileDetail: 'ordered' })); db.deleteSession('claude:abc')
   expect(db.raw().query('SELECT COUNT(*) AS n FROM session_file_event').get()).toEqual({ n: 0 }); db.close()
 })
+
+test('uidsUnderPrefix matches a directory exactly, not its case-folded neighbours', () => {
+  const db=IndexDb.open(':memory:')
+  const entries: Array<[string, string]> = [
+    ['claude:under', '/root/Proj/src/a.ts'],
+    ['claude:cased', '/root/PROJ/src/a.ts'],
+    ['claude:sibling', '/root/Project/src/a.ts'],
+  ]
+  for (const [uid, file] of entries) {
+    const r=ref({ uid, nativeId: uid, cwd: null })
+    db.upsertRef(r)
+    db.upsertDoc(doc(r, { files: [file], fileEvents: [{ path: file, kind: 'edit', turn: 0 }], fileDetail: 'ordered' }))
+  }
+  // A range predicate compares bytes, so it neither folds case the way `LIKE`
+  // did nor reaches into the directory next door.
+  expect(db.uidsUnderPrefix('/root/Proj')).toEqual(['claude:under'])
+})
+test('uidsUnderPrefix under a root does not grow a second slash', () => {
+  const db=IndexDb.open(':memory:')
+  const r=ref({ uid: 'claude:rooted', nativeId: 'rooted', cwd: null })
+  db.upsertRef(r)
+  db.upsertDoc(doc(r, { files: ['/etc/hosts'], fileEvents: [{ path: '/etc/hosts', kind: 'read', turn: 0 }], fileDetail: 'ordered' }))
+  expect(db.uidsUnderPrefix('/')).toEqual(['claude:rooted'])
+  db.close()
+})
+test('uidsUnderPrefix is served by the path indices rather than scanning', () => {
+  const db=IndexDb.open(':memory:')
+  const plans = ['session_file_event', 'session_file'].map((table) => (
+    db.raw().query(
+      `EXPLAIN QUERY PLAN SELECT DISTINCT uid FROM ${table} WHERE path >= ? AND path < ?`,
+    ).all('/root/proj/', '/root/proj0') as Array<{ detail: string }>
+  ).map((row) => row.detail).join(' '))
+  // A prefix `LIKE` scanned both tables here, because SQLite only turns one
+  // into a range when the column collation matches `case_sensitive_like`.
+  expect(plans[0]).toContain('USING INDEX session_file_event_path_idx')
+  expect(plans[1]).toContain('USING INDEX session_file_path_idx')
+  db.close()
+})

@@ -64,3 +64,19 @@ test('a session indexed before file events keeps unknown detail', () => {
   db.raw().query("UPDATE session SET file_detail = 'unknown' WHERE uid = ?").run('claude:a')
   expect(timeline(db,{ dir:'/root/proj' })[0]?.detail).toBe('unknown'); db.close()
 })
+test('a root directory covers everything under it', () => {
+  const db=IndexDb.open(':memory:'); const r=ref()
+  db.upsertRef(r)
+  db.upsertDoc(doc(r,{ files:['/etc/hosts'], fileEvents:[{ path:'/etc/hosts', kind:'read', turn:0 }], fileDetail:'ordered' }))
+  // `/` already names a root, so appending a second slash would leave the one
+  // directory that contains everything matching only UNC paths.
+  const [session]=timeline(db,{ dir:'/' })
+  expect(session?.entries.map(e=>e.resolved)).toEqual(['/etc/hosts']); db.close()
+})
+test('a session with no directory of its own is found under a root prefix', () => {
+  const db=IndexDb.open(':memory:')
+  const r=ref({ uid:'claude:elsewhere', cwd:null })
+  db.upsertRef(r)
+  db.upsertDoc(doc(r,{ files:['/srv/app/main.ts'], fileEvents:[{ path:'/srv/app/main.ts', kind:'edit', turn:0 }], fileDetail:'ordered' }))
+  expect(timeline(db,{ dir:'/' }).map(s=>s.ref.uid)).toEqual(['claude:elsewhere']); db.close()
+})
