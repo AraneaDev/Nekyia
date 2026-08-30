@@ -14,7 +14,7 @@ import { DEFAULT_CONFIG } from '../src/config'
 import { jsonlTranscript } from '../src/formats/jsonl-transcript'
 import { collectPatchEntries, collectPatchPaths, collectPaths } from '../src/formats/paths'
 import { validateManifest } from '../src/manifests/load'
-import { MAX_SESSION_FILES } from '../src/types'
+import { MAX_SESSION_FILE_EVENTS, MAX_SESSION_FILES } from '../src/types'
 
 const fixtures = join(import.meta.dir, 'fixtures')
 
@@ -842,6 +842,66 @@ test('the file event log keeps recording after the file cap is reached', async (
       turn: 0,
     })
     expect(doc.fileEventsTruncated).toBe(false)
+  })
+})
+
+test('the file list keeps recording after the event cap is reached', async () => {
+  await inTempDir(async (root) => {
+    const path = join(root, 'codex.jsonl')
+    // One path, named again and again, fills the event log without going
+    // anywhere near the file ceiling: the two caps count different things.
+    const filling = Array.from({ length: MAX_SESSION_FILE_EVENTS }, () => ({
+      type: 'response_item',
+      payload: {
+        type: 'custom_tool_call',
+        name: 'apply_patch',
+        input: '*** Update File: /root/proj/src/hot.ts',
+      },
+    }))
+    writeJsonl(path, [
+      {
+        timestamp: '2026-08-02T09:00:00.000Z',
+        type: 'session_meta',
+        payload: { session_id: 'codex-files-after-events', cwd: '/root/proj' },
+      },
+      ...filling,
+      {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          input: [
+            '*** Begin Patch',
+            '*** Add File: /root/proj/src/late-one.ts',
+            '*** Add File: /root/proj/src/late-two.ts',
+            '*** Add File: /root/proj/src/late-three.ts',
+            '*** End Patch',
+          ].join('\n'),
+        },
+      },
+    ])
+    const manifest = validateManifest({
+      ...codex,
+      tier: 'search',
+      resume: undefined,
+      jsonl: { glob: 'codex.jsonl', variant: 'codex' },
+    })
+    const { refs } = await jsonlTranscript.discover(manifest, root)
+    const doc = await jsonlTranscript.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
+
+    // Every path of the late call reaches the file list, not just the first:
+    // the full event log stops events, and nothing else.
+    expect(doc.files).toEqual([
+      '/root/proj/src/hot.ts',
+      '/root/proj/src/late-one.ts',
+      '/root/proj/src/late-two.ts',
+      '/root/proj/src/late-three.ts',
+    ])
+    // Each flag says only what it means. The file list is complete, so
+    // `truncated` is false; the event log is not, so `fileEventsTruncated` is.
+    expect(doc.truncated).toBe(false)
+    expect(doc.fileEventsTruncated).toBe(true)
+    expect(doc.fileEvents).toHaveLength(MAX_SESSION_FILE_EVENTS)
   })
 })
 

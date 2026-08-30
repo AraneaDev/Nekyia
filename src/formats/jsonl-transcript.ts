@@ -172,8 +172,10 @@ function newFileLog(): FileLog {
  * can grow the set past it. The event log's ceiling is independent, because it
  * counts a different thing: a session can name few files and operate on them
  * many times, so the file cap being full must not silently stop the event log
- * too. Reaching either ceiling is reported on its own flag rather than passed
- * off as completeness.
+ * too, and a full event log must not stop the file list either: each ceiling
+ * marks its own flag and skips its own push, and neither abandons the paths
+ * this call has left to name. Reaching either ceiling is reported on its own
+ * flag rather than passed off as completeness.
  *
  * One call can name the same path more than once (an apply_patch body naming
  * a file under two verbs, say), so the cap check and add run at most once per
@@ -198,9 +200,9 @@ function recordFileCalls(
     }
     if (log.events.length >= MAX_SESSION_FILE_EVENTS) {
       log.eventsTruncated = true
-      return
+    } else {
+      log.events.push({ path: entry.path, kind: entry.kind, turn })
     }
-    log.events.push({ path: entry.path, kind: entry.kind, turn })
   }
 }
 
