@@ -168,23 +168,34 @@ function newFileLog(): FileLog {
  *
  * Every reader of a tool call funnels through here, whatever grammar the call
  * was read out of. `files` keeps the path ceiling's exact prior behaviour:
- * reaching `MAX_SESSION_FILES` marks the document truncated and stops, exactly
- * as the reader did before file events existed. The event log's ceiling is
- * independent, because it counts a different thing: a session can name few
- * files and operate on them many times. Reaching either ceiling is reported
- * rather than passed off as completeness.
+ * reaching `MAX_SESSION_FILES` marks the document truncated, and no later path
+ * can grow the set past it. The event log's ceiling is independent, because it
+ * counts a different thing: a session can name few files and operate on them
+ * many times, so the file cap being full must not silently stop the event log
+ * too. Reaching either ceiling is reported on its own flag rather than passed
+ * off as completeness.
+ *
+ * One call can name the same path more than once (an apply_patch body naming
+ * a file under two verbs, say), so the cap check and add run at most once per
+ * distinct path in this call: a path this call already resolved must not be
+ * checked against the cap a second time, or a call that only touches one new
+ * file could flip `filesTruncated` on its second mention of that same file.
  */
 function recordFileCalls(
   log: FileLog,
   entries: readonly PatchEntry[],
   turn: number,
 ): void {
+  const resolved = new Set<string>()
   for (const entry of entries) {
-    if (log.files.size >= MAX_SESSION_FILES) {
-      log.filesTruncated = true
-      return
+    if (!resolved.has(entry.path)) {
+      resolved.add(entry.path)
+      if (log.files.size >= MAX_SESSION_FILES) {
+        log.filesTruncated = true
+      } else {
+        log.files.add(entry.path)
+      }
     }
-    log.files.add(entry.path)
     if (log.events.length >= MAX_SESSION_FILE_EVENTS) {
       log.eventsTruncated = true
       return

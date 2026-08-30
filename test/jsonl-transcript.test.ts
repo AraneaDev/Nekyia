@@ -791,6 +791,117 @@ test('Codex custom patch calls honour the per-session file ceiling', async () =>
   })
 })
 
+test('the file event log keeps recording after the file cap is reached', async () => {
+  await inTempDir(async (root) => {
+    const path = join(root, 'codex.jsonl')
+    const headers = Array.from(
+      { length: MAX_SESSION_FILES + 5 },
+      (_, index) => `*** Add File: /root/proj/src/f${index}.ts`,
+    )
+    writeJsonl(path, [
+      {
+        timestamp: '2026-08-02T09:00:00.000Z',
+        type: 'session_meta',
+        payload: { session_id: 'codex-events-after-cap', cwd: '/root/proj' },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          input: ['*** Begin Patch', ...headers, '*** End Patch'].join('\n'),
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          input: '*** Update File: /root/proj/src/after-cap.ts',
+        },
+      },
+    ])
+    const manifest = validateManifest({
+      ...codex,
+      tier: 'search',
+      resume: undefined,
+      jsonl: { glob: 'codex.jsonl', variant: 'codex' },
+    })
+    const { refs } = await jsonlTranscript.discover(manifest, root)
+    const doc = await jsonlTranscript.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
+
+    expect(doc.files).toHaveLength(MAX_SESSION_FILES)
+    expect(doc.truncated).toBe(true)
+    // The file cap being full does not silently stop the event log: the call
+    // made after the cap was reached is still recorded, with its own ceiling
+    // untouched.
+    expect(doc.fileEvents).toHaveLength(MAX_SESSION_FILES + 6)
+    expect(doc.fileEvents?.at(-1)).toEqual({
+      path: '/root/proj/src/after-cap.ts',
+      kind: 'edit',
+      turn: 0,
+    })
+    expect(doc.fileEventsTruncated).toBe(false)
+  })
+})
+
+test('one path named under two verbs in a patch counts once against the file cap', async () => {
+  await inTempDir(async (root) => {
+    const path = join(root, 'codex.jsonl')
+    const headers = Array.from(
+      { length: MAX_SESSION_FILES - 1 },
+      (_, index) => `*** Add File: /root/proj/src/f${index}.ts`,
+    )
+    writeJsonl(path, [
+      {
+        timestamp: '2026-08-02T09:00:00.000Z',
+        type: 'session_meta',
+        payload: { session_id: 'codex-verb-dedup', cwd: '/root/proj' },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          input: ['*** Begin Patch', ...headers, '*** End Patch'].join('\n'),
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'custom_tool_call',
+          name: 'apply_patch',
+          input: [
+            '*** Begin Patch',
+            '*** Add File: /root/proj/src/boundary.ts',
+            '*** Update File: /root/proj/src/boundary.ts',
+            '*** End Patch',
+          ].join('\n'),
+        },
+      },
+    ])
+    const manifest = validateManifest({
+      ...codex,
+      tier: 'search',
+      resume: undefined,
+      jsonl: { glob: 'codex.jsonl', variant: 'codex' },
+    })
+    const { refs } = await jsonlTranscript.discover(manifest, root)
+    const doc = await jsonlTranscript.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
+
+    // The single new path is added once even though the patch names it under
+    // two verbs, so it lands exactly at the cap without tripping it.
+    expect(doc.files).toHaveLength(MAX_SESSION_FILES)
+    expect(doc.files).toContain('/root/proj/src/boundary.ts')
+    expect(doc.truncated).toBe(false)
+    // Both verbs still reach the ordered log as distinct events.
+    expect(doc.fileEvents?.slice(-2)).toEqual([
+      { path: '/root/proj/src/boundary.ts', kind: 'write', turn: 0 },
+      { path: '/root/proj/src/boundary.ts', kind: 'edit', turn: 0 },
+    ])
+  })
+})
+
 test('Codex custom patch calls refuse an oversized call body', async () => {
   await inTempDir(async (root) => {
     const path = join(root, 'codex.jsonl')
