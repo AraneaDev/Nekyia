@@ -1020,6 +1020,54 @@ test('the full history reads as a conversation, opening prompt included', () => 
   db.close()
 })
 
+test('inspecting shows file operations in the order they happened', () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:ops', nativeId: 'ops', title: 'fix the sse race' })
+  db.upsertDoc({
+    ref,
+    prompts: ['fix the sse race'],
+    prose: ['done'],
+    dialogue: [
+      { role: 'user', text: 'fix the sse race' },
+      { role: 'assistant', text: 'done' },
+    ],
+    files: ['src/sse.ts'],
+    fileDetail: 'ordered',
+    fileEvents: [
+      { path: 'src/sse.ts', kind: 'read', turn: 1 },
+      { path: 'src/sse.ts', kind: 'edit', turn: 3 },
+    ],
+    truncated: false,
+  })
+  const lines = buildPreviewLines(db, previewRow(db, ref.uid), { full: true, maxLines: 200 })
+  const touched = lines.filter((line) => line.text.includes('src/sse.ts'))
+  expect(touched.map((line) => line.text)).toEqual([
+    'read    src/sse.ts',
+    'edit    src/sse.ts',
+  ])
+  db.close()
+})
+test('browsing keeps the alphabetical file list it always had', () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:browse', nativeId: 'browse', title: 'a session' })
+  db.upsertDoc({
+    ref,
+    prompts: ['a session'],
+    prose: ['done'],
+    files: ['b.ts', 'a.ts'],
+    fileDetail: 'ordered',
+    fileEvents: [
+      { path: 'b.ts', kind: 'edit', turn: 0 },
+      { path: 'a.ts', kind: 'read', turn: 1 },
+    ],
+    truncated: false,
+  })
+  const lines = buildPreviewLines(db, previewRow(db, ref.uid), { maxLines: 12 })
+  expect(lines.some((line) => line.text === 'a.ts')).toBe(true)
+  expect(lines.some((line) => line.text.includes('read'))).toBe(false)
+  db.close()
+})
+
 test('a session indexed before ordered turns falls back to the grouped history', () => {
   const db = IndexDb.open(':memory:')
   const ref = seed(db, { uid: 'claude:old', nativeId: 'old', title: 'an older session' })
