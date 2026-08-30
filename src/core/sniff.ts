@@ -59,12 +59,12 @@ const NEVER_JSON = new Set([
 ])
 
 /**
- * Internal implementation for JsonRecord.
+ * Represents a generic JSON object with string keys.
  */
 type JsonRecord = Record<string, unknown>
 
 /**
- * Internal implementation for JsonlShape.
+ * Describes the inferred field mappings and content of a JSONL file.
  */
 interface JsonlShape {
   tsPath: string
@@ -76,7 +76,7 @@ interface JsonlShape {
 }
 
 /**
- * Internal implementation for containedBy.
+ * Checks if a given path is located strictly within a root directory.
  */
 function containedBy(root: string, path: string): boolean {
   const rest = relative(root, path)
@@ -84,14 +84,14 @@ function containedBy(root: string, path: string): boolean {
 }
 
 /**
- * Internal implementation for overlapsKnown.
+ * Checks if a path contains or is contained by any known root directories.
  */
 function overlapsKnown(path: string, known: string[]): boolean {
   return known.some((root) => containedBy(root, path) || containedBy(path, root))
 }
 
 /**
- * Internal implementation for safeRegularFile.
+ * Safely checks if a path points to a regular file, avoiding symlinks.
  */
 function safeRegularFile(path: string): boolean {
   try {
@@ -103,7 +103,7 @@ function safeRegularFile(path: string): boolean {
 }
 
 /**
- * Internal implementation for plausibleTime.
+ * Validates whether a value represents a realistic timestamp within a reasonable range.
  */
 function plausibleTime(value: unknown): boolean {
   const now = Date.now()
@@ -119,7 +119,7 @@ function plausibleTime(value: unknown): boolean {
 }
 
 /**
- * Internal implementation for plausibleCwd.
+ * Validates whether a value is a plausible absolute directory path string.
  */
 function plausibleCwd(value: unknown): value is string {
   if (typeof value !== 'string' || value.length < 2 || value.length > 4_096) return false
@@ -129,7 +129,7 @@ function plausibleCwd(value: unknown): value is string {
 }
 
 /**
- * Internal implementation for credibleRole.
+ * Normalizes and validates a role string against a known set of credible roles.
  */
 function credibleRole(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 32) return null
@@ -138,14 +138,14 @@ function credibleRole(value: unknown): string | null {
 }
 
 /**
- * Internal implementation for nonemptyText.
+ * Checks if a value is a non-empty string after trimming whitespace.
  */
 function nonemptyText(value: unknown): boolean {
   return typeof value === 'string' && value.trim().length > 0
 }
 
 /**
- * Internal implementation for firstMatchingKey.
+ * Finds the first key in a record that matches candidates and satisfies a predicate.
  */
 function firstMatchingKey(
   record: JsonRecord,
@@ -159,7 +159,7 @@ function firstMatchingKey(
 }
 
 /**
- * Internal implementation for recordShape.
+ * Attempts to infer the schema paths (time, cwd, role, text) from a JSON record.
  */
 function recordShape(record: JsonRecord): Omit<JsonlShape, 'records' | 'roles'> | null {
   const tsPath = firstMatchingKey(record, TIME_KEYS, plausibleTime)
@@ -172,7 +172,7 @@ function recordShape(record: JsonRecord): Omit<JsonlShape, 'records' | 'roles'> 
 }
 
 /**
- * Internal implementation for chooseJsonlShape.
+ * Selects the most likely JSONL schema shape from a sample of parsed records.
  */
 function chooseJsonlShape(records: JsonRecord[]): JsonlShape | null {
   const shapes = new Map<string, JsonlShape>()
@@ -197,7 +197,7 @@ function chooseJsonlShape(records: JsonRecord[]): JsonlShape | null {
 }
 
 /**
- * Internal implementation for readJsonlPrefix.
+ * Reads a bounded initial chunk of a JSONL file to analyze its structure.
  */
 function readJsonlPrefix(path: string): { text: string; truncated: boolean } | null {
   if (!safeRegularFile(path)) return null
@@ -287,14 +287,14 @@ export function sniffJsonl(path: string): SniffResult | null {
 }
 
 /**
- * Internal implementation for quoteIdentifier.
+ * Encloses a SQL identifier in double quotes, escaping internal quotes.
  */
 function quoteIdentifier(identifier: string): string {
   return `"${identifier.replaceAll('"', '""')}"`
 }
 
 /**
- * Internal implementation for safeSchemaName.
+ * Sanitizes and truncates an identifier for safe use as a schema name.
  */
 function safeSchemaName(identifier: string): string {
   return identifier
@@ -303,7 +303,7 @@ function safeSchemaName(identifier: string): string {
 }
 
 /**
- * Internal implementation for matchingColumn.
+ * Finds the first column name that matches any of the candidate names case-insensitively.
  */
 function matchingColumn(columns: string[], candidates: readonly string[]): string | null {
   for (const candidate of candidates) {
@@ -314,7 +314,7 @@ function matchingColumn(columns: string[], candidates: readonly string[]): strin
 }
 
 /**
- * Internal implementation for normalizedTokens.
+ * Normalizes an identifier into lowercase word tokens, splitting by non-alphanumeric characters.
  */
 function normalizedTokens(identifier: string): string[] {
   return identifier
@@ -325,7 +325,7 @@ function normalizedTokens(identifier: string): string[] {
 }
 
 /**
- * Internal implementation for idColumn.
+ * Identifies the most likely ID column from a list of column names.
  */
 function idColumn(columns: string[]): string | null {
   const exact = matchingColumn(columns, ['id'])
@@ -338,7 +338,7 @@ function idColumn(columns: string[]): string | null {
 }
 
 /**
- * Internal implementation for timeColumn.
+ * Identifies the most likely timestamp or date column from a list of column names.
  */
 function timeColumn(columns: string[]): string | null {
   const exact = matchingColumn(columns, TIME_KEYS)
@@ -360,7 +360,7 @@ function timeColumn(columns: string[]): string | null {
 }
 
 /**
- * Internal implementation for titleColumn.
+ * Identifies the most likely title or summary column from a list of column names.
  */
 function titleColumn(columns: string[]): string | null {
   const exact = matchingColumn(columns, ['title', 'summary', 'preview', 'name'])
@@ -371,7 +371,7 @@ function titleColumn(columns: string[]): string | null {
 }
 
 /**
- * Internal implementation for boundedDirectoryEntries.
+ * Reads directory entries up to a maximum limit, indicating if overflow occurred.
  */
 function boundedDirectoryEntries(path: string): { entries: Dirent[]; overflow: boolean } | null {
   let directory: Dir | null = null
@@ -393,7 +393,7 @@ function boundedDirectoryEntries(path: string): { entries: Dirent[]; overflow: b
 }
 
 /**
- * Internal implementation for plausibleId.
+ * Validates whether a value is a plausible, non-empty identifier string or number.
  */
 function plausibleId(value: unknown): boolean {
   if (typeof value === 'number') return Number.isFinite(value)
@@ -489,7 +489,7 @@ export function sniffSqlite(path: string): SniffResult | null {
 }
 
 /**
- * Internal implementation for knownRoots.
+ * Retrieves a deduplicated list of expanded root paths from known manifests.
  */
 function knownRoots(): string[] {
   try {
@@ -535,12 +535,12 @@ export function candidateRoots(): string[] {
 }
 
 /**
- * Internal implementation for WalkItem.
+ * Represents a directory path and its depth in a file system traversal.
  */
 interface WalkItem { path: string; depth: number }
 
 /**
- * Internal implementation for sniffKind.
+ * Dispatches to the appropriate sniffer based on the file extension.
  */
 function sniffKind(path: string): SniffResult | null {
   const extension = extname(path).toLowerCase()
@@ -577,7 +577,7 @@ export function sniffRoots(dirs: string[] = candidateRoots(), limit = MAX_RESULT
   const seenDirs = new Set<string>()
   const seenFiles = new Set<string>()
   /**
-   * Internal implementation for sortedResults.
+   * Sorts sniff results lexicographically by their file paths.
    */
   const sortedResults = () => results.sort((a, b) => a.path.localeCompare(b.path))
   let visitedDirs = 0

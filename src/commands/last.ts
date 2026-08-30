@@ -31,35 +31,25 @@ const defaults: LastDependencies = {
   needsConsent,
   loadConfig,
   buildAdapters,
-  /**
-   * Internal implementation for openDb.
-   */
+  /** Opens the index database in readonly mode. */
   openDb: (path) => IndexDb.openReadonly(path),
   query,
   buildBrief,
-  /**
-   * Internal implementation for cwd.
-   */
+  /** Returns the current working directory. */
   cwd: () => process.cwd(),
   checkPlan,
   runPlan,
-  /**
-   * Internal implementation for error.
-   */
+  /** Outputs an error message to stderr. */
   error: (message) => { console.error(message) },
 }
 
-/**
- * Internal implementation for message.
- */
+/** Extracts and safely formats the message string from an error object. */
 function message(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error)
   return boundedDisplayText(raw, 512) || 'unknown error'
 }
 
-/**
- * Internal implementation for planFor.
- */
+/** Selects the appropriate execution plan to resume or re-brief a given session row. */
 function planFor(
   db: IndexDb,
   row: Row,

@@ -42,9 +42,7 @@ const MAX_LISTED_IDS = 200
 const DEGRADED_SCHEMA_VERSION = 2
 const UNSAFE_DISPLAY = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
 
-/**
- * Internal implementation for safeText.
- */
+/** Truncates and sanitizes text for safe display, removing control characters. */
 function safeText(value: unknown, max = MAX_TEXT): string {
   const text = typeof value === 'string'
     ? value
@@ -54,16 +52,12 @@ function safeText(value: unknown, max = MAX_TEXT): string {
   return text.slice(0, max).replace(UNSAFE_DISPLAY, '?')
 }
 
-/**
- * Internal implementation for safeList.
- */
+/** Truncates a list of strings and sanitizes each item for safe display. */
 function safeList(values: string[], max = MAX_CONFIG_ITEMS): string[] {
   return values.slice(0, max).map((value) => safeText(value))
 }
 
-/**
- * Internal implementation for safeDiagnostic.
- */
+/** Sanitizes a diagnostic object to ensure its text fields are safe for display. */
 function safeDiagnostic(value: Diagnostic): Diagnostic {
   return {
     client: safeText(value.client, 256),
@@ -73,17 +67,13 @@ function safeDiagnostic(value: Diagnostic): Diagnostic {
   }
 }
 
-/**
- * Internal implementation for contained.
- */
+/** Determines if a candidate path is contained within a root directory. */
 function contained(root: string, candidate: string): boolean {
   const rest = relative(root, candidate)
   return rest === '' || (!isAbsolute(rest) && rest !== '..' && !rest.startsWith(`..${sep}`))
 }
 
-/**
- * Internal implementation for overrideManifest.
- */
+/** Validates and overrides a manifest's root path with the specified base directory for testing. */
 function overrideManifest(manifest: Manifest, base: string | undefined): Manifest | null {
   if (!base) return manifest
   if (manifest.id.length > 256 || base.length > MAX_TEXT) return null
@@ -100,9 +90,7 @@ function overrideManifest(manifest: Manifest, base: string | undefined): Manifes
   return { ...manifest, roots: [candidate] }
 }
 
-/**
- * Internal implementation for manifestAdapters.
- */
+/** Creates adapters for a list of manifests, recording diagnostics for any failures. */
 function manifestAdapters(
   manifests: Manifest[],
   sources: Map<string, ManifestSource>,
@@ -135,9 +123,7 @@ function manifestAdapters(
   return result
 }
 
-/**
- * Internal implementation for installedRoots.
- */
+/** Returns the valid, installed root directories for a given manifest. */
 function installedRoots(manifest: Manifest): string[] {
   const roots = manifest.roots
     .slice(0, MAX_ROOTS)
@@ -173,9 +159,7 @@ interface IndexSummary {
   degradedTracked: boolean
 }
 
-/**
- * Internal implementation for emptyIndexSummary.
- */
+/** Returns an empty index summary indicating no indexed sessions or errors. */
 function emptyIndexSummary(): IndexSummary {
   return {
     sessions: 0,
@@ -190,9 +174,7 @@ function emptyIndexSummary(): IndexSummary {
   }
 }
 
-/**
- * Internal implementation for readIndexSummary.
- */
+/** Reads the session index database to produce a summary of stored and missing sessions. */
 function readIndexSummary(path: string, diagnostics: Diagnostic[]): IndexSummary {
   try {
     lstatSync(path)
@@ -250,9 +232,7 @@ function readIndexSummary(path: string, diagnostics: Diagnostic[]): IndexSummary
   }
 }
 
-/**
- * Internal implementation for publicSniff.
- */
+/** Formats a sniff result for public reporting, excluding sensitive sample data. */
 function publicSniff(result: SniffResult) {
   return {
     path: safeText(result.path),
@@ -263,9 +243,7 @@ function publicSniff(result: SniffResult) {
   }
 }
 
-/**
- * Internal implementation for writeManifestExclusive.
- */
+/** Safely and atomically writes a draft manifest to the file system using an exclusive lock. */
 function writeManifestExclusive(path: string, draft: Manifest): void {
   if (path.length === 0 || path.length > MAX_TEXT || /[\u0000]/.test(path)) {
     throw new Error('output path is invalid or too long')

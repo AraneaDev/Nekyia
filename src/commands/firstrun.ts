@@ -50,17 +50,13 @@ export interface ConsentOptions {
   readLine?: () => Promise<string | null>
 }
 
-/**
- * Internal implementation for RootEstimate.
- */
+/** The result of estimating session count in a directory, tracking if counting failed. */
 interface RootEstimate {
   count: number
   failed: boolean
 }
 
-/**
- * Internal implementation for displayText.
- */
+/** Formats a value for display by cleaning control characters and truncating to a maximum length. */
 function displayText(value: unknown, max: number): string {
   const raw = typeof value === 'string' ? value : String(value)
   const clipped = raw.length > max ? `${raw.slice(0, Math.max(0, max - 1))}…` : raw
@@ -71,23 +67,17 @@ function displayText(value: unknown, max: number): string {
   return clean.length <= max ? clean : `${clean.slice(0, Math.max(0, max - 1))}…`
 }
 
-/**
- * Internal implementation for compareText.
- */
+/** Compares two strings lexicographically for sorting. */
 function compareText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
-/**
- * Internal implementation for consentPath.
- */
+/** Returns the path to the user consent marker file. */
 function consentPath(): string {
   return join(dataDir(), CONSENT_FILE)
 }
 
-/**
- * Internal implementation for dataDirectoryState.
- */
+/** Checks the existence and safety of the data directory. */
 function dataDirectoryState(): 'safe' | 'missing' | 'unsafe' {
   try {
     const info = lstatSync(dataDir())
@@ -179,18 +169,14 @@ export function indexPathIsObstructed(): boolean {
   }
 }
 
-/**
- * Internal implementation for isContained.
- */
+/** Checks if a candidate path is within a specified root directory. */
 function isContained(root: string, candidate: string): boolean {
   const fromRoot = relative(root, candidate)
   return fromRoot === ''
     || (!isAbsolute(fromRoot) && fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`))
 }
 
-/**
- * Internal implementation for safeRoot.
- */
+/** Resolves and validates a root path, returning its absolute and real paths if it is a directory. */
 function safeRoot(raw: unknown): { path: string; real: string } | null {
   if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_PATH_INPUT) return null
   try {
@@ -202,9 +188,7 @@ function safeRoot(raw: unknown): { path: string; real: string } | null {
   }
 }
 
-/**
- * Internal implementation for safeCandidate.
- */
+/** Validates a candidate path is safely contained within its root and hasn't escaped via symlinks. */
 function safeCandidate(root: { path: string; real: string }, relativePath: string): string | null {
   if (typeof relativePath !== 'string' || relativePath.length > MAX_PATH_INPUT) return null
   const candidate = resolve(root.path, relativePath)
@@ -216,9 +200,7 @@ function safeCandidate(root: { path: string; real: string }, relativePath: strin
   }
 }
 
-/**
- * Internal implementation for countGlob.
- */
+/** Counts files or directories matching a glob pattern safely within a root directory. */
 function countGlob(
   root: { path: string; real: string },
   pattern: unknown,
@@ -246,9 +228,7 @@ function countGlob(
   }
 }
 
-/**
- * Internal implementation for sqliteEstimate.
- */
+/** Estimates session count for an SQLite store by querying its sessions and legacy json paths. */
 function sqliteEstimate(root: { path: string; real: string }, manifest: Manifest): RootEstimate {
   if (manifest.format !== 'sqlite-store') return { count: 0, failed: true }
   let count = 0
@@ -289,9 +269,7 @@ function sqliteEstimate(root: { path: string; real: string }, manifest: Manifest
   return { count, failed }
 }
 
-/**
- * Internal implementation for estimateRoot.
- */
+/** Estimates the session count for a root based on its manifest format. */
 function estimateRoot(root: { path: string; real: string }, manifest: Manifest): RootEstimate {
   try {
     if (manifest.format === 'jsonl-transcript') {
@@ -343,9 +321,7 @@ export async function describePlan(adapters: Adapter[]): Promise<PlanRow[]> {
   return out.sort((a, b) => compareText(a.client, b.client))
 }
 
-/**
- * Internal implementation for ConsentInput.
- */
+/** Abstract interface for the readable stream providing user consent input. */
 interface ConsentInput {
   destroyed: boolean
   readableEnded: boolean
@@ -370,27 +346,21 @@ export function readConsentLine(input: ConsentInput = process.stdin): Promise<st
     let value = ''
     let bytes = 0
     let settled = false
-    /**
-     * Internal implementation for cleanup.
-     */
+    /** Cleans up stream event listeners to avoid memory leaks. */
     const cleanup = () => {
       input.off('data', onData)
       input.off('end', onEnd)
       input.off('error', onError)
       if (wasPaused) input.pause()
     }
-    /**
-     * Internal implementation for finish.
-     */
+    /** Finalizes reading by resolving the promise and cleaning up listeners. */
     const finish = (answer: string | null) => {
       if (settled) return
       settled = true
       cleanup()
       resolvePromise(answer)
     }
-    /**
-     * Internal implementation for onData.
-     */
+    /** Handles incoming data chunks, searching for a newline character to complete the line read. */
     const onData = (chunk: Buffer | string) => {
       let buffer: Buffer
       if (typeof chunk === 'string') {
@@ -414,13 +384,9 @@ export function readConsentLine(input: ConsentInput = process.stdin): Promise<st
         finish(value)
       }
     }
-    /**
-     * Internal implementation for onEnd.
-     */
+    /** Handles the end of the input stream. */
     const onEnd = () => finish(value + decoder.end() || null)
-    /**
-     * Internal implementation for onError.
-     */
+    /** Handles input stream errors. */
     const onError = () => finish(null)
     input.on('data', onData)
     input.once('end', onEnd)
@@ -428,9 +394,7 @@ export function readConsentLine(input: ConsentInput = process.stdin): Promise<st
   })
 }
 
-/**
- * Internal implementation for countLabel.
- */
+/** Formats a session count estimate into a human-readable label. */
 function countLabel(row: PlanRow): string {
   if (row.sessions === null) return 'unknown'
   if (row.estimate === 'at-least') return `at least ${row.sessions}`

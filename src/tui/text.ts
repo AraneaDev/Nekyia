@@ -22,7 +22,7 @@ export interface DisplayWork {
 }
 
 /**
- * Internal implementation for displayColumns.
+ * Clamps the requested column width between 0 and MAX_DISPLAY_COLUMNS.
  */
 function displayColumns(value: number): number {
   if (!Number.isFinite(value)) return 0
@@ -35,7 +35,7 @@ export function scanLimit(columns: number): number {
 }
 
 /**
- * Internal implementation for prefixByCodeUnits.
+ * Takes the first `limit` code units without cutting a surrogate pair open, returning the valid text sample.
  */
 function prefixByCodeUnits(value: string, limit: number): { sample: string; truncated: boolean } {
   const truncated = value.length > limit
@@ -55,7 +55,7 @@ export function suffixByCodeUnits(value: string, limit: number): { sample: strin
 }
 
 /**
- * Internal implementation for sanitizeDisplaySample.
+ * Removes control and BIDI formatting characters to prevent terminal layout corruption.
  */
 function sanitizeDisplaySample(value: string): string {
   return value.replace(CONTROL, ' ').replace(BIDI_FORMAT, '')

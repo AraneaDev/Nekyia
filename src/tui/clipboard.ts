@@ -19,7 +19,7 @@ export interface ClipboardRuntime {
 }
 
 /**
- * Internal implementation for Helper.
+ * Represents a shell command and its arguments for a clipboard backend.
  */
 interface Helper {
   command: string
@@ -27,14 +27,14 @@ interface Helper {
 }
 
 /**
- * Internal implementation for nonempty.
+ * Checks if a string is defined and contains non-whitespace characters.
  */
 function nonempty(value: string | undefined): boolean {
   return typeof value === 'string' && value.trim().length > 0
 }
 
 /**
- * Internal implementation for helpers.
+ * Returns the appropriate clipboard helper commands for the given platform and environment.
  */
 function helpers(platform: string, env: Record<string, string | undefined>): Helper[] {
   if (platform === 'darwin') return [{ command: 'pbcopy', args: [] }]
@@ -51,7 +51,7 @@ function helpers(platform: string, env: Record<string, string | undefined>): Hel
 }
 
 /**
- * Internal implementation for checkedUtf8.
+ * Validates that the text fits within the OSC 52 byte limit and encodes it as UTF-8.
  */
 function checkedUtf8(text: string): Uint8Array {
   // Every retained code unit costs at least one encoded byte. Sampling one
@@ -65,7 +65,7 @@ function checkedUtf8(text: string): Uint8Array {
 }
 
 /**
- * Internal implementation for sendOsc52.
+ * Sends a base64-encoded payload to the terminal using the OSC 52 escape sequence.
  */
 async function sendOsc52(runtime: ClipboardRuntime, bytes: Uint8Array): Promise<'sent'> {
   const payload = Buffer.from(bytes).toString('base64')
@@ -78,11 +78,11 @@ const defaultRuntime: ClipboardRuntime = {
   platform: process.platform,
   env: process.env,
   /**
-   * Internal implementation for which.
+   * Resolves the absolute path of an executable command.
    */
   which: (command) => Bun.which(command),
   /**
-   * Internal implementation for run.
+   * Spawns a process to execute a command and pipes the given text to its standard input.
    */
   async run(command, args, text) {
     const proc = Bun.spawn([command, ...args], {
@@ -96,7 +96,7 @@ const defaultRuntime: ClipboardRuntime = {
   },
   isTTY: process.stdout.isTTY === true,
   /**
-   * Internal implementation for writeTty.
+   * Writes a sequence directly to the standard output terminal.
    */
   writeTty: (sequence) => new Promise<void>((resolve, reject) => {
     process.stdout.write(sequence, (error) => error ? reject(error) : resolve())
@@ -115,7 +115,7 @@ export function createHostClipboard(runtime: ClipboardRuntime = defaultRuntime):
     if (!command) continue
     return {
       /**
-       * Internal implementation for writeText.
+       * Writes text to the system clipboard using the discovered helper command, falling back to OSC 52.
        */
       async writeText(text) {
         const bytes = checkedUtf8(text)
@@ -134,7 +134,7 @@ export function createHostClipboard(runtime: ClipboardRuntime = defaultRuntime):
   if (!runtime.isTTY) return null
   return {
     /**
-     * Internal implementation for writeText.
+     * Writes text directly via the terminal's OSC 52 clipboard escape sequence.
      */
     async writeText(text) {
       return sendOsc52(runtime, checkedUtf8(text))

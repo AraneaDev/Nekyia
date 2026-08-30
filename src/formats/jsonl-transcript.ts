@@ -57,27 +57,27 @@ export interface FormatModule {
 }
 
 /**
- * Internal implementation for JsonObject.
+ * Represents a basic JSON object mapping strings to unknown values.
  */
 type JsonObject = Record<string, unknown>
 /**
- * Internal implementation for BunFileHandle.
+ * Type alias for a Bun file handle.
  */
 type BunFileHandle = ReturnType<typeof Bun.file>
 /**
- * Internal implementation for BunFileWriter.
+ * Type alias for a Bun file writer.
  */
 type BunFileWriter = ReturnType<BunFileHandle['writer']>
 
 /**
- * Internal implementation for isObject.
+ * Type guard checking if a value is a non-null object and not an array.
  */
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
- * Internal implementation for get.
+ * Safely retrieves a nested value from an object using a dot-separated path.
  */
 function get(value: unknown, path: string | undefined): unknown {
   if (!path) return undefined
@@ -90,7 +90,7 @@ function get(value: unknown, path: string | undefined): unknown {
 }
 
 /**
- * Internal implementation for textOf.
+ * Extracts and concatenates trimmed text from a string or an array of text blocks.
  */
 function textOf(value: unknown): string {
   if (typeof value === 'string') return value.trim()
@@ -104,7 +104,7 @@ function textOf(value: unknown): string {
 }
 
 /**
- * Internal implementation for textOfType.
+ * Extracts concatenated text from an array of blocks that match a specific type.
  */
 function textOfType(
   value: unknown,
@@ -128,7 +128,7 @@ function textOfType(
 const TITLE_LIMIT = 512
 
 /**
- * Internal implementation for firstLine.
+ * Retrieves the first non-empty line from a given text.
  */
 function firstLine(value: string): string {
   const line = value.split(/\r?\n/, 1)[0]!.trim()
@@ -136,7 +136,7 @@ function firstLine(value: string): string {
 }
 
 /**
- * Internal implementation for isInjectedInput.
+ * Checks if the provided text starts with a known injected input prefix.
  */
 function isInjectedInput(value: string): boolean {
   const trimmed = value.trimStart()
@@ -144,7 +144,7 @@ function isInjectedInput(value: string): boolean {
 }
 
 /**
- * Internal implementation for codexInputText.
+ * Extracts standard text from Codex-specific input structures.
  */
 function codexInputText(value: unknown): string {
   return textOfType(value, 'input_text', (text) => !isInjectedInput(text))
@@ -190,7 +190,7 @@ interface FileLog {
 }
 
 /**
- * Internal implementation for newFileLog.
+ * Initializes a new log for tracking file events and sizes.
  */
 function newFileLog(): FileLog {
   return { files: new Set(), events: [], filesTruncated: false, eventsTruncated: false }
@@ -242,7 +242,7 @@ function recordFileCalls(
 }
 
 /**
- * Internal implementation for nativeIdFromFilename.
+ * Derives a safe native identifier from a given generic filename.
  */
 function nativeIdFromFilename(path: string): string {
   const name = basename(path)
@@ -264,7 +264,7 @@ function nativeIdFromFilename(path: string): string {
 const CODEX_ROLLOUT_ID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
 
 /**
- * Internal implementation for codexIdFromFilename.
+ * Extracts a Codex session identifier from a filename.
  */
 function codexIdFromFilename(path: string): string | null {
   return CODEX_ROLLOUT_ID.exec(basename(path))?.[1] ?? null
@@ -294,7 +294,7 @@ function isCodexWorkerMetadata(payload: JsonObject): boolean {
 }
 
 /**
- * Internal implementation for warn.
+ * Constructs a warning diagnostic message for a given path.
  */
 function warn(client: string, path: string | null, error: unknown): Diagnostic {
   return {
@@ -306,14 +306,14 @@ function warn(client: string, path: string | null, error: unknown): Diagnostic {
 }
 
 /**
- * Internal implementation for readHead.
+ * Reads a specific number of leading bytes from a file.
  */
 async function readHead(path: string, maxBytes: number): Promise<string> {
   return Bun.file(path).slice(0, maxBytes).text()
 }
 
 /**
- * Internal implementation for parseHead.
+ * Parses JSONL rows and checks for well-formedness from file head bytes.
  */
 function parseHead(text: string): {
   rows: JsonObject[]
@@ -340,7 +340,7 @@ function parseHead(text: string): {
 }
 
 /**
- * Internal implementation for baseRef.
+ * Creates a base session reference object with default metadata.
  */
 function baseRef(
   manifest: Manifest,
@@ -372,7 +372,7 @@ function baseRef(
 }
 
 /**
- * Internal implementation for discoverClaude.
+ * Extracts a session reference from a Claude-format JSONL file.
  */
 function discoverClaude(
   manifest: Manifest,
@@ -452,7 +452,7 @@ function codexMetadataId(payload: JsonObject): string | null {
 }
 
 /**
- * Internal implementation for discoverCodex.
+ * Extracts a session reference from a Codex-format JSONL file.
  */
 function discoverCodex(
   manifest: Manifest,
@@ -518,7 +518,7 @@ function discoverCodex(
 }
 
 /**
- * Internal implementation for discoverGeneric.
+ * Extracts a session reference from a generic JSONL file.
  */
 function discoverGeneric(
   manifest: Manifest & { format: 'jsonl-transcript' },
@@ -570,7 +570,7 @@ function discoverGeneric(
 }
 
 /**
- * Internal implementation for rowsFromStream.
+ * Asynchronously parses JSONL rows from a file stream.
  */
 async function rowsFromStream(
   path: string,
@@ -586,7 +586,7 @@ async function rowsFromStream(
   let skippedOversizedRow = false
 
   /**
-   * Internal implementation for visitLine.
+   * Processes a single line from the JSONL stream.
    */
   function visitLine(line: string): void {
     const trimmed = line.trim()
@@ -600,7 +600,7 @@ async function rowsFromStream(
   }
 
   /**
-   * Internal implementation for finishRow.
+   * Finalizes processing of a JSONL row.
    */
   async function finishRow(): Promise<void> {
     const file = spoolFile
@@ -633,7 +633,7 @@ async function rowsFromStream(
   }
 
   /**
-   * Internal implementation for startSpool.
+   * Initializes file spooling for large rows.
    */
   async function startSpool(segment: string): Promise<void> {
     const directory = mkdtempSync(join(tmpdir(), 'nekyia-jsonl-spool-'))
@@ -649,7 +649,7 @@ async function rowsFromStream(
   }
 
   /**
-   * Internal implementation for cleanupSpool.
+   * Cleans up temporary files used for row spooling.
    */
   async function cleanupSpool(): Promise<void> {
     const file = spoolFile
@@ -670,7 +670,7 @@ async function rowsFromStream(
   }
 
   /**
-   * Internal implementation for consume.
+   * Consumes and processes a chunk of stream data.
    */
   async function consume(text: string): Promise<void> {
     let offset = 0
@@ -712,7 +712,7 @@ async function rowsFromStream(
 }
 
 /**
- * Internal implementation for ScanContext.
+ * Context for scanning JSON strings.
  */
 type ScanContext = {
   kind: 'object' | 'array'
@@ -722,7 +722,7 @@ type ScanContext = {
 }
 
 /**
- * Internal implementation for JsonRowScanner.
+ * Scanner for efficiently extracting specific paths from JSON rows.
  */
 class JsonRowScanner {
   private readonly contexts: ScanContext[] = []
@@ -736,7 +736,7 @@ class JsonRowScanner {
   private tokenTruncated = false
 
   /**
-   * Internal implementation for constructor.
+   * Initializes the scanner or object state.
    */
   constructor(manifest: Manifest & { format: 'jsonl-transcript' }) {
     if (manifest.jsonl.variant === 'codex') {
@@ -752,7 +752,7 @@ class JsonRowScanner {
   }
 
   /**
-   * Internal implementation for feed.
+   * Feeds a new chunk of data into the scanner.
    */
   feed(text: string): void {
     for (const character of text) {
@@ -802,28 +802,28 @@ class JsonRowScanner {
   }
 
   /**
-   * Internal implementation for hasKey.
+   * Checks if the scanner is currently positioned at a specified key.
    */
   hasKey(path: string): boolean {
     return this.keys.has(path)
   }
 
   /**
-   * Internal implementation for hasValue.
+   * Checks if the scanner has found a specified value.
    */
   hasValue(path: string, value: string): boolean {
     return this.values.get(path)?.has(value) ?? false
   }
 
   /**
-   * Internal implementation for valuesAt.
+   * Extracts values found at a specific path.
    */
   valuesAt(path: string): ReadonlySet<string> {
     return this.values.get(path) ?? new Set()
   }
 
   /**
-   * Internal implementation for finishString.
+   * Finalizes the reading of a string token in the scanner.
    */
   private finishString(): void {
     const context = this.contexts.at(-1)
@@ -852,7 +852,7 @@ class JsonRowScanner {
   }
 
   /**
-   * Internal implementation for appendToken.
+   * Appends a token to the scanner's current buffer.
    */
   private appendToken(text: string): void {
     if (this.token.length + text.length <= 256) this.token += text
@@ -860,7 +860,7 @@ class JsonRowScanner {
   }
 
   /**
-   * Internal implementation for decodeToken.
+   * Decodes a token parsed by the scanner.
    */
   private decodeToken(): string | null {
     if (this.tokenTruncated) return null
@@ -873,7 +873,7 @@ class JsonRowScanner {
   }
 
   /**
-   * Internal implementation for takeValuePath.
+   * Extracts the value at the current path in the scanner.
    */
   private takeValuePath(): string[] {
     const context = this.contexts.at(-1)
@@ -886,7 +886,7 @@ class JsonRowScanner {
 }
 
 /**
- * Internal implementation for classifyOversizedRow.
+ * Determines the appropriate action for a row that exceeds maximum size limits.
  */
 function classifyOversizedRow(
   scanner: JsonRowScanner,
@@ -947,7 +947,7 @@ const CLAUDE_TOOL_KINDS: Record<string, FileEventKind> = {
 }
 
 /**
- * Internal implementation for hydrateClaude.
+ * Processes a row from a Claude session transcript and extracts dialogue and file events.
  */
 function hydrateClaude(
   row: JsonObject,
@@ -992,7 +992,7 @@ function hydrateClaude(
 }
 
 /**
- * Internal implementation for hydrateCodex.
+ * Processes a row from a Codex session transcript and extracts dialogue and file events.
  */
 function hydrateCodex(
   row: JsonObject,
@@ -1058,7 +1058,7 @@ function hydrateCodex(
 }
 
 /**
- * Internal implementation for hydrateGeneric.
+ * Processes a row from a generic session transcript based on configured roles.
  */
 function hydrateGeneric(
   row: JsonObject,
@@ -1092,7 +1092,7 @@ function hydrateGeneric(
 /** Reads line-per-record transcripts, either through a client-specific variant or a manifest-described generic shape. */
 export const jsonlTranscript: FormatModule = {
   /**
-   * Internal implementation for discover.
+   * Discovers JSONL transcripts matching the given manifest in the root directory.
    */
   async discover(manifest, root) {
     const refs: SessionRef[] = []
@@ -1144,7 +1144,7 @@ export const jsonlTranscript: FormatModule = {
   },
 
   /**
-   * Internal implementation for hydrate.
+   * Hydrates a JSONL transcript session reference into a full session document.
    */
   async hydrate(manifest, _root, ref, config) {
     if (manifest.format !== 'jsonl-transcript') {

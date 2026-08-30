@@ -112,21 +112,21 @@ const SCHEMA_V1 = `
  */
 const MIGRATIONS: Record<number, (db: Database) => void> = {
   /**
-   * Internal implementation for 1.
+   * Migrates from schema version 0 to 1 (initial setup).
    */
   1: (db) => { db.exec(SCHEMA_V1) },
   // Sessions indexed under version 1 recorded one conflated flag, so they keep
   // whatever `truncated` they were stamped with and start out not degraded.
   // The next hydration of each session writes the split values.
   /**
-   * Internal implementation for 2.
+   * Migrates from schema version 1 to 2, adding the degraded column.
    */
   2: (db) => { db.exec('ALTER TABLE session ADD COLUMN degraded INTEGER NOT NULL DEFAULT 0') },
   // Ordered dialogue, which the grouped `session_text` facets cannot express.
   // Sessions indexed before this step have no turns until they are hydrated
   // again, and the history view falls back to the grouped facets for them.
   /**
-   * Internal implementation for 3.
+   * Migrates from schema version 2 to 3, adding the session_turn table for dialogue history.
    */
   3: (db) => {
     db.exec(`
@@ -148,7 +148,7 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
   // moved that next hydration is `nekyia index --rebuild`, which is what the
   // timeline's remediation line names.
   /**
-   * Internal implementation for 4.
+   * Migrates from schema version 3 to 4, adding file events and truncation details.
    */
   4: (db) => {
     db.exec(`
@@ -242,7 +242,7 @@ function schemaError(reason: string, db: Database): Error {
 }
 
 /**
- * Internal implementation for SessionRow.
+ * Represents a session row as read directly from the SQLite database.
  */
 interface SessionRow {
   uid: string
@@ -266,7 +266,7 @@ interface SessionRow {
 }
 
 /**
- * Internal implementation for TextRow.
+ * Represents a full-text search document row.
  */
 interface TextRow {
   rowid: number
@@ -331,7 +331,7 @@ export interface FileEventRow {
 }
 
 /**
- * Internal implementation for SearchRow.
+ * A subset of SessionRow optimized for search performance without JSON or hydration fields.
  */
 type SearchRow = Omit<SessionRow, 'source_paths' | 'fingerprint' | 'truncated' | 'degraded'>
 
@@ -384,12 +384,12 @@ export function rowToRef(row: SessionRow): StoredRef {
  */
 export class IndexDb {
   /**
-   * Internal implementation for constructor.
+   * Wraps an open bun:sqlite database handle.
    */
   private constructor(private readonly db: Database) {}
 
   /**
-   * Internal implementation for validatePath.
+   * Asserts the database path points to a file within a safe, accessible directory.
    */
   private static validatePath(path: string, create: boolean): void {
     if (path === ':memory:') return
@@ -416,7 +416,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for open.
+   * Connects to a SQLite index at the given path, initializing it if requested and absent.
    */
   static open(path: string, create = true): IndexDb {
     IndexDb.validatePath(path, create)
@@ -566,7 +566,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for writeRef.
+   * Upserts a session's metadata row into the `session` table without managing transactions.
    */
   private writeRef(ref: SessionRef): void {
     this.db.query(`
@@ -606,14 +606,14 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for upsertRef.
+   * Indexes a session's metadata, adding a new row or updating an existing one.
    */
   upsertRef(ref: SessionRef): void {
     this.writeRef(ref)
   }
 
   /**
-   * Internal implementation for writeDoc.
+   * Drops old document contents and reconstructs full-text search entries, turns, and file events.
    */
   private writeDoc(doc: SessionDoc): void {
     const old = this.db.query(
@@ -714,7 +714,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for upsertDoc.
+   * Persists a session's full text, turns, and file events inside a transaction.
    */
   upsertDoc(doc: SessionDoc): void {
     this.db.transaction((value: SessionDoc) => {
@@ -743,7 +743,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for getRef.
+   * Retrieves a single session's metadata by its UID, or null if it is not indexed.
    */
   getRef(uid: string): StoredRef | null {
     const row = this.db.query('SELECT * FROM session WHERE uid = ?').get(uid) as SessionRow | null
@@ -751,7 +751,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for getFingerprints.
+   * Returns a map of all indexed session UIDs to their source file fingerprints.
    */
   getFingerprints(): Map<string, string> {
     const rows = this.db.query('SELECT uid, fingerprint FROM session').all() as Array<{
@@ -762,7 +762,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for getMissingUids.
+   * Returns a set of all session UIDs currently marked as missing.
    */
   getMissingUids(): Set<string> {
     const rows = this.db.query('SELECT uid FROM session WHERE missing = 1').all() as Array<{
@@ -785,7 +785,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for allUids.
+   * Retrieves all session UIDs in the index, sorted alphabetically.
    */
   allUids(): string[] {
     const rows = this.db.query('SELECT uid FROM session ORDER BY uid').all() as Array<{ uid: string }>
@@ -793,7 +793,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for ftsSearch.
+   * Performs a full-text search across all indexed sessions and returns matches ordered by relevance score.
    */
   ftsSearch(query: string): FtsHit[] {
     return this.db.query(`
@@ -806,7 +806,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for uidsTouchingFile.
+   * Finds all session UIDs that touched a file whose path contains the given substring fragment.
    */
   uidsTouchingFile(fragment: string): string[] {
     const literal = fragment.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
@@ -901,7 +901,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for deleteSession.
+   * Deletes a single session and all its associated data from the index.
    */
   deleteSession(uid: string): void {
     this.deleteSessions([uid])
@@ -948,7 +948,7 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for markMissing.
+   * Marks a batch of session UIDs as missing because their transcript file could not be found.
    */
   markMissing(uids: string[]): void {
     this.db.transaction((values: string[]) => {
@@ -963,14 +963,14 @@ export class IndexDb {
   }
 
   /**
-   * Internal implementation for raw.
+   * Provides direct access to the underlying bun:sqlite database handle.
    */
   raw(): Database {
     return this.db
   }
 
   /**
-   * Internal implementation for close.
+   * Closes the database connection.
    */
   close(): void {
     this.db.close()

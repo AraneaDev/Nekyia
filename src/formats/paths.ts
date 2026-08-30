@@ -51,7 +51,11 @@ const SOURCE_LINE_BREAK = /\r?\n|(?<=(?:^|[^\\])(?:\\\\)*)(?:\\r)?\\n/u
 const PATCH_FILE_HEADER = /^\*\*\* (Add|Update|Delete) File: (.+)$/u
 
 /**
- * Internal implementation for isPlausiblePath.
+ * Determines whether a given string is likely to be a file path.
+ * 
+ * Rejects empty strings, strings containing newlines, and HTTP requests. Accepts strings
+ * without spaces, strings starting with common path prefixes (e.g., /, ./, ~/),
+ * and strings containing slashes or ending with a short alphanumeric extension.
  */
 function isPlausiblePath(value: string): boolean {
   if (value.length <= 1 || /[\r\n]/.test(value)) return false
@@ -69,7 +73,10 @@ function isPlausiblePath(value: string): boolean {
  */
 export function collectPaths(value: unknown, out = new Set<string>()): string[] {
   /**
-   * Internal implementation for walk.
+   * Recursively traverses an arbitrary JSON-like value.
+   * 
+   * Finds string values associated with path-shaped keys and, if they
+   * look like valid paths, adds them to the collected output set.
    */
   function walk(item: unknown): void {
     if (Array.isArray(item)) {

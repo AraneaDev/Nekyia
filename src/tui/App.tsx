@@ -47,7 +47,7 @@ function EmptyState({ searching, narrowed }: { searching: boolean; narrowed: boo
 }
 
 /**
- * Internal implementation for SparseHint.
+ * Displays a hint indicating that search is currently restricted to a specific project.
  */
 function SparseHint({ project }: { project: string }) {
   return (
@@ -102,7 +102,7 @@ const UNSAFE_COMMAND = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u20
 export type { ClipboardLike } from './clipboard'
 
 /**
- * Internal implementation for Confirmation.
+ * Details of a session launch confirmation, including the execution plan and client.
  */
 interface Confirmation {
   plan: ExecPlan
@@ -111,7 +111,7 @@ interface Confirmation {
 }
 
 /**
- * Internal implementation for sanitizePromptForClipboard.
+ * Cleans prompt text for clipboard use, stripping unsafe controls and bounding length.
  */
 function sanitizePromptForClipboard(text: string): string {
   let sample = text.slice(0, COPY_PROMPT_CHARS)
@@ -131,7 +131,7 @@ export interface CommandCopyWork {
 }
 
 /**
- * Internal implementation for commandUnitUnsafe.
+ * Checks if a single code unit represents a control or bidirectional formatting character.
  */
 function commandUnitUnsafe(code: number): boolean {
   return code <= 0x1f
@@ -185,7 +185,7 @@ export function safeCommandForClipboard(plan: ExecPlan, work?: CommandCopyWork):
 }
 
 /**
- * Internal implementation for deleteLastGrapheme.
+ * Removes the last grapheme cluster from a string safely, handling multi-code-unit characters.
  */
 function deleteLastGrapheme(text: string): string {
   let last = 0
@@ -201,16 +201,16 @@ export function terminalRows(rows: unknown, fallback = 24): number {
 }
 
 /**
- * Internal implementation for TerminalSize.
+ * Dimensions of the terminal viewport.
  */
 interface TerminalSize { rows: number; columns: number }
 
 /**
- * Internal implementation for useTerminalSize.
+ * A React hook that tracks the active terminal size and reacts to window resizes.
  */
 function useTerminalSize(rowsIn?: number, columnsIn?: number): TerminalSize {
   /**
-   * Internal implementation for read.
+   * Reads the current terminal dimensions, falling back to safe defaults if unavailable.
    */
   const read = (): TerminalSize => ({
     rows: terminalRows(rowsIn ?? process.stdout.rows),
@@ -219,7 +219,7 @@ function useTerminalSize(rowsIn?: number, columnsIn?: number): TerminalSize {
   const [size, setSize] = useState(read)
   useEffect(() => {
     /**
-     * Internal implementation for update.
+     * Polls the latest dimensions and updates state if they changed since the last paint.
      */
     const update = () => setSize((previous) => {
       const next = read()
@@ -339,21 +339,21 @@ export function App({
   useEffect(() => () => { mounted.current = false }, [])
 
   /**
-   * Internal implementation for announce.
+   * Displays a temporary notification in the footer.
    */
   function announce(message: string): void {
     if (mounted.current) setNote(message)
   }
 
   /**
-   * Internal implementation for adapterFor.
+   * Retrieves the launch adapter registered for the given client ID.
    */
   function adapterFor(client: string): Adapter | undefined {
     return adapters.find((adapter) => adapter.id === client)
   }
 
   /**
-   * Internal implementation for emit.
+   * Flushes the final launch plan to the host process and exits the picker.
    */
   function emit(plan: ExecPlan): void {
     if (executing.current) return
@@ -363,7 +363,7 @@ export function App({
   }
 
   /**
-   * Internal implementation for planSafely.
+   * Safely calls the adapter's plan method, returning null on error.
    */
   function planSafely(adapter: Adapter, row: NonNullable<typeof selectedRow>, brief?: string): {
     plan: ExecPlan | null
@@ -378,7 +378,7 @@ export function App({
   }
 
   /**
-   * Internal implementation for activate.
+   * Initiates a resume or brief plan based on the currently selected row, confirming if necessary.
    */
   function activate(): void {
     const row = selectedRow
@@ -415,7 +415,7 @@ export function App({
   }
 
   /**
-   * Internal implementation for writeClipboard.
+   * Writes text to the host clipboard, notifying the user on success or failure.
    */
   async function writeClipboard(text: string, success: string): Promise<void> {
     if (!clipboardApi) { announce('clipboard unavailable'); return }
@@ -428,7 +428,7 @@ export function App({
   }
 
   /**
-   * Internal implementation for copyPrompt.
+   * Retrieves and copies the first valid prompt from the selected session to the clipboard.
    */
   function copyPrompt(): void {
     const row = selectedRow
@@ -446,7 +446,7 @@ export function App({
   }
 
   /**
-   * Internal implementation for copyCommand.
+   * Derives a safe CLI command to resume the selected session and copies it to the clipboard.
    */
   function copyCommand(): void {
     const row = selectedRow

@@ -26,7 +26,7 @@ export interface AdapterSet {
 }
 
 /**
- * Internal implementation for contained.
+ * Determines whether the candidate path is lexically contained within the root path.
  */
 function contained(root: string, candidate: string): boolean {
   const fromRoot = relative(root, candidate)
@@ -73,7 +73,7 @@ function adaptersForRun(): AdapterSet {
 }
 
 /**
- * Internal implementation for showDiagnostics.
+ * Logs diagnostics to stderr, unless the quiet flag is true.
  */
 function showDiagnostics(diagnostics: Diagnostic[], quiet: boolean): void {
   if (quiet) return
@@ -85,7 +85,7 @@ function showDiagnostics(diagnostics: Diagnostic[], quiet: boolean): void {
 }
 
 /**
- * Internal implementation for hydrationFailed.
+ * Checks whether a diagnostic represents a failure to hydrate a session.
  */
 function hydrationFailed(diagnostic: Diagnostic): boolean {
   return diagnostic.message === 'no adapter for client'
@@ -177,7 +177,7 @@ export async function runReindex(opts: ReindexOptions = {}): Promise<number> {
         : await askConsent(adapterSet.adapters, {
           yes: opts.yes,
           ...(opts.quiet ? { /**
-                              * Internal implementation for write.
+                              * Discards output when running in quiet mode.
                               */
           write: () => {} } : {}),
         })

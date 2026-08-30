@@ -18,14 +18,14 @@ export interface Scan {
 }
 
 /**
- * Internal implementation for Discovered.
+ * Adapter discovery results enriched with the client's identifier.
  */
 interface Discovered extends AdapterDiscovery {
   client: string
 }
 
 /**
- * Internal implementation for errorMessage.
+ * Extracts a string error message from an unknown error object.
  */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)

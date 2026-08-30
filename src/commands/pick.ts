@@ -81,41 +81,27 @@ export function mountPicker(props: AppProps, renderer: typeof render = render): 
 }
 
 const defaults: PickDependencies = {
-  /**
-   * Internal implementation for isTTY.
-   */
+  /** Checks if both stdin and stdout are interactive terminals. */
   isTTY: () => process.stdin.isTTY === true && process.stdout.isTTY === true,
   indexExists: existsSync,
   needsConsent,
   indexPath,
   loadConfig,
   buildAdapters,
-  /**
-   * Internal implementation for openDb.
-   */
+  /** Opens the index database for reading. */
   openDb: (path) => IndexDb.open(path, false),
-  /**
-   * Internal implementation for cwd.
-   */
+  /** Returns the current working directory. */
   cwd: () => process.cwd(),
-  /**
-   * Internal implementation for now.
-   */
+  /** Returns the current timestamp in milliseconds. */
   now: () => Date.now(),
   mount: mountPicker,
   checkPlan,
   runPlan,
-  /**
-   * Internal implementation for ensureIndex.
-   */
+  /** Builds or refreshes the index if required before picking. */
   ensureIndex: () => runReindex({ yes: false }),
-  /**
-   * Internal implementation for error.
-   */
+  /** Outputs an error message to stderr. */
   error: (message) => { console.error(message) },
-  /**
-   * Internal implementation for indexedAt.
-   */
+  /** Reads the last modification time of the index file. */
   indexedAt: (path) => {
     try {
       return statSync(path).mtimeMs
@@ -125,9 +111,7 @@ const defaults: PickDependencies = {
   },
 }
 
-/**
- * Internal implementation for message.
- */
+/** Extracts and safely formats the message string from an error object. */
 function message(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error)
   return boundedDisplayText(raw, 512) || 'unknown error'
@@ -207,9 +191,7 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
       cwd: deps.cwd(),
       now: deps.now(),
       indexedAt: deps.indexedAt(path),
-      /**
-       * Internal implementation for onExec.
-       */
+      /** Captures the chosen execution plan and optional copy task when the user selects a session. */
       onExec: (plan, copy) => {
         if (pending) return
         pending = plan

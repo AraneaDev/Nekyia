@@ -42,7 +42,7 @@ export interface SessionsState {
 }
 
 /**
- * Internal implementation for clampSelection.
+ * Keeps a selection index within the bounds of a list, falling back to 0 if out of range.
  */
 function clampSelection(selected: number, length: number): number {
   if (length <= 0) return 0

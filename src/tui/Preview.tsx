@@ -37,14 +37,14 @@ const HISTORY_DB_CHARS = 1_048_576
 const HISTORY_TURN_LIMIT = 4_096
 
 /**
- * Internal implementation for safe.
+ * Sanitizes a string and bounds it to the given terminal columns.
  */
 function safe(value: string | null | undefined, columns = FIELD_COLUMNS): string {
   return boundedDisplayText(typeof value === 'string' ? value : '', columns)
 }
 
 /**
- * Internal implementation for textLines.
+ * Splits a string into an array of non-empty trimmed lines.
  */
 function textLines(value: string | null | undefined): string[] {
   return (typeof value === 'string' ? value : '')
@@ -60,7 +60,7 @@ interface PreviewTurn { role: 'user' | 'assistant'; text: string }
 interface PreviewFileEvent { kind: string; path: string }
 
 /**
- * Internal implementation for PreviewData.
+ * The extracted data for rendering a session preview, containing text blocks, dialogue, and file paths.
  */
 interface PreviewData {
   files: string[]
@@ -125,7 +125,7 @@ function dialogueTurns(db: IndexDb, uid: string): PreviewTurn[] {
 }
 
 /**
- * Internal implementation for previewData.
+ * Reads session data from the database, retrieving bounded text blocks for preview formatting.
  */
 function previewData(db: IndexDb, uid: string, full: boolean, maxLines: number): PreviewData {
   try {
@@ -316,17 +316,17 @@ export function buildPreviewLines(
   // the most expensive work in the preview on text nobody sees.
   const blocks = [
     { label: 'asked', body: asked, dim: false, /**
-                                                * Internal implementation for render.
+                                                * Renders a truncated line bounded by the block width.
                                                 */
     render: (line: string) => safe(line, width) },
     { label: 'replied', body: prose, dim: true, /**
-                                                 * Internal implementation for render.
+                                                 * Renders a truncated line bounded by the block width.
                                                  */
     render: (line: string) => safe(line, width) },
     {
       label: 'touched', body: touched, dim: false,
       /**
-       * Internal implementation for render.
+       * Renders a truncated file path bounded by the block width.
        */
       render: (line: string) => boundedPathTail(line, width),
     },

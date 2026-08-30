@@ -167,34 +167,34 @@ function literalFtsQuery(text: string): string | null {
 }
 
 /**
- * Internal implementation for finite.
+ * Returns the numeric value if it is finite, otherwise returns a fallback value.
  */
 function finite(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
 /**
- * Internal implementation for compareUid.
+ * Lexicographically compares two UIDs for sorting purposes.
  */
 function compareUid(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
 /**
- * Internal implementation for Components.
+ * Disjoint-set data structure (Union-Find) for tracking connected components.
  */
 class Components {
   private readonly parents: number[]
 
   /**
-   * Internal implementation for constructor.
+   * Initializes the union-find structure with the given size.
    */
   constructor(size: number) {
     this.parents = Array.from({ length: size }, (_, index) => index)
   }
 
   /**
-   * Internal implementation for find.
+   * Finds the root representative of the given index, applying path compression.
    */
   find(index: number): number {
     let root = index
@@ -208,7 +208,7 @@ class Components {
   }
 
   /**
-   * Internal implementation for union.
+   * Merges the components containing the left and right indices.
    */
   union(left: number, right: number): void {
     const leftRoot = this.find(left)
@@ -253,7 +253,7 @@ function chainComponents(rows: readonly SearchRef[]): Components {
 }
 
 /**
- * Internal implementation for collapseChains.
+ * Groups sessions by their fork chain component and collapses each group to its most recent session.
  */
 function collapseChains(
   rows: Row[],

@@ -17,12 +17,12 @@ import { parseSqlTimeNullable } from './sqlite-store'
 const MAX_JSON_BYTES = 4 * 1024 * 1024
 
 /**
- * Internal implementation for JsonObject.
+ * Represents a JSON object as a dictionary mapping strings to unknown types.
  */
 type JsonObject = Record<string, unknown>
 
 /**
- * Internal implementation for NamedJson.
+ * Represents a parsed JSON file with associated metadata and readability status.
  */
 interface NamedJson {
   file: string
@@ -35,14 +35,14 @@ interface NamedJson {
 }
 
 /**
- * Internal implementation for isObject.
+ * Type guard that checks if a value is a non-null, non-array object.
  */
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
- * Internal implementation for normalizedString.
+ * Trims a string and returns it if it is non-empty and contains no null bytes, otherwise returns null.
  */
 function normalizedString(value: unknown): string | null {
   if (typeof value !== 'string') return null
@@ -51,7 +51,7 @@ function normalizedString(value: unknown): string | null {
 }
 
 /**
- * Internal implementation for optionalString.
+ * Normalizes an optional string, returning undefined if it is null or empty after trimming.
  */
 function optionalString(value: unknown): string | null | undefined {
   if (value === undefined || value === null) return null
@@ -80,14 +80,14 @@ function objectTime(
 }
 
 /**
- * Internal implementation for compareStrings.
+ * Comparator function to alphabetically sort strings.
  */
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
 /**
- * Internal implementation for isWithin.
+ * Determines whether a given path falls within a specified root directory.
  */
 function isWithin(root: string, path: string): boolean {
   const fromRoot = relative(root, path)
@@ -96,7 +96,7 @@ function isWithin(root: string, path: string): boolean {
 }
 
 /**
- * Internal implementation for safeLegacyBase.
+ * Validates and resolves a legacy path against a root, ensuring it does not escape the root.
  */
 function safeLegacyBase(root: string, legacyPath: string): string | null {
   if (
@@ -121,7 +121,7 @@ function safeLegacyBase(root: string, legacyPath: string): string | null {
 }
 
 /**
- * Internal implementation for safeExistingPath.
+ * Safely resolves an existing path, verifying that it is contained within the specified base directory.
  */
 function safeExistingPath(base: string, path: string): string | null {
   try {
@@ -134,7 +134,7 @@ function safeExistingPath(base: string, path: string): string | null {
 }
 
 /**
- * Internal implementation for directoryNames.
+ * Lists and sorts the names of all directories within a given path.
  */
 function directoryNames(path: string): string[] {
   try {
@@ -148,7 +148,7 @@ function directoryNames(path: string): string[] {
 }
 
 /**
- * Internal implementation for jsonFileNames.
+ * Lists and sorts the names of all JSON files within a given path.
  */
 function jsonFileNames(path: string): string[] {
   try {
@@ -162,14 +162,14 @@ function jsonFileNames(path: string): string[] {
 }
 
 /**
- * Internal implementation for JsonRead.
+ * Represents the result of an attempt to read and parse a JSON file, including success or failure details.
  */
 type JsonRead =
   | { ok: true; value: JsonObject; size: number; mtimeMs: number }
   | { ok: false; reason: string; oversized: boolean; size: number; mtimeMs: number }
 
 /**
- * Internal implementation for readJson.
+ * Safely reads and parses a JSON file from disk, enforcing size limits and structural validation.
  */
 function readJson(base: string, unresolvedPath: string): JsonRead {
   const path = safeExistingPath(base, unresolvedPath)
@@ -216,14 +216,14 @@ function readJson(base: string, unresolvedPath: string): JsonRead {
 }
 
 /**
- * Internal implementation for diagnostic.
+ * Creates a warning diagnostic object for skipped paths with a specific message.
  */
 function diagnostic(client: string, path: string, message: string): Diagnostic {
   return { client, level: 'warn', path, message: `skipped: ${message}` }
 }
 
 /**
- * Internal implementation for relevantSourcePaths.
+ * Discovers all source files relevant to a session, including messages and their parts.
  */
 function relevantSourcePaths(
   base: string,
@@ -256,7 +256,7 @@ function relevantSourcePaths(
 }
 
 /**
- * Internal implementation for fingerprintFor.
+ * Computes a JSON string fingerprint of paths based on their modification times and sizes.
  */
 function fingerprintFor(base: string, paths: string[]): string {
   const metadata: Array<[string, number, number]> = []
@@ -376,7 +376,7 @@ export async function discoverLegacy(
 }
 
 /**
- * Internal implementation for orderedJsonMetadata.
+ * Collects and orders metadata for all readable JSON files within a directory by their creation time.
  */
 function orderedJsonMetadata(base: string, directory: string, unit: 'ms' | 's' | 'iso'): {
   rows: NamedJson[]
@@ -436,7 +436,7 @@ export async function hydrateLegacy(
   }
 
   /**
-   * Internal implementation for charge.
+   * Tracks bytes consumed against the budget, updating truncation status if the budget is exceeded.
    */
   function charge(size: number): boolean {
     if (size <= maxBytes - consumedBytes) {

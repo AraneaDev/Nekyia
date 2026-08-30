@@ -16,9 +16,7 @@ const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\
 /** Everything Bun's Glob treats as a pattern rather than a literal path character. */
 const GLOB_META = /[*?[\]{}!\\]/
 
-/**
- * Internal implementation for validUid.
- */
+/** Checks if a session UID is valid, safe, and parsable. */
 function validUid(uid: string): boolean {
   if (uid.length === 0 || uid.length > MAX_UID_LENGTH || UNSAFE_TEXT.test(uid)) return false
   try {
@@ -29,30 +27,22 @@ function validUid(uid: string): boolean {
   }
 }
 
-/**
- * Internal implementation for validClient.
- */
+/** Checks if a client ID is safe and correctly formatted. */
 function validClient(client: string): boolean {
   return isSafeClientId(client)
 }
 
-/**
- * Internal implementation for boundedClient.
- */
+/** Validates that a client identifier is safe for querying. */
 function boundedClient(client: string): boolean {
   return isSafeClientId(client)
 }
 
-/**
- * Internal implementation for validGlob.
- */
+/** Checks if a glob string is valid, non-empty, safe, and within length bounds. */
 function validGlob(glob: string): boolean {
   return glob.length > 0 && glob.length <= MAX_GLOB && !UNSAFE_TEXT.test(glob)
 }
 
-/**
- * Internal implementation for existingIndex.
- */
+/** Returns the index path if it exists, otherwise null. */
 function existingIndex(): string | null {
   const path = indexPath()
   try {
