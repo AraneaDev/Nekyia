@@ -34,6 +34,41 @@ function bump<K>(map: Map<K, number>, key: K): void {
   map.set(key, (map.get(key) ?? 0) + 1)
 }
 
+/**
+ * Whether a tool call's input names a file at all.
+ *
+ * The census counts path-naming calls, so a call that names none must not
+ * reach the denominator: `AskUserQuestion` and `WebSearch` are not operations
+ * on a file whose kind went unrecognised, they are calls this question is not
+ * about. Codex is already counted this way, one patch header at a time, so
+ * gating claude the same way is what makes the two columns comparable.
+ *
+ * Deliberately a local copy of what `src/formats/paths.ts` does rather than an
+ * import: this script measures a store from the outside, and would otherwise
+ * be measuring the indexer's own opinion of itself.
+ */
+const PATH_KEYS = new Set([
+  'file_path', 'filePath', 'path', 'notebook_path', 'notebookPath', 'file',
+])
+
+function looksLikePath(value: string): boolean {
+  if (value.length <= 1 || /[\r\n]/u.test(value)) return false
+  if (!/\s/u.test(value)) return true
+  if (/^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\//iu.test(value)) return false
+  if (/^(?:\/|\.\.?\/|~\/|[A-Za-z]:[\\/])/u.test(value)) return true
+  return /[/\\]/u.test(value) || /\.[A-Za-z0-9]{1,16}$/u.test(value)
+}
+
+function namesPath(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(namesPath)
+  if (typeof value !== 'object' || value === null) return false
+  for (const [key, child] of Object.entries(value)) {
+    if (PATH_KEYS.has(key) && typeof child === 'string' && looksLikePath(child)) return true
+    if (namesPath(child)) return true
+  }
+  return false
+}
+
 const CLAUDE_TOOL_KINDS: Record<string, string> = {
   Read: 'read', NotebookRead: 'read',
   Write: 'write',
@@ -109,7 +144,8 @@ async function main(): Promise<void> {
         const message = row.message as Record<string, unknown> | undefined
         if (client === 'claude' && Array.isArray(message?.content)) {
           for (const block of message.content as Array<Record<string, unknown>>) {
-            if (block?.type === 'tool_use' && typeof block.name === 'string') {
+            if (block?.type === 'tool_use' && typeof block.name === 'string'
+              && namesPath(block.input)) {
               classifyClaude(block.name, block.input, counts)
             }
           }
