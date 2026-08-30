@@ -1,7 +1,7 @@
 import type { Row } from './core/query'
 import type { TrackedFiles } from './core/git'
 import type { TimelineSession } from './core/timeline'
-import { boundedDisplayText, padColumns } from './tui/text'
+import { boundedDisplayText, boundedPathTail, padColumns } from './tui/text'
 
 const MIN = 60_000
 const HOUR = 3_600_000
@@ -98,6 +98,15 @@ export function userPromptText(text: string): string {
 }
 
 const KIND_COLUMNS = 8
+/** Width a path may claim on a timeline row, leaving the ordinal and kind columns their space. */
+const PATH_COLUMNS = 120
+/**
+ * How much of a path is read before it is bounded. Generous, so sanitizing
+ * happens over the whole visible candidate rather than a prefix of it, and
+ * bounded, so one absurd path cannot pull an unbounded string through the
+ * grapheme segmenter.
+ */
+const PATH_SCAN_COLUMNS = 512
 
 /**
  * Renders a directory's history, grouped by the session that made it.
@@ -128,7 +137,7 @@ export function formatTimeline(
     'exact order inside a session, end-time order between them',
   ]
   if (stale > 0) {
-    lines.push(`${stale} sessions indexed before file events; run "nekyia index"`)
+    lines.push(`${stale} sessions indexed before file events; run "nekyia index --rebuild"`)
   }
 
   for (const session of sessions) {
@@ -138,17 +147,27 @@ export function formatTimeline(
       lines.push('     this client records file names only; no operations, no order')
     }
     if (session.detail === 'unknown') {
-      lines.push('     indexed before file events; re-index to fill this in')
+      lines.push('     indexed before file events; "nekyia index --rebuild" fills this in')
     }
     if (session.eventsTruncated) {
       lines.push('     event log capped for this session')
     }
+    if (session.ref.missing) {
+      lines.push('     source missing; the transcript this was read from is gone')
+    }
     for (const entry of session.entries) {
       const position = entry.turn === null ? '' : String(entry.turn)
       const kind = entry.kind === 'unknown' ? '?' : entry.kind
-      const path = entry.resolved.startsWith(base)
+      const relative = entry.resolved.startsWith(base)
         ? entry.resolved.slice(base.length)
         : entry.resolved
+      // A path came out of a transcript, so it reaches the terminal only after
+      // bounding: an escape sequence would clear the screen and a bidi override
+      // would reverse the line, taking the `untracked` marker with it.
+      const path = boundedPathTail(
+        boundedDisplayText(relative, PATH_SCAN_COLUMNS),
+        PATH_COLUMNS,
+      )
       const marker = git.consulted && !git.tracked.has(entry.resolved) ? '  untracked' : ''
       lines.push(`  ${position.padStart(5)}  ${kind.padEnd(KIND_COLUMNS)}${path}${marker}`)
     }

@@ -402,7 +402,69 @@ test('timeline runs cleanly against an index stamped below schema version 4', ()
   // Below schema version 4 the file-event tables and columns are gone, so
   // every session reads back as `unknown` detail rather than throwing.
   expect(result.stdout.toString()).toContain('sessions indexed before file events')
-  expect(result.stdout.toString()).toContain('indexed before file events; re-index to fill this in')
+  expect(result.stdout.toString()).toContain(
+    'indexed before file events; "nekyia index --rebuild" fills this in',
+  )
+})
+
+test('timeline --json prints one shape whether or not an index exists', () => {
+  const env = environment()
+  const absent = run(['timeline', '--dir', '/root/proj', '--json'], env)
+  expect(absent.exitCode).toBe(0)
+  // A caller reaching `.sessions` must not have to learn first whether an
+  // index exists; an array here would crash it.
+  expect(JSON.parse(absent.stdout.toString())).toEqual({
+    dir: '/root/proj', since: null, git: { consulted: false }, sessions: [],
+  })
+
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const present = JSON.parse(
+    run(['timeline', '--dir', '/root/proj', '--json'], env).stdout.toString(),
+  ) as Record<string, unknown>
+  expect(Object.keys(present).sort()).toEqual(['dir', 'git', 'sessions', 'since'])
+  expect((present.sessions as unknown[]).length).toBeGreaterThan(0)
+  // Every session says whether the transcript it was read from is still there.
+  for (const session of present.sessions as Array<Record<string, unknown>>) {
+    expect(typeof session.missing).toBe('boolean')
+  }
+})
+
+// The remediation `timeline` prints has to be the command that actually helps.
+// `scan` decides what to hydrate from fingerprints alone, so a session whose
+// transcript has not changed is skipped however stale its file detail is.
+test('a plain index leaves migrated sessions unknown; --rebuild is what fills them in', async () => {
+  const db = IndexDb.open(':memory:')
+  const ref: SessionRef = {
+    uid: 'claude:stale', client: 'claude', nativeId: 'stale', cwd: '/root/proj',
+    gitBranch: null, title: 'before file events', startedAt: 1, endedAt: 2, turns: 1,
+    parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/old'],
+    fingerprint: 'unchanged',
+  }
+  // A version 3 index held paths and nothing else, and the migration to 4 adds
+  // the column at its default rather than filling it in, so every existing row
+  // reads `unknown` until something re-hydrates it.
+  db.upsertHydrated({ ref, prompts: [], prose: [], files: ['/root/proj/a.ts'], truncated: false })
+  db.raw().query("UPDATE session SET file_detail = 'unknown' WHERE uid = ?").run(ref.uid)
+  expect(db.fileDetailsFor([ref.uid]).get(ref.uid)?.detail).toBe('unknown')
+
+  const adapter: Adapter = {
+    id: 'claude', manifest: {} as Adapter['manifest'], detect: () => true,
+    discover: async () => ({ refs: [ref], diagnostics: [], authoritative: true }),
+    hydrate: async (seen) => ({
+      ref: seen, prompts: [], prose: [], files: ['/root/proj/a.ts'],
+      fileEvents: [{ path: '/root/proj/a.ts', kind: 'edit' as const, turn: 0 }],
+      fileDetail: 'ordered' as const, truncated: false,
+    }),
+    plan: () => null,
+  }
+  const set = { adapters: [adapter], diagnostics: [] }
+
+  expect(await reindexWith(db, DEFAULT_CONFIG, set, { quiet: true })).toBe(0)
+  expect(db.fileDetailsFor([ref.uid]).get(ref.uid)?.detail).toBe('unknown')
+
+  expect(await reindexWith(db, DEFAULT_CONFIG, set, { rebuild: true, quiet: true })).toBe(0)
+  expect(db.fileDetailsFor([ref.uid]).get(ref.uid)?.detail).toBe('ordered')
+  db.close()
 })
 
 test('version names the release and where it came from', () => {
