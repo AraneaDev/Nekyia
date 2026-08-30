@@ -47,16 +47,25 @@ export interface AdapterDiscovery {
   authoritative: boolean
 }
 
+/**
+ * Internal implementation for errorMessage.
+ */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/**
+ * Internal implementation for isContained.
+ */
 function isContained(root: string, path: string): boolean {
   const fromRoot = relative(root, path)
   return fromRoot === ''
     || (!isAbsolute(fromRoot) && fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`))
 }
 
+/**
+ * Internal implementation for containsPath.
+ */
 function containsPath(root: string, path: string): boolean {
   const lexicalRoot = resolve(root)
   const lexicalPath = resolve(path)
@@ -75,6 +84,9 @@ function containsPath(root: string, path: string): boolean {
   }
 }
 
+/**
+ * Internal implementation for rootForRef.
+ */
 function rootForRef(roots: string[], ref: SessionRef): string | null {
   const sourcePaths = ref.sourcePaths
   if (sourcePaths.length === 0) return null
@@ -84,6 +96,9 @@ function rootForRef(roots: string[], ref: SessionRef): string | null {
   return null
 }
 
+/**
+ * Internal implementation for cloneRef.
+ */
 function cloneRef(ref: SessionRef, origin: Origin): SessionRef {
   return { ...ref, origin, sourcePaths: [...ref.sourcePaths] }
 }
@@ -113,6 +128,9 @@ function unreadDoc(ref: SessionRef): SessionDoc {
   return { ref, prompts: [], prose: [], files: [], truncated: false, degraded: true }
 }
 
+/**
+ * Internal implementation for enrichRef.
+ */
 function enrichRef(ref: SessionRef, entry: SidecarEntry | undefined): void {
   if (!entry) return
   if (!ref.cwd) ref.cwd = entry.cwd
@@ -123,6 +141,9 @@ function enrichRef(ref: SessionRef, entry: SidecarEntry | undefined): void {
   if (entry.lastTs) ref.endedAt = Math.max(ref.endedAt, entry.lastTs)
 }
 
+/**
+ * Internal implementation for sidecarPath.
+ */
 function sidecarPath(root: string, manifest: Manifest): string | null {
   const file = manifest.sidecar?.file
   if (!file || isAbsolute(file) || file.split(/[\\/]+/).includes('..')) return null
@@ -130,6 +151,9 @@ function sidecarPath(root: string, manifest: Manifest): string | null {
   return containsPath(root, path) ? path : null
 }
 
+/**
+ * Internal implementation for includeSidecarEntry.
+ */
 function includeSidecarEntry(ref: SessionRef, path: string, entry: SidecarEntry): void {
   if (!ref.sourcePaths.includes(path)) ref.sourcePaths.push(path)
   const digest = createHash('sha256')
@@ -149,6 +173,9 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
   const format = FORMAT_MODULES[manifest.format]
   const clientId = manifest.id
 
+  /**
+   * Internal implementation for sidecarFor.
+   */
   function sidecarFor(root: string): Map<string, SidecarEntry> {
     return manifest.sidecar ? readSidecar(root, manifest.sidecar) : new Map()
   }
@@ -157,6 +184,9 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
     id: clientId,
     manifest,
 
+    /**
+     * Internal implementation for detect.
+     */
     detect() {
       try {
         return roots.some((root) => existsSync(root))
@@ -165,6 +195,9 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
       }
     },
 
+    /**
+     * Internal implementation for discover.
+     */
     async discover() {
       const diagnostics: Diagnostic[] = []
       const selected = new Map<string, { ref: SessionRef; primary: boolean }>()
@@ -246,6 +279,9 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
       return { refs: [...selected.values()].map((item) => item.ref), diagnostics, authoritative }
     },
 
+    /**
+     * Internal implementation for hydrate.
+     */
     async hydrate(ref, cfg) {
       let root: string | null
       try {
@@ -280,6 +316,9 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
       return doc
     },
 
+    /**
+     * Internal implementation for plan.
+     */
     plan(ref, promptText) {
       try {
         const useResume = manifest.tier === 'resume' && !!manifest.resume && !promptText

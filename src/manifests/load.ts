@@ -92,6 +92,9 @@ export interface SidecarSpec {
   cwdField?: string
 }
 
+/**
+ * Internal implementation for ManifestCommon.
+ */
 interface ManifestCommon {
   schema: 1
   id: ClientId
@@ -103,6 +106,9 @@ interface ManifestCommon {
   brief?: CommandSpec
 }
 
+/**
+ * Internal implementation for JsonlManifest.
+ */
 interface JsonlManifest extends ManifestCommon {
   format: 'jsonl-transcript'
   jsonl: JsonlSpec
@@ -110,6 +116,9 @@ interface JsonlManifest extends ManifestCommon {
   jsonDir?: never
 }
 
+/**
+ * Internal implementation for SqliteManifest.
+ */
 interface SqliteManifest extends ManifestCommon {
   format: 'sqlite-store'
   jsonl?: never
@@ -117,6 +126,9 @@ interface SqliteManifest extends ManifestCommon {
   jsonDir?: never
 }
 
+/**
+ * Internal implementation for JsonDirManifest.
+ */
 interface JsonDirManifest extends ManifestCommon {
   format: 'json-dir'
   jsonl?: never
@@ -147,20 +159,32 @@ export interface ManifestSource {
 
 const TIERS: readonly Tier[] = ['resume', 'search', 'detected']
 
+/**
+ * Internal implementation for isRecord.
+ */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/**
+ * Internal implementation for expectRecord.
+ */
 function expectRecord(value: unknown, field: string): Record<string, unknown> {
   if (!isRecord(value)) throw new Error(`${field} must be an object`)
   return value
 }
 
+/**
+ * Internal implementation for expectString.
+ */
 function expectString(value: unknown, field: string): string {
   if (typeof value !== 'string') throw new Error(`${field} must be a string`)
   return value
 }
 
+/**
+ * Internal implementation for expectOptionalString.
+ */
 function expectOptionalString(value: unknown, field: string): string | undefined {
   if (value !== undefined && typeof value !== 'string') {
     throw new Error(`${field} must be a string`)
@@ -168,6 +192,9 @@ function expectOptionalString(value: unknown, field: string): string | undefined
   return value
 }
 
+/**
+ * Internal implementation for validateCommand.
+ */
 function validateCommand(value: unknown, field: 'resume' | 'brief'): CommandSpec {
   const command = expectRecord(value, field)
   const cmd = expectString(command.cmd, `${field}.cmd`)
@@ -178,6 +205,9 @@ function validateCommand(value: unknown, field: 'resume' | 'brief'): CommandSpec
   return { cmd, args: command.args, ...(cwd === undefined ? {} : { cwd }) }
 }
 
+/**
+ * Internal implementation for validateSidecar.
+ */
 function validateSidecar(value: unknown): SidecarSpec {
   const sidecar = expectRecord(value, 'sidecar')
   const file = expectString(sidecar.file, 'sidecar.file')
@@ -198,6 +228,9 @@ function validateSidecar(value: unknown): SidecarSpec {
   }
 }
 
+/**
+ * Internal implementation for validateJsonl.
+ */
 function validateJsonl(value: unknown): JsonlSpec {
   const jsonl = expectRecord(value, 'jsonl')
   const glob = expectString(jsonl.glob, 'jsonl.glob')
@@ -249,6 +282,9 @@ function validateJsonl(value: unknown): JsonlSpec {
   return { glob, variant: jsonl.variant, ...(generic === undefined ? {} : { generic }) }
 }
 
+/**
+ * Internal implementation for validateSqlite.
+ */
 function validateSqlite(value: unknown): SqliteSpec {
   const sqlite = expectRecord(value, 'sqlite')
   const file = expectString(sqlite.file, 'sqlite.file')
@@ -295,6 +331,9 @@ function validateSqlite(value: unknown): SqliteSpec {
   }
 }
 
+/**
+ * Internal implementation for validateJsonDir.
+ */
 function validateJsonDir(value: unknown): JsonDirSpec {
   const jsonDir = expectRecord(value, 'jsonDir')
   const glob = expectString(jsonDir.glob, 'jsonDir.glob')
@@ -379,12 +418,18 @@ export function validateManifest(value: unknown): Manifest {
   }
 }
 
+/**
+ * Internal implementation for ManifestFiles.
+ */
 interface ManifestFiles {
   files: string[]
   manifestOverflow: boolean
   entryOverflow: boolean
 }
 
+/**
+ * Internal implementation for manifestFiles.
+ */
 function manifestFiles(directory: string): ManifestFiles {
   const names: string[] = []
   let manifestOverflow = false
@@ -417,6 +462,9 @@ function manifestFiles(directory: string): ManifestFiles {
   }
 }
 
+/**
+ * Internal implementation for readManifest.
+ */
 function readManifest(path: string): Manifest {
   let fd: number | undefined
   try {

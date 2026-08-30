@@ -18,6 +18,9 @@ export function orderByPriority(refs: SessionRef[]): SessionRef[] {
   return [...refs].sort((a, b) => (PRIORITY[a.client] ?? 0) - (PRIORITY[b.client] ?? 0))
 }
 
+/**
+ * Internal implementation for concurrency.
+ */
 function concurrency(): number {
   try {
     const n = (globalThis as { navigator?: { hardwareConcurrency?: number } }).navigator
@@ -30,6 +33,9 @@ function concurrency(): number {
   }
 }
 
+/**
+ * Internal implementation for errorMessage.
+ */
 function errorMessage(error: unknown): string {
   try {
     return error instanceof Error ? error.message : String(error)
@@ -59,6 +65,9 @@ export async function hydrateAll(
   let done = 0
   let nextProgress = 0
 
+  /**
+   * Internal implementation for reportCompleted.
+   */
   function reportCompleted(): void {
     while (nextProgress < total && completed[nextProgress]) {
       const index = nextProgress++
@@ -77,9 +86,15 @@ export async function hydrateAll(
     }
   }
 
+  /**
+   * Internal implementation for runPhase.
+   */
   async function runPhase(start: number, end: number): Promise<void> {
     let next = start
 
+    /**
+     * Internal implementation for worker.
+     */
     async function worker(): Promise<void> {
       while (true) {
         const index = next++

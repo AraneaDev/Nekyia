@@ -36,10 +36,16 @@ const HISTORY_DB_CHARS = 1_048_576
 /** Companion ceiling on turn count, so a session of many tiny turns is bounded too. */
 const HISTORY_TURN_LIMIT = 4_096
 
+/**
+ * Internal implementation for safe.
+ */
 function safe(value: string | null | undefined, columns = FIELD_COLUMNS): string {
   return boundedDisplayText(typeof value === 'string' ? value : '', columns)
 }
 
+/**
+ * Internal implementation for textLines.
+ */
 function textLines(value: string | null | undefined): string[] {
   return (typeof value === 'string' ? value : '')
     .split(/\r?\n/u)
@@ -53,6 +59,9 @@ interface PreviewTurn { role: 'user' | 'assistant'; text: string }
 /** One stored file event, as the history reads it back out of the index. */
 interface PreviewFileEvent { kind: string; path: string }
 
+/**
+ * Internal implementation for PreviewData.
+ */
 interface PreviewData {
   files: string[]
   prompts: string[]
@@ -115,6 +124,9 @@ function dialogueTurns(db: IndexDb, uid: string): PreviewTurn[] {
   ))
 }
 
+/**
+ * Internal implementation for previewData.
+ */
 function previewData(db: IndexDb, uid: string, full: boolean, maxLines: number): PreviewData {
   try {
     const textChars = full ? PROMPT_DB_CHARS : BROWSE_DB_CHARS
@@ -303,10 +315,19 @@ export function buildPreviewLines(
   // of the hundreds it offers, and bounding the rest only to drop them spends
   // the most expensive work in the preview on text nobody sees.
   const blocks = [
-    { label: 'asked', body: asked, dim: false, render: (line: string) => safe(line, width) },
-    { label: 'replied', body: prose, dim: true, render: (line: string) => safe(line, width) },
+    { label: 'asked', body: asked, dim: false, /**
+                                                * Internal implementation for render.
+                                                */
+    render: (line: string) => safe(line, width) },
+    { label: 'replied', body: prose, dim: true, /**
+                                                 * Internal implementation for render.
+                                                 */
+    render: (line: string) => safe(line, width) },
     {
       label: 'touched', body: touched, dim: false,
+      /**
+       * Internal implementation for render.
+       */
       render: (line: string) => boundedPathTail(line, width),
     },
   ].filter((block) => block.body.length)

@@ -42,6 +42,9 @@ const MAX_LISTED_IDS = 200
 const DEGRADED_SCHEMA_VERSION = 2
 const UNSAFE_DISPLAY = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
 
+/**
+ * Internal implementation for safeText.
+ */
 function safeText(value: unknown, max = MAX_TEXT): string {
   const text = typeof value === 'string'
     ? value
@@ -51,10 +54,16 @@ function safeText(value: unknown, max = MAX_TEXT): string {
   return text.slice(0, max).replace(UNSAFE_DISPLAY, '?')
 }
 
+/**
+ * Internal implementation for safeList.
+ */
 function safeList(values: string[], max = MAX_CONFIG_ITEMS): string[] {
   return values.slice(0, max).map((value) => safeText(value))
 }
 
+/**
+ * Internal implementation for safeDiagnostic.
+ */
 function safeDiagnostic(value: Diagnostic): Diagnostic {
   return {
     client: safeText(value.client, 256),
@@ -64,11 +73,17 @@ function safeDiagnostic(value: Diagnostic): Diagnostic {
   }
 }
 
+/**
+ * Internal implementation for contained.
+ */
 function contained(root: string, candidate: string): boolean {
   const rest = relative(root, candidate)
   return rest === '' || (!isAbsolute(rest) && rest !== '..' && !rest.startsWith(`..${sep}`))
 }
 
+/**
+ * Internal implementation for overrideManifest.
+ */
 function overrideManifest(manifest: Manifest, base: string | undefined): Manifest | null {
   if (!base) return manifest
   if (manifest.id.length > 256 || base.length > MAX_TEXT) return null
@@ -85,6 +100,9 @@ function overrideManifest(manifest: Manifest, base: string | undefined): Manifes
   return { ...manifest, roots: [candidate] }
 }
 
+/**
+ * Internal implementation for manifestAdapters.
+ */
 function manifestAdapters(
   manifests: Manifest[],
   sources: Map<string, ManifestSource>,
@@ -117,6 +135,9 @@ function manifestAdapters(
   return result
 }
 
+/**
+ * Internal implementation for installedRoots.
+ */
 function installedRoots(manifest: Manifest): string[] {
   const roots = manifest.roots
     .slice(0, MAX_ROOTS)
@@ -152,6 +173,9 @@ interface IndexSummary {
   degradedTracked: boolean
 }
 
+/**
+ * Internal implementation for emptyIndexSummary.
+ */
 function emptyIndexSummary(): IndexSummary {
   return {
     sessions: 0,
@@ -166,6 +190,9 @@ function emptyIndexSummary(): IndexSummary {
   }
 }
 
+/**
+ * Internal implementation for readIndexSummary.
+ */
 function readIndexSummary(path: string, diagnostics: Diagnostic[]): IndexSummary {
   try {
     lstatSync(path)
@@ -223,6 +250,9 @@ function readIndexSummary(path: string, diagnostics: Diagnostic[]): IndexSummary
   }
 }
 
+/**
+ * Internal implementation for publicSniff.
+ */
 function publicSniff(result: SniffResult) {
   return {
     path: safeText(result.path),
@@ -233,6 +263,9 @@ function publicSniff(result: SniffResult) {
   }
 }
 
+/**
+ * Internal implementation for writeManifestExclusive.
+ */
 function writeManifestExclusive(path: string, draft: Manifest): void {
   if (path.length === 0 || path.length > MAX_TEXT || /[\u0000]/.test(path)) {
     throw new Error('output path is invalid or too long')

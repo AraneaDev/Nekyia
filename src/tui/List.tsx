@@ -67,6 +67,9 @@ export function matchSpans(title: string, queryText: string): [string, string, s
   return [title.slice(0, hit.index), hit[0], title.slice(hit.index + hit[0].length)]
 }
 
+/**
+ * Internal implementation for boundedProjectName.
+ */
 function boundedProjectName(cwd: string | null): string {
   if (!cwd) return '-'
   const columns = 14
@@ -79,10 +82,16 @@ function boundedProjectName(cwd: string | null): string {
   return boundedDisplayText(name, columns)
 }
 
+/**
+ * Internal implementation for naturalNumber.
+ */
 function naturalNumber(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
 }
 
+/**
+ * Internal implementation for boundedSelection.
+ */
 function boundedSelection(selected: number, total: number): number {
   if (total === 0) return 0
   const normalized = Number.isFinite(selected) ? Math.floor(selected) : 0
@@ -152,6 +161,9 @@ export function titleColumns(columns: number): number {
   return Math.max(8, naturalNumber(columns) - ROW_FIXED_COLUMNS)
 }
 
+/**
+ * Internal implementation for DefaultListRow.
+ */
 function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowProps) {
   const client = boundedDisplayText(row.client, 9) || '?'
   const project = boundedProjectName(row.cwd)

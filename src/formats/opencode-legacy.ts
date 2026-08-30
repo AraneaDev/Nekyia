@@ -16,8 +16,14 @@ import { parseSqlTimeNullable } from './sqlite-store'
 
 const MAX_JSON_BYTES = 4 * 1024 * 1024
 
+/**
+ * Internal implementation for JsonObject.
+ */
 type JsonObject = Record<string, unknown>
 
+/**
+ * Internal implementation for NamedJson.
+ */
 interface NamedJson {
   file: string
   path: string
@@ -28,16 +34,25 @@ interface NamedJson {
   oversized: boolean
 }
 
+/**
+ * Internal implementation for isObject.
+ */
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/**
+ * Internal implementation for normalizedString.
+ */
 function normalizedString(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim()
   return normalized.length > 0 && !normalized.includes('\0') ? normalized : null
 }
 
+/**
+ * Internal implementation for optionalString.
+ */
 function optionalString(value: unknown): string | null | undefined {
   if (value === undefined || value === null) return null
   const normalized = normalizedString(value)
@@ -64,16 +79,25 @@ function objectTime(
   return null
 }
 
+/**
+ * Internal implementation for compareStrings.
+ */
 function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
+/**
+ * Internal implementation for isWithin.
+ */
 function isWithin(root: string, path: string): boolean {
   const fromRoot = relative(root, path)
   return fromRoot === ''
     || (!isAbsolute(fromRoot) && fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`))
 }
 
+/**
+ * Internal implementation for safeLegacyBase.
+ */
 function safeLegacyBase(root: string, legacyPath: string): string | null {
   if (
     legacyPath.trim().length === 0
@@ -96,6 +120,9 @@ function safeLegacyBase(root: string, legacyPath: string): string | null {
   }
 }
 
+/**
+ * Internal implementation for safeExistingPath.
+ */
 function safeExistingPath(base: string, path: string): string | null {
   try {
     const realBase = realpathSync(base)
@@ -106,6 +133,9 @@ function safeExistingPath(base: string, path: string): string | null {
   }
 }
 
+/**
+ * Internal implementation for directoryNames.
+ */
 function directoryNames(path: string): string[] {
   try {
     return readdirSync(path, { withFileTypes: true })
@@ -117,6 +147,9 @@ function directoryNames(path: string): string[] {
   }
 }
 
+/**
+ * Internal implementation for jsonFileNames.
+ */
 function jsonFileNames(path: string): string[] {
   try {
     return readdirSync(path, { withFileTypes: true })
@@ -128,10 +161,16 @@ function jsonFileNames(path: string): string[] {
   }
 }
 
+/**
+ * Internal implementation for JsonRead.
+ */
 type JsonRead =
   | { ok: true; value: JsonObject; size: number; mtimeMs: number }
   | { ok: false; reason: string; oversized: boolean; size: number; mtimeMs: number }
 
+/**
+ * Internal implementation for readJson.
+ */
 function readJson(base: string, unresolvedPath: string): JsonRead {
   const path = safeExistingPath(base, unresolvedPath)
   if (path === null) {
@@ -176,10 +215,16 @@ function readJson(base: string, unresolvedPath: string): JsonRead {
   }
 }
 
+/**
+ * Internal implementation for diagnostic.
+ */
 function diagnostic(client: string, path: string, message: string): Diagnostic {
   return { client, level: 'warn', path, message: `skipped: ${message}` }
 }
 
+/**
+ * Internal implementation for relevantSourcePaths.
+ */
 function relevantSourcePaths(
   base: string,
   sessionPath: string,
@@ -210,6 +255,9 @@ function relevantSourcePaths(
   return [sessionPath, ...rest]
 }
 
+/**
+ * Internal implementation for fingerprintFor.
+ */
 function fingerprintFor(base: string, paths: string[]): string {
   const metadata: Array<[string, number, number]> = []
   for (const path of paths) {
@@ -327,6 +375,9 @@ export async function discoverLegacy(
   return { refs, diagnostics }
 }
 
+/**
+ * Internal implementation for orderedJsonMetadata.
+ */
 function orderedJsonMetadata(base: string, directory: string, unit: 'ms' | 's' | 'iso'): {
   rows: NamedJson[]
 } {
@@ -384,6 +435,9 @@ export async function hydrateLegacy(
     else degraded = true
   }
 
+  /**
+   * Internal implementation for charge.
+   */
   function charge(size: number): boolean {
     if (size <= maxBytes - consumedBytes) {
       consumedBytes += size

@@ -21,6 +21,9 @@ export interface DisplayWork {
   graphemes: number
 }
 
+/**
+ * Internal implementation for displayColumns.
+ */
 function displayColumns(value: number): number {
   if (!Number.isFinite(value)) return 0
   return Math.min(MAX_DISPLAY_COLUMNS, Math.max(0, Math.floor(value)))
@@ -31,6 +34,9 @@ export function scanLimit(columns: number): number {
   return columns * DISPLAY_SCAN_FACTOR + DISPLAY_SCAN_FACTOR
 }
 
+/**
+ * Internal implementation for prefixByCodeUnits.
+ */
 function prefixByCodeUnits(value: string, limit: number): { sample: string; truncated: boolean } {
   const truncated = value.length > limit
   let sample = value.slice(0, limit)
@@ -48,6 +54,9 @@ export function suffixByCodeUnits(value: string, limit: number): { sample: strin
   return { sample, truncated }
 }
 
+/**
+ * Internal implementation for sanitizeDisplaySample.
+ */
 function sanitizeDisplaySample(value: string): string {
   return value.replace(CONTROL, ' ').replace(BIDI_FORMAT, '')
 }

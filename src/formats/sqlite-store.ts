@@ -7,9 +7,15 @@ import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
 import type { FormatModule } from './jsonl-transcript'
 import { collectPaths } from './paths'
 
+/**
+ * Internal implementation for SqlRow.
+ */
 type SqlRow = Record<string, unknown>
 const MAX_PROJECTED_JSON_BYTES = 4 * 1024 * 1024
 
+/**
+ * Internal implementation for sensibleString.
+ */
 function sensibleString(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim().length === 0 || value.includes('\0')) return null
   return value.trim()
@@ -78,6 +84,9 @@ export function parseCwd(
   }
 }
 
+/**
+ * Internal implementation for diagnostic.
+ */
 function diagnostic(
   client: string,
   level: Diagnostic['level'],
@@ -87,23 +96,38 @@ function diagnostic(
   return { client, level, path, message }
 }
 
+/**
+ * Internal implementation for errorMessage.
+ */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/**
+ * Internal implementation for titleFromRow.
+ */
 function titleFromRow(row: SqlRow): string | null {
   const title = sensibleString(row.title)
   return title ?? sensibleString(row.preview)
 }
 
+/**
+ * Internal implementation for optionalNumber.
+ */
 function optionalNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+/**
+ * Internal implementation for emptyDoc.
+ */
 function emptyDoc(ref: SessionRef): SessionDoc {
   return { ref, prompts: [], prose: [], files: [], truncated: false }
 }
 
+/**
+ * Internal implementation for isWithin.
+ */
 function isWithin(root: string, path: string): boolean {
   const fromRoot = relative(root, path)
   return fromRoot === ''
@@ -122,11 +146,17 @@ type DatabaseLocation =
   | { kind: 'absent' }
   | { kind: 'unsafe' }
 
+/**
+ * Internal implementation for isNotFound.
+ */
 function isNotFound(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code
   return code === 'ENOENT' || code === 'ENOTDIR'
 }
 
+/**
+ * Internal implementation for locateDatabase.
+ */
 function locateDatabase(root: string, file: string): DatabaseLocation {
   if (isAbsolute(file) || file.split(/[\\/]+/).includes('..')) return { kind: 'unsafe' }
   const lexicalRoot = resolve(root)
@@ -148,10 +178,16 @@ function locateDatabase(root: string, file: string): DatabaseLocation {
   return isWithin(realRoot, realPath) ? { kind: 'ok', path: realPath } : { kind: 'unsafe' }
 }
 
+/**
+ * Internal implementation for innerQuery.
+ */
 function innerQuery(sql: string): string {
   return sql.trim().replace(/;+\s*$/, '')
 }
 
+/**
+ * Internal implementation for structuredProjection.
+ */
 function structuredProjection(sql: string, shape: 'opencode-part' | 'opencode-message-json'): string {
   const source = innerQuery(sql)
   if (shape === 'opencode-part') {
@@ -276,6 +312,9 @@ function structuredProjection(sql: string, shape: 'opencode-part' | 'opencode-me
   `
 }
 
+/**
+ * Internal implementation for plainProjection.
+ */
 function plainProjection(db: Database, sql: string): string {
   const source = innerQuery(sql)
   const statement = db.query(source) as unknown as { columnNames: string[] }
@@ -306,6 +345,9 @@ function plainProjection(db: Database, sql: string): string {
   `
 }
 
+/**
+ * Internal implementation for projectedInput.
+ */
 function projectedInput(value: unknown): unknown | null {
   if (typeof value !== 'string' || Buffer.byteLength(value) > MAX_PROJECTED_JSON_BYTES) {
     return null
@@ -343,6 +385,9 @@ function collectRecordedFiles(
 
 /** Reads SQLite-backed stores, projecting them onto Nekyia's model through the manifest's own SQL. */
 export const sqliteStore: FormatModule = {
+  /**
+   * Internal implementation for discover.
+   */
   async discover(manifest, root) {
     const spec = manifest.sqlite!
     const refs: SessionRef[] = []
@@ -440,6 +485,9 @@ export const sqliteStore: FormatModule = {
     return { refs, diagnostics }
   },
 
+  /**
+   * Internal implementation for hydrate.
+   */
   async hydrate(manifest, root, ref, config: Config) {
     const spec = manifest.sqlite!
     if (!spec.text && !spec.files) return emptyDoc(ref)

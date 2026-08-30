@@ -61,6 +61,9 @@ const LOCK_WAIT_MS = 10
 const LOCK_STALE_MS = 30_000
 const LOCK_OWNER_FILE = 'owner'
 
+/**
+ * Internal implementation for ConfigLock.
+ */
 interface ConfigLock {
   directory: string
   ownerPath: string
@@ -69,10 +72,16 @@ interface ConfigLock {
   ino: number
 }
 
+/**
+ * Internal implementation for errorCode.
+ */
 function errorCode(error: unknown): unknown {
   return typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
 }
 
+/**
+ * Internal implementation for readBoundedConfig.
+ */
 function readBoundedConfig(path: string): string {
   let fd: number | undefined
   try {
@@ -113,6 +122,9 @@ export function userManifestDir(): string {
   return join(configDir(), 'clients')
 }
 
+/**
+ * Internal implementation for freshDefaults.
+ */
 function freshDefaults(): Config {
   return {
     ...DEFAULT_CONFIG,
@@ -121,6 +133,9 @@ function freshDefaults(): Config {
   }
 }
 
+/**
+ * Internal implementation for isPlainObject.
+ */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object'
     && value !== null
@@ -128,16 +143,25 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
     && Object.getPrototypeOf(value) === Object.prototype
 }
 
+/**
+ * Internal implementation for isStringArray.
+ */
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value)
     && value.length <= MAX_CONFIG_ITEMS
     && value.every((item) => typeof item === 'string' && item.length <= MAX_CONFIG_STRING)
 }
 
+/**
+ * Internal implementation for isFiniteNumber.
+ */
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+/**
+ * Internal implementation for parseConfig.
+ */
 function parseConfig(raw: string, strict: boolean): Config {
   const parsed: unknown = JSON.parse(raw)
   const config = freshDefaults()
@@ -151,6 +175,9 @@ function parseConfig(raw: string, strict: boolean): Config {
     throw new Error('config contains unknown fields')
   }
 
+  /**
+   * Internal implementation for assign.
+   */
   const assign = <T>(
     key: keyof Config,
     valid: (value: unknown) => value is T,
@@ -170,6 +197,9 @@ function parseConfig(raw: string, strict: boolean): Config {
   return config
 }
 
+/**
+ * Internal implementation for configBytes.
+ */
 function configBytes(config: Config): Buffer {
   if (!isStringArray(config.exclude)
     || !isFiniteNumber(config.halfLifeDays)
@@ -182,6 +212,9 @@ function configBytes(config: Config): Buffer {
   return bytes
 }
 
+/**
+ * Internal implementation for ensureSafeDirectory.
+ */
 function ensureSafeDirectory(directory: string): void {
   const absolute = resolve(directory)
   const parsed = parsePath(absolute)
@@ -284,6 +317,9 @@ export function saveConfig(config: Config): void {
   }
 }
 
+/**
+ * Internal implementation for loadConfigForUpdate.
+ */
 function loadConfigForUpdate(): Config {
   try {
     return parseConfig(readBoundedConfig(join(configDir(), 'config.json')), true)
@@ -293,6 +329,9 @@ function loadConfigForUpdate(): Config {
   }
 }
 
+/**
+ * Internal implementation for readLockOwner.
+ */
 function readLockOwner(path: string): { token: string; pid: number; mtimeMs: number } {
   let fd: number | undefined
   try {
@@ -324,6 +363,9 @@ function readLockOwner(path: string): { token: string; pid: number; mtimeMs: num
   }
 }
 
+/**
+ * Internal implementation for processIsAlive.
+ */
 function processIsAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)
@@ -333,6 +375,9 @@ function processIsAlive(pid: number): boolean {
   }
 }
 
+/**
+ * Internal implementation for createConfigLock.
+ */
 function createConfigLock(path: string): ConfigLock {
   mkdirSync(path, { mode: 0o700 })
   const directoryInfo = lstatSync(path)
@@ -370,6 +415,9 @@ function createConfigLock(path: string): ConfigLock {
   }
 }
 
+/**
+ * Internal implementation for inspectConfigLock.
+ */
 function inspectConfigLock(path: string): {
   dev: number
   ino: number
@@ -400,6 +448,9 @@ function inspectConfigLock(path: string): {
   }
 }
 
+/**
+ * Internal implementation for removeQuarantinedLock.
+ */
 function removeQuarantinedLock(path: string, dev: number, ino: number): void {
   const info = lstatSync(path)
   if (!info.isDirectory() || info.isSymbolicLink() || info.dev !== dev || info.ino !== ino) {
@@ -523,6 +574,9 @@ async function acquireRecoveryGuard(directory: string): Promise<ConfigLock> {
   throw new Error(`config recovery is busy: ${path}`)
 }
 
+/**
+ * Internal implementation for releaseRecoveryGuard.
+ */
 function releaseRecoveryGuard(guard: ConfigLock): void {
   const info = lstatSync(guard.directory)
   if (!info.isDirectory() || info.isSymbolicLink()
@@ -537,6 +591,9 @@ function releaseRecoveryGuard(guard: ConfigLock): void {
   rmdirSync(guard.directory)
 }
 
+/**
+ * Internal implementation for acquireConfigLock.
+ */
 async function acquireConfigLock(directory: string): Promise<ConfigLock> {
   const path = join(directory, '.config.lock')
   for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt++) {
@@ -568,6 +625,9 @@ async function acquireConfigLock(directory: string): Promise<ConfigLock> {
   throw new Error('config is busy')
 }
 
+/**
+ * Internal implementation for releaseConfigLock.
+ */
 async function releaseConfigLock(lock: ConfigLock): Promise<void> {
   const parent = resolve(join(lock.directory, '..'))
   const guard = await acquireRecoveryGuard(parent)

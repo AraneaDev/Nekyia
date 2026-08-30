@@ -20,8 +20,14 @@ const READ_CHUNK_BYTES = 64 * 1024
 /** A single array element is the only unit retained in memory during hydration. */
 const MAX_ELEMENT_BYTES = 16 * 1024 * 1024
 
+/**
+ * Internal implementation for JsonObject.
+ */
 type JsonObject = Record<string, unknown>
 
+/**
+ * Internal implementation for SnapshotToken.
+ */
 interface SnapshotToken {
   dev: bigint
   ino: bigint
@@ -30,19 +36,31 @@ interface SnapshotToken {
   ctimeNs: bigint
 }
 
+/**
+ * Internal implementation for PathSnapshot.
+ */
 interface PathSnapshot {
   path: string
   token: SnapshotToken
 }
 
+/**
+ * Internal implementation for isObject.
+ */
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/**
+ * Internal implementation for decodeHead.
+ */
 function decodeHead(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes, { stream: true })
 }
 
+/**
+ * Internal implementation for decodeTail.
+ */
 function decodeTail(bytes: Uint8Array): string {
   let start = 0
   while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start += 1
@@ -59,6 +77,9 @@ export async function readHeadTail(
   return { head: snapshot.head, tail: snapshot.tail }
 }
 
+/**
+ * Internal implementation for snapshotToken.
+ */
 function snapshotToken(stat: BigIntStats): SnapshotToken {
   return {
     dev: stat.dev,
@@ -69,6 +90,9 @@ function snapshotToken(stat: BigIntStats): SnapshotToken {
   }
 }
 
+/**
+ * Internal implementation for sameSnapshot.
+ */
 function sameSnapshot(left: SnapshotToken, right: SnapshotToken): boolean {
   return left.dev === right.dev
     && left.ino === right.ino
@@ -77,6 +101,9 @@ function sameSnapshot(left: SnapshotToken, right: SnapshotToken): boolean {
     && left.ctimeNs === right.ctimeNs
 }
 
+/**
+ * Internal implementation for stableSnapshotRead.
+ */
 async function stableSnapshotRead<T>(
   path: string,
   read: (handle: FileHandle, token: SnapshotToken) => Promise<T>,
@@ -95,11 +122,17 @@ async function stableSnapshotRead<T>(
   throw new Error('file changed during bounded read')
 }
 
+/**
+ * Internal implementation for readHeadTailSnapshot.
+ */
 async function readHeadTailSnapshot(
   path: string,
   headBytes: number,
   tailBytes: number,
 ): Promise<{ head: string; tail: string; token: SnapshotToken }> {
+  /**
+   * Internal implementation for normalized.
+   */
   const normalized = (value: number): number => Number.isFinite(value) && value > 0
     ? Math.floor(value)
     : 0
@@ -133,6 +166,9 @@ async function readHeadTailSnapshot(
   return { ...snapshot.value, token: snapshot.token }
 }
 
+/**
+ * Internal implementation for openReadonly.
+ */
 async function openReadonly(path: string): Promise<FileHandle> {
   const noFollow = typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0
   try {
@@ -146,6 +182,9 @@ async function openReadonly(path: string): Promise<FileHandle> {
   }
 }
 
+/**
+ * Internal implementation for firstMatch.
+ */
 function firstMatch(text: string, key: string): string | null {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = text.match(new RegExp(`"${escapedKey}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`))
@@ -158,12 +197,18 @@ function firstMatch(text: string, key: string): string | null {
   }
 }
 
+/**
+ * Internal implementation for firstLine.
+ */
 function firstLine(value: string): string | null {
   const line = value.split(/\r?\n/, 1)[0]!.trim()
   if (!line) return null
   return line.length <= 200 ? line : `${line.slice(0, 197)}...`
 }
 
+/**
+ * Internal implementation for parsedDirectoryTimestamp.
+ */
 function parsedDirectoryTimestamp(path: string): number | null {
   const parsed = Date.parse(basename(path).replace(
     /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})\.(\d+)Z$/,
@@ -172,10 +217,16 @@ function parsedDirectoryTimestamp(path: string): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+/**
+ * Internal implementation for warning.
+ */
 function warning(client: string, path: string, message: string): Diagnostic {
   return { client, level: 'warn', path, message }
 }
 
+/**
+ * Internal implementation for within.
+ */
 function within(root: string, path: string): boolean {
   const rel = relative(root, path)
   return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
@@ -193,11 +244,17 @@ type ContainedPath =
   | { kind: 'absent' }
   | { kind: 'unsafe' }
 
+/**
+ * Internal implementation for isNotFound.
+ */
 function isNotFound(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code
   return code === 'ENOENT' || code === 'ENOTDIR'
 }
 
+/**
+ * Internal implementation for locateContained.
+ */
 function locateContained(rootReal: string, path: string): ContainedPath {
   const lexical = resolve(path)
   if (!within(rootReal, lexical)) return { kind: 'unsafe' }
@@ -212,11 +269,17 @@ function locateContained(rootReal: string, path: string): ContainedPath {
   return { kind: 'ok', path: actual }
 }
 
+/**
+ * Internal implementation for containedRealPath.
+ */
 function containedRealPath(rootReal: string, path: string): string | null {
   const located = locateContained(rootReal, path)
   return located.kind === 'ok' ? located.path : null
 }
 
+/**
+ * Internal implementation for readSmallJson.
+ */
 async function readSmallJson(path: string, cap: number): Promise<{
   value: unknown
   token: SnapshotToken
@@ -242,6 +305,9 @@ async function readSmallJson(path: string, cap: number): Promise<{
   }
 }
 
+/**
+ * Internal implementation for messageParts.
+ */
 function messageParts(message: JsonObject): string[] {
   const parts: string[] = []
   if (typeof message.content === 'string' && message.content.trim()) {
@@ -258,12 +324,18 @@ function messageParts(message: JsonObject): string[] {
   return parts
 }
 
+/**
+ * Internal implementation for sourceFingerprint.
+ */
 function sourceFingerprint(sources: PathSnapshot[]): string {
   return sources.map(({ path, token }) => (
     `${path}:${token.dev}:${token.ino}:${token.size}:${token.mtimeNs}:${token.ctimeNs}`
   )).join('|')
 }
 
+/**
+ * Internal implementation for snapshotFile.
+ */
 async function snapshotFile(path: string): Promise<SnapshotToken> {
   const handle = await openReadonly(path)
   try {
@@ -273,6 +345,9 @@ async function snapshotFile(path: string): Promise<SnapshotToken> {
   }
 }
 
+/**
+ * Internal implementation for ArrayScanResult.
+ */
 interface ArrayScanResult {
   turns: number
   /** A size cap dropped content: the whole file, or one element too large to hold. */
@@ -317,6 +392,9 @@ async function scanMessageArray(
     let decoder: TextDecoder | null = null
     let decoded: string[] = []
 
+    /**
+     * Internal implementation for beginElement.
+     */
     const beginElement = (byte: number): void => {
       active = true
       depth = byte === 0x7b || byte === 0x5b ? 1 : 0
@@ -330,6 +408,9 @@ async function scanMessageArray(
       decoded = []
     }
 
+    /**
+     * Internal implementation for append.
+     */
     const append = (bytes: Uint8Array): void => {
       if (bytes.length === 0) return
       elementBytes += bytes.length
@@ -342,6 +423,9 @@ async function scanMessageArray(
       if (decoder !== null) decoded.push(decoder.decode(bytes, { stream: true }))
     }
 
+    /**
+     * Internal implementation for finishElement.
+     */
     const finishElement = (): void => {
       if (elementOversized || decoder === null) {
         turns += 1
@@ -471,6 +555,9 @@ async function scanMessageArray(
 
 /** Reads stores that keep one directory of JSON documents per session. */
 export const jsonDir: FormatModule = {
+  /**
+   * Internal implementation for discover.
+   */
   async discover(manifest, root) {
     const refs: SessionRef[] = []
     const diagnostics: Diagnostic[] = []
@@ -656,9 +743,15 @@ export const jsonDir: FormatModule = {
     return { refs: uniqueRefs, diagnostics }
   },
 
+  /**
+   * Internal implementation for hydrate.
+   */
   async hydrate(manifest, root, ref, config: Config): Promise<SessionDoc> {
     // Every early return below is a source that could not be read at all, which
     // is a degraded read and not a size cap: no config change recovers it.
+    /**
+     * Internal implementation for unread.
+     */
     const unread = (): SessionDoc => ({
       ref,
       prompts: [],
