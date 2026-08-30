@@ -108,6 +108,12 @@ exact; between sessions it is by end time, which the index knows coarsely, so ev
 grouped by session rather than merged into one stream. A session whose own directory sits
 elsewhere and which named these files relatively is not found, the same limit `blame` has.
 
+File operations are recorded from the next hydration onward, so sessions already in the
+index list their files without any operations until you run `nekyia index --rebuild`. A
+plain `nekyia index` will not fill them in: it hydrates only sessions whose transcript
+changed, and an old session's transcript has not. Timeline output says which sessions are
+in that state rather than showing them as though nothing happened.
+
 The picker opens on the project you are standing in. Started from your home
 directory, from a filesystem root, or from somewhere nothing has been indexed under,
 it opens on the whole index instead, because a scoped list there would be empty.
