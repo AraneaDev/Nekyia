@@ -80,3 +80,19 @@ test('a session with no directory of its own is found under a root prefix', () =
   db.upsertDoc(doc(r,{ files:['/srv/app/main.ts'], fileEvents:[{ path:'/srv/app/main.ts', kind:'edit', turn:0 }], fileDetail:'ordered' }))
   expect(timeline(db,{ dir:'/' }).map(s=>s.ref.uid)).toEqual(['claude:elsewhere']); db.close()
 })
+test('capped sessions with truncated events fall back to unordered facets', () => {
+  const db=IndexDb.open(':memory:'); const r=ref()
+  db.upsertRef(r)
+  db.upsertDoc(doc(r,{
+    files:['src/db.ts', '/etc/hosts'],
+    fileEvents:[{ path:'/etc/hosts', kind:'read', turn:0 }],
+    fileDetail:'ordered',
+    fileEventsTruncated:true
+  }))
+  const [session]=timeline(db,{ dir:'/root/proj' })
+  expect(session?.detail).toBe('paths')
+  expect(session?.entries).toEqual([
+    { ordinal:null, turn:null, kind:'unknown', path:'src/db.ts', resolved:'/root/proj/src/db.ts' },
+  ])
+  db.close()
+})

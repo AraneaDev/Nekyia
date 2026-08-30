@@ -192,10 +192,12 @@ function recordFileCalls(
   for (const entry of entries) {
     if (!resolved.has(entry.path)) {
       resolved.add(entry.path)
-      if (log.files.size >= MAX_SESSION_FILES) {
-        log.filesTruncated = true
-      } else {
-        log.files.add(entry.path)
+      if (!log.files.has(entry.path)) {
+        if (log.files.size >= MAX_SESSION_FILES) {
+          log.filesTruncated = true
+        } else {
+          log.files.add(entry.path)
+        }
       }
     }
     if (log.events.length >= MAX_SESSION_FILE_EVENTS) {
