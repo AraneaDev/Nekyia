@@ -45,8 +45,18 @@ export async function runTimeline(opts: TimelineCommandOptions): Promise<number>
   loadConfig()
   const path = indexPath()
   if (!existsSync(path)) {
-    if (opts.json) console.log('[]')
-    else console.error('index not found; run "nekyia index" first')
+    // The same shape as an answered run, so a caller can reach `.sessions`
+    // without first learning whether an index exists.
+    if (opts.json) {
+      console.log(JSON.stringify({
+        dir: opts.dir,
+        since: opts.since ?? null,
+        git: { consulted: false },
+        sessions: [],
+      }, null, 2))
+    } else {
+      console.error('index not found; run "nekyia index" first')
+    }
     return 0
   }
   const db = IndexDb.openReadonly(path)
@@ -70,6 +80,10 @@ export async function runTimeline(opts: TimelineCommandOptions): Promise<number>
           title: session.ref.title,
           endedAt: session.ref.endedAt,
           tier: session.ref.tier,
+          // Whether the transcript these events came from is still on disk.
+          // When it is not, `sourcePaths` names a file the caller cannot open,
+          // and saying so is the point in a command about lost work.
+          missing: session.ref.missing,
           // Provenance, so a caller can open the transcript itself rather than
           // trust the indexed summary. The index says where; the transcript
           // says what.

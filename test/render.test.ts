@@ -146,6 +146,49 @@ test('a paths-only session says so instead of showing an order', () => {
   expect(lines.join('\n')).toContain('this client records file names only')
   expect(lines.join('\n')).not.toContain('untracked')
 })
+test('a timeline path reaches the terminal sanitized', () => {
+  const lines=formatTimeline([{
+    ref: { uid:'claude:d', client:'claude', nativeId:'d', cwd:'/root/proj', gitBranch:null,
+      title:null, startedAt:1000, endedAt:2000, turns:0, parentNativeId:null,
+      tier:'resume', origin:'manifest', missing:false },
+    detail:'ordered', eventsTruncated:false,
+    entries:[{
+      ordinal:0, turn:1, kind:'edit', path:'\u001b[2K\u202eevil.ts',
+      resolved:'/root/proj/\u001b[2K\u202eevil.ts',
+    }],
+  }], { dir:'/root/proj', git:{ consulted:true, tracked:new Set() }, now:2000 })
+  const text = lines.join('\n')
+  // A path came out of a transcript like every other display field, so the
+  // escape that would clear the screen and the override that would reverse the
+  // line, `untracked` marker and all, never reach the terminal.
+  expect(text).not.toContain('\u001b')
+  expect(text).not.toContain('\u202e')
+  expect(text).toContain('evil.ts')
+  expect(text).toContain('untracked')
+})
+test('an ordinary timeline path is printed unchanged', () => {
+  const lines=formatTimeline([{
+    ref: { uid:'claude:e', client:'claude', nativeId:'e', cwd:'/root/proj', gitBranch:null,
+      title:null, startedAt:1000, endedAt:2000, turns:0, parentNativeId:null,
+      tier:'resume', origin:'manifest', missing:false },
+    detail:'ordered', eventsTruncated:false,
+    entries:[{
+      ordinal:0, turn:2, kind:'write', path:'src/core/db.ts',
+      resolved:'/root/proj/src/core/db.ts',
+    }],
+  }], { dir:'/root/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
+  expect(lines.join('\n')).toContain('2  write   src/core/db.ts')
+})
+test('a session whose transcript is gone says so', () => {
+  const lines=formatTimeline([{
+    ref: { uid:'claude:f', client:'claude', nativeId:'f', cwd:'/root/proj', gitBranch:null,
+      title:null, startedAt:1000, endedAt:2000, turns:0, parentNativeId:null,
+      tier:'resume', origin:'manifest', missing:true },
+    detail:'ordered', eventsTruncated:false,
+    entries:[{ ordinal:0, turn:0, kind:'read', path:'a.ts', resolved:'/root/proj/a.ts' }],
+  }], { dir:'/root/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
+  expect(lines.join('\n')).toContain('source missing')
+})
 test('sessions indexed before file events are counted in the header', () => {
   const lines=formatTimeline([{
     ref: { uid:'claude:c', client:'claude', nativeId:'c', cwd:'/root/proj', gitBranch:null,
@@ -154,5 +197,8 @@ test('sessions indexed before file events are counted in the header', () => {
     detail:'unknown', eventsTruncated:false,
     entries:[{ ordinal:null, turn:null, kind:'unknown', path:'x.ts', resolved:'/root/proj/x.ts' }],
   }], { dir:'/root/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
-  expect(lines.join('\n')).toContain('run "nekyia index"')
+  // A plain `nekyia index` re-hydrates only what changed, so it leaves an
+  // upgraded index exactly as unknown as it found it. `--rebuild` is the one
+  // that fills the detail in.
+  expect(lines.join('\n')).toContain('run "nekyia index --rebuild"')
 })

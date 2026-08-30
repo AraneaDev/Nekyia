@@ -134,7 +134,10 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
   // An ordered log of file operations, which the deduplicated `session_file`
   // set cannot express: the same file can be read, edited and then deleted.
   // Sessions indexed before this step keep `unknown` detail and no events
-  // until their next hydration, exactly as `session_turn` handled it.
+  // until their next hydration, exactly as `session_turn` handled it. A plain
+  // `nekyia index` hydrates only what changed, so for a transcript that has not
+  // moved that next hydration is `nekyia index --rebuild`, which is what the
+  // timeline's remediation line names.
   4: (db) => {
     db.exec(`
       CREATE TABLE IF NOT EXISTS session_file_event (
