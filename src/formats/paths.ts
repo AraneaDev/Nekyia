@@ -1,3 +1,5 @@
+import type { FileEventKind } from '../types'
+
 const PATH_KEYS = new Set([
   'file_path',
   'filePath',
@@ -46,7 +48,7 @@ const PATCH_LINE_BREAK = /\r?\n/u
 const SOURCE_LINE_BREAK = /\r?\n|(?<=(?:^|[^\\])(?:\\\\)*)(?:\\r)?\\n/u
 
 /** The three patch headers that name a file, and nothing else in the grammar. */
-const PATCH_FILE_HEADER = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/u
+const PATCH_FILE_HEADER = /^\*\*\* (Add|Update|Delete) File: (.+)$/u
 
 function isPlausiblePath(value: string): boolean {
   if (value.length <= 1 || /[\r\n]/.test(value)) return false
@@ -83,30 +85,61 @@ export function collectPaths(value: unknown, out = new Set<string>()): string[] 
   return [...out]
 }
 
+/** A patch header's file and what the header's verb says happened to it. */
+export interface PatchEntry {
+  path: string
+  kind: FileEventKind
+}
+
+const PATCH_VERB_KINDS: Record<string, FileEventKind> = {
+  Add: 'write',
+  Update: 'edit',
+  Delete: 'delete',
+}
+
 /**
- * Recovers only apply_patch file headers from a Codex custom tool call.
+ * Recovers apply_patch file headers, and the verb each one carries, from a
+ * Codex custom tool call.
  *
  * Modern Codex rollouts record the edit as source text rather than as
  * structured JSON arguments, so the walk above finds nothing in them. Reading
  * shell commands from that text would be ambiguous and unsafe, but apply_patch
  * has a narrow line-oriented grammar: only the Add, Update and Delete headers
- * are read, so hunks, patch contents and ordinary tool prose are ignored.
+ * are read, so hunks, patch contents and ordinary tool prose are ignored. The
+ * verb is the one place a Codex transcript states an operation outright, so
+ * reading it costs nothing beyond the parse that was already happening.
  *
  * A call the tool contract already names `apply_patch` carries a bare patch
  * body, which never spells the command; any other call has to show that it
  * invokes the bridge before its body is scanned at all, and is then read as the
  * source text it is.
  */
-export function collectPatchPaths(input: string, toolName?: string): string[] {
+export function collectPatchEntries(input: string, toolName?: string): PatchEntry[] {
   if (input.length > MAX_PATCH_INPUT_CHARS) return []
   const isPatchCall = toolName === 'apply_patch'
   if (!isPatchCall && !APPLY_PATCH_CALL.test(input)) return []
 
-  const paths = new Set<string>()
+  const seen = new Set<string>()
+  const entries: PatchEntry[] = []
   for (const line of input.split(isPatchCall ? PATCH_LINE_BREAK : SOURCE_LINE_BREAK)) {
     const match = PATCH_FILE_HEADER.exec(line)
-    const path = match?.[1]?.trim()
-    if (path && path.length <= MAX_PATCH_PATH_CHARS && isPlausiblePath(path)) paths.add(path)
+    const path = match?.[2]?.trim()
+    if (!path || path.length > MAX_PATCH_PATH_CHARS || !isPlausiblePath(path)) continue
+    const verb = match![1]!
+    const key = `${verb}\0${path}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    entries.push({ path, kind: PATCH_VERB_KINDS[verb] ?? 'unknown' })
   }
-  return [...paths]
+  return entries
+}
+
+/**
+ * The file names an apply_patch call touches, without their verbs.
+ *
+ * Kept because callers that only want names should not have to know a patch
+ * has verbs at all.
+ */
+export function collectPatchPaths(input: string, toolName?: string): string[] {
+  return [...new Set(collectPatchEntries(input, toolName).map((entry) => entry.path))]
 }

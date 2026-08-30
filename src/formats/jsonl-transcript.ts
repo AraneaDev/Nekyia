@@ -4,9 +4,9 @@ import { basename, extname, join } from 'node:path'
 import { Glob } from 'bun'
 import type { Config } from '../config'
 import type { Manifest } from '../manifests/load'
-import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
-import type { Diagnostic, DialogueTurn, SessionDoc, SessionRef } from '../types'
-import { collectPatchPaths, collectPaths } from './paths'
+import { MAX_SESSION_FILE_EVENTS, MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
+import type { Diagnostic, DialogueTurn, FileEvent, FileEventKind, SessionDoc, SessionRef } from '../types'
+import { collectPatchEntries, collectPaths, type PatchEntry } from './paths'
 import { userPromptText } from '../render'
 
 const HEAD_BYTES = 16 * 1024
@@ -146,24 +146,50 @@ function parsedTimestamp(value: unknown, unit?: 'ms' | 's' | 'iso'): number | nu
 }
 
 /**
- * Adds the paths one tool call mentions, up to the per-session ceiling.
+ * What one hydration knows about the files a session touched.
  *
- * Every reader of a tool call funnels its paths through here, whatever grammar
- * they were read out of, so the ceiling is enforced in one place. Stopping
- * silently would offer a partial file list as a complete one, so reaching it is
- * reported exactly as the other readers report it.
+ * The deduplicated set and the ordered log are filled through the same funnel,
+ * so both ceilings are enforced in one place and neither can silently offer a
+ * partial answer as a complete one.
  */
-function addRecoveredPaths(
-  files: Set<string>,
-  paths: readonly string[],
-  onTruncated: () => void,
+interface FileLog {
+  files: Set<string>
+  events: FileEvent[]
+  filesTruncated: boolean
+  eventsTruncated: boolean
+}
+
+function newFileLog(): FileLog {
+  return { files: new Set(), events: [], filesTruncated: false, eventsTruncated: false }
+}
+
+/**
+ * Adds the paths one tool call mentions, and what the call did to them.
+ *
+ * Every reader of a tool call funnels through here, whatever grammar the call
+ * was read out of. `files` keeps the path ceiling's exact prior behaviour:
+ * reaching `MAX_SESSION_FILES` marks the document truncated and stops, exactly
+ * as the reader did before file events existed. The event log's ceiling is
+ * independent, because it counts a different thing: a session can name few
+ * files and operate on them many times. Reaching either ceiling is reported
+ * rather than passed off as completeness.
+ */
+function recordFileCalls(
+  log: FileLog,
+  entries: readonly PatchEntry[],
+  turn: number,
 ): void {
-  for (const path of paths) {
-    if (files.size >= MAX_SESSION_FILES) {
-      onTruncated()
+  for (const entry of entries) {
+    if (log.files.size >= MAX_SESSION_FILES) {
+      log.filesTruncated = true
       return
     }
-    files.add(path)
+    log.files.add(entry.path)
+    if (log.events.length >= MAX_SESSION_FILE_EVENTS) {
+      log.eventsTruncated = true
+      return
+    }
+    log.events.push({ path: entry.path, kind: entry.kind, turn })
   }
 }
 
@@ -764,14 +790,29 @@ function classifyOversizedRow(
   return roles.size > 0 ? 'discard' : 'unknown'
 }
 
+/**
+ * What a Claude tool name says it did to the file it named.
+ *
+ * Anything absent is `unknown` on purpose. A shell command that happens to
+ * mention a path proves nothing about what it did to it, and a guess there
+ * would be exactly the false comfort this index refuses to offer.
+ */
+const CLAUDE_TOOL_KINDS: Record<string, FileEventKind> = {
+  Read: 'read',
+  NotebookRead: 'read',
+  Write: 'write',
+  Edit: 'edit',
+  MultiEdit: 'edit',
+  NotebookEdit: 'edit',
+}
+
 function hydrateClaude(
   row: JsonObject,
   overCap: boolean,
   prompts: string[],
   prose: string[],
   dialogue: DialogueTurn[],
-  files: Set<string>,
-  onFilesTruncated: () => void,
+  log: FileLog,
 ): number {
   if (row.toolUseResult !== undefined) return 0
   const message = isObject(row.message) ? row.message : undefined
@@ -780,7 +821,14 @@ function hydrateClaude(
   if (Array.isArray(message.content)) {
     for (const block of message.content) {
       if (isObject(block) && block.type === 'tool_use') {
-        addRecoveredPaths(files, collectPaths(block.input), onFilesTruncated)
+        const kind = typeof block.name === 'string'
+          ? CLAUDE_TOOL_KINDS[block.name] ?? 'unknown'
+          : 'unknown'
+        recordFileCalls(
+          log,
+          collectPaths(block.input).map((path) => ({ path, kind })),
+          dialogue.length,
+        )
       }
     }
   }
@@ -806,8 +854,7 @@ function hydrateCodex(
   prompts: string[],
   prose: string[],
   dialogue: DialogueTurn[],
-  files: Set<string>,
-  onFilesTruncated: () => void,
+  log: FileLog,
 ): number {
   // A row that is not an envelope is read as the response item itself, which is
   // how Codex wrote rollouts before `response_item` existed. The type and role
@@ -821,7 +868,11 @@ function hydrateCodex(
     if (typeof payload.arguments === 'string') {
       try {
         const parsed: unknown = JSON.parse(payload.arguments)
-        addRecoveredPaths(files, collectPaths(parsed), onFilesTruncated)
+        recordFileCalls(
+          log,
+          collectPaths(parsed).map((path) => ({ path, kind: 'unknown' as FileEventKind })),
+          dialogue.length,
+        )
       } catch {
         // Malformed tool arguments have no indexable content.
       }
@@ -836,7 +887,7 @@ function hydrateCodex(
     // even here nothing but the file names reaches searchable text.
     if (typeof payload.input === 'string') {
       const name = typeof payload.name === 'string' ? payload.name : undefined
-      addRecoveredPaths(files, collectPatchPaths(payload.input, name), onFilesTruncated)
+      recordFileCalls(log, collectPatchEntries(payload.input, name), dialogue.length)
     }
     return 0
   }
@@ -951,19 +1002,17 @@ export const jsonlTranscript: FormatModule = {
     const prose: string[] = []
     // The same text as `prompts` and `prose`, kept in the order it was said.
     const dialogue: DialogueTurn[] = []
-    const files = new Set<string>()
+    const log = newFileLog()
     const generic = manifest.jsonl.generic
     const genericUserRoles = new Set(generic?.userRoles ?? ['user', 'human'])
     const genericAssistantRoles = new Set(generic?.assistantRoles ?? ['assistant'])
     let turns = 0
-    let filesTruncated = false
-    const onFilesTruncated = (): void => { filesTruncated = true }
 
     const oversizedRow = await rowsFromStream(path, (row) => {
       turns += manifest.jsonl.variant === 'claude'
-        ? hydrateClaude(row, overCap, prompts, prose, dialogue, files, onFilesTruncated)
+        ? hydrateClaude(row, overCap, prompts, prose, dialogue, log)
         : manifest.jsonl.variant === 'codex'
-          ? hydrateCodex(row, overCap, prompts, prose, dialogue, files, onFilesTruncated)
+          ? hydrateCodex(row, overCap, prompts, prose, dialogue, log)
           : hydrateGeneric(
             row,
             overCap,
@@ -977,13 +1026,19 @@ export const jsonlTranscript: FormatModule = {
           )
     }, manifest)
 
+    // The generic reader has no tool grammar to read, so it never claims an
+    // order it cannot produce.
+    const ordered = manifest.jsonl.variant === 'claude' || manifest.jsonl.variant === 'codex'
     return {
       ref: { ...ref, turns },
       prompts,
       prose,
       dialogue,
-      files: [...files],
-      truncated: overCap || oversizedRow || filesTruncated,
+      files: [...log.files],
+      fileEvents: ordered ? log.events : undefined,
+      fileDetail: ordered ? 'ordered' : 'paths',
+      fileEventsTruncated: log.eventsTruncated,
+      truncated: overCap || oversizedRow || log.filesTruncated,
     }
   },
 }
