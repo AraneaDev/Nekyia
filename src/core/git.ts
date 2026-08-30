@@ -27,7 +27,7 @@ const NOT_CONSULTED: TrackedFiles = { consulted: false, tracked: new Set() }
 
 const defaultIo: GitIo = {
   /**
-   * Internal implementation for spawn.
+   * Spawns a child process using Bun's native spawn API.
    */
   spawn(command, options) {
     return Bun.spawn(command, options)

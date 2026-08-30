@@ -7,7 +7,7 @@ export interface BriefOpts {
 }
 
 /**
- * Internal implementation for StoredText.
+ * The text portions of a session read from the search index.
  */
 interface StoredText {
   prompts: string
@@ -35,21 +35,21 @@ function fileMarkerFor(remaining: number, capped: boolean): string | null {
 
 // Keep line feeds and tabs, but do not let indexed text execute terminal controls.
 /**
- * Internal implementation for safeText.
+ * Removes dangerous terminal control characters from the text.
  */
 function safeText(value: string): string {
   return value.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, '')
 }
 
 /**
- * Internal implementation for oneLine.
+ * Removes line breaks and terminal controls, returning the value as a single trimmed line.
  */
 function oneLine(value: string): string {
   return safeText(value).replace(/[\r\n]+/g, ' ').trim()
 }
 
 /**
- * Internal implementation for timestamp.
+ * Formats a numerical timestamp into an ISO 8601 string, or returns '(unknown)'.
  */
 function timestamp(value: number): string {
   if (!Number.isFinite(value)) return '(unknown)'
@@ -58,7 +58,7 @@ function timestamp(value: number): string {
 }
 
 /**
- * Internal implementation for budgetOf.
+ * Validates and provides the max characters budget for the handover, falling back to a default.
  */
 function budgetOf(value: number | undefined): number {
   if (value === undefined) return DEFAULT_MAX_CHARS
@@ -112,7 +112,7 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
   // the mandatory-body measurement below can ask for a brief without them and
   // then price each marker in as an entry of its own.
   /**
-   * Internal implementation for render.
+   * Renders the brief using specific bounds on prose and files, returning the formatted markdown string.
    */
   const render = (
     proseStart: number,
@@ -176,7 +176,7 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
   const PROSE_OMITTED_COST = 2 + PROSE_OMITTED_LINE.length // blank line + the notice
   const PROSE_HEADING_COST = 3 + '## Where it ended'.length
   /**
-   * Internal implementation for markerCost.
+   * Calculates the character budget cost of adding an omission marker.
    */
   const markerCost = (marker: string | null): number => (marker === null ? 0 : 1 + marker.length)
 

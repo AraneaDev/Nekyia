@@ -21,12 +21,12 @@ const READ_CHUNK_BYTES = 64 * 1024
 const MAX_ELEMENT_BYTES = 16 * 1024 * 1024
 
 /**
- * Internal implementation for JsonObject.
+ * Represents a generic JSON object structure.
  */
 type JsonObject = Record<string, unknown>
 
 /**
- * Internal implementation for SnapshotToken.
+ * Captures file metadata to detect changes between operations.
  */
 interface SnapshotToken {
   dev: bigint
@@ -37,7 +37,7 @@ interface SnapshotToken {
 }
 
 /**
- * Internal implementation for PathSnapshot.
+ * Associates a file path with its metadata snapshot.
  */
 interface PathSnapshot {
   path: string
@@ -45,21 +45,21 @@ interface PathSnapshot {
 }
 
 /**
- * Internal implementation for isObject.
+ * Type guard to check if a value is a non-null, non-array object.
  */
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
- * Internal implementation for decodeHead.
+ * Decodes a UTF-8 byte array into a string, replacing invalid sequences.
  */
 function decodeHead(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes, { stream: true })
 }
 
 /**
- * Internal implementation for decodeTail.
+ * Decodes a UTF-8 byte array into a string, handling potentially truncated multi-byte characters at the start.
  */
 function decodeTail(bytes: Uint8Array): string {
   let start = 0
@@ -78,7 +78,7 @@ export async function readHeadTail(
 }
 
 /**
- * Internal implementation for snapshotToken.
+ * Creates a snapshot token from BigInt file statistics.
  */
 function snapshotToken(stat: BigIntStats): SnapshotToken {
   return {
@@ -91,7 +91,7 @@ function snapshotToken(stat: BigIntStats): SnapshotToken {
 }
 
 /**
- * Internal implementation for sameSnapshot.
+ * Compares two snapshot tokens to determine if they represent the exact same file state.
  */
 function sameSnapshot(left: SnapshotToken, right: SnapshotToken): boolean {
   return left.dev === right.dev
@@ -102,7 +102,7 @@ function sameSnapshot(left: SnapshotToken, right: SnapshotToken): boolean {
 }
 
 /**
- * Internal implementation for stableSnapshotRead.
+ * Performs a read operation ensuring the file hasn't changed during the read.
  */
 async function stableSnapshotRead<T>(
   path: string,
@@ -123,7 +123,7 @@ async function stableSnapshotRead<T>(
 }
 
 /**
- * Internal implementation for readHeadTailSnapshot.
+ * Reads the head and tail of a file, returning the content along with a metadata snapshot.
  */
 async function readHeadTailSnapshot(
   path: string,
@@ -131,7 +131,7 @@ async function readHeadTailSnapshot(
   tailBytes: number,
 ): Promise<{ head: string; tail: string; token: SnapshotToken }> {
   /**
-   * Internal implementation for normalized.
+   * Normalizes a number to a valid positive integer.
    */
   const normalized = (value: number): number => Number.isFinite(value) && value > 0
     ? Math.floor(value)
@@ -167,7 +167,7 @@ async function readHeadTailSnapshot(
 }
 
 /**
- * Internal implementation for openReadonly.
+ * Opens a file for reading, avoiding symbolic links if supported.
  */
 async function openReadonly(path: string): Promise<FileHandle> {
   const noFollow = typeof constants.O_NOFOLLOW === 'number' ? constants.O_NOFOLLOW : 0
@@ -183,7 +183,7 @@ async function openReadonly(path: string): Promise<FileHandle> {
 }
 
 /**
- * Internal implementation for firstMatch.
+ * Extracts the first string value associated with a given JSON key using regex.
  */
 function firstMatch(text: string, key: string): string | null {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -198,7 +198,7 @@ function firstMatch(text: string, key: string): string | null {
 }
 
 /**
- * Internal implementation for firstLine.
+ * Extracts the first non-empty line from a string, truncating if necessary.
  */
 function firstLine(value: string): string | null {
   const line = value.split(/\r?\n/, 1)[0]!.trim()
@@ -207,7 +207,7 @@ function firstLine(value: string): string | null {
 }
 
 /**
- * Internal implementation for parsedDirectoryTimestamp.
+ * Parses a specific timestamp format from a directory name into a Unix timestamp.
  */
 function parsedDirectoryTimestamp(path: string): number | null {
   const parsed = Date.parse(basename(path).replace(
@@ -218,14 +218,14 @@ function parsedDirectoryTimestamp(path: string): number | null {
 }
 
 /**
- * Internal implementation for warning.
+ * Constructs a diagnostic warning for a specific client and path.
  */
 function warning(client: string, path: string, message: string): Diagnostic {
   return { client, level: 'warn', path, message }
 }
 
 /**
- * Internal implementation for within.
+ * Checks if a target path resolves within a given root directory.
  */
 function within(root: string, path: string): boolean {
   const rel = relative(root, path)
@@ -245,7 +245,7 @@ type ContainedPath =
   | { kind: 'unsafe' }
 
 /**
- * Internal implementation for isNotFound.
+ * Checks if an error indicates a missing file or directory.
  */
 function isNotFound(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code
@@ -253,7 +253,7 @@ function isNotFound(error: unknown): boolean {
 }
 
 /**
- * Internal implementation for locateContained.
+ * Safely resolves a path within a root directory, checking for its existence and boundary constraints.
  */
 function locateContained(rootReal: string, path: string): ContainedPath {
   const lexical = resolve(path)
@@ -270,7 +270,7 @@ function locateContained(rootReal: string, path: string): ContainedPath {
 }
 
 /**
- * Internal implementation for containedRealPath.
+ * Returns the actual real path if it safely resides within the root directory, or null otherwise.
  */
 function containedRealPath(rootReal: string, path: string): string | null {
   const located = locateContained(rootReal, path)
@@ -278,7 +278,7 @@ function containedRealPath(rootReal: string, path: string): string | null {
 }
 
 /**
- * Internal implementation for readSmallJson.
+ * Reads and parses a small JSON file up to a specified size limit.
  */
 async function readSmallJson(path: string, cap: number): Promise<{
   value: unknown
@@ -306,7 +306,7 @@ async function readSmallJson(path: string, cap: number): Promise<{
 }
 
 /**
- * Internal implementation for messageParts.
+ * Extracts non-empty text content blocks from a message object.
  */
 function messageParts(message: JsonObject): string[] {
   const parts: string[] = []
@@ -325,7 +325,7 @@ function messageParts(message: JsonObject): string[] {
 }
 
 /**
- * Internal implementation for sourceFingerprint.
+ * Generates a unique fingerprint string from a collection of file snapshots.
  */
 function sourceFingerprint(sources: PathSnapshot[]): string {
   return sources.map(({ path, token }) => (
@@ -334,7 +334,7 @@ function sourceFingerprint(sources: PathSnapshot[]): string {
 }
 
 /**
- * Internal implementation for snapshotFile.
+ * Captures the metadata snapshot of a given file path.
  */
 async function snapshotFile(path: string): Promise<SnapshotToken> {
   const handle = await openReadonly(path)
@@ -346,7 +346,7 @@ async function snapshotFile(path: string): Promise<SnapshotToken> {
 }
 
 /**
- * Internal implementation for ArrayScanResult.
+ * Represents the outcome of scanning a JSON array file.
  */
 interface ArrayScanResult {
   turns: number
@@ -393,7 +393,7 @@ async function scanMessageArray(
     let decoded: string[] = []
 
     /**
-     * Internal implementation for beginElement.
+     * Initializes the parser state for reading a new top-level JSON array element.
      */
     const beginElement = (byte: number): void => {
       active = true
@@ -409,7 +409,7 @@ async function scanMessageArray(
     }
 
     /**
-     * Internal implementation for append.
+     * Appends decoded bytes to the current element being parsed.
      */
     const append = (bytes: Uint8Array): void => {
       if (bytes.length === 0) return
@@ -424,7 +424,7 @@ async function scanMessageArray(
     }
 
     /**
-     * Internal implementation for finishElement.
+     * Finalizes parsing of the current element and invokes the callback.
      */
     const finishElement = (): void => {
       if (elementOversized || decoder === null) {
@@ -556,7 +556,7 @@ async function scanMessageArray(
 /** Reads stores that keep one directory of JSON documents per session. */
 export const jsonDir: FormatModule = {
   /**
-   * Internal implementation for discover.
+   * Scans the root directory to locate and extract metadata for session chats.
    */
   async discover(manifest, root) {
     const refs: SessionRef[] = []
@@ -744,13 +744,13 @@ export const jsonDir: FormatModule = {
   },
 
   /**
-   * Internal implementation for hydrate.
+   * Reads and parses a session's messages, applying size caps and error handling.
    */
   async hydrate(manifest, root, ref, config: Config): Promise<SessionDoc> {
     // Every early return below is a source that could not be read at all, which
     // is a degraded read and not a size cap: no config change recovers it.
     /**
-     * Internal implementation for unread.
+     * Returns a degraded, unread session document structure for error cases.
      */
     const unread = (): SessionDoc => ({
       ref,

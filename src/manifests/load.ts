@@ -93,7 +93,7 @@ export interface SidecarSpec {
 }
 
 /**
- * Internal implementation for ManifestCommon.
+ * Common fields shared across all manifest formats.
  */
 interface ManifestCommon {
   schema: 1
@@ -107,7 +107,7 @@ interface ManifestCommon {
 }
 
 /**
- * Internal implementation for JsonlManifest.
+ * Describes a manifest for a client that stores its transcripts as JSONL.
  */
 interface JsonlManifest extends ManifestCommon {
   format: 'jsonl-transcript'
@@ -117,7 +117,7 @@ interface JsonlManifest extends ManifestCommon {
 }
 
 /**
- * Internal implementation for SqliteManifest.
+ * Describes a manifest for a client that stores its transcripts in a SQLite database.
  */
 interface SqliteManifest extends ManifestCommon {
   format: 'sqlite-store'
@@ -127,7 +127,7 @@ interface SqliteManifest extends ManifestCommon {
 }
 
 /**
- * Internal implementation for JsonDirManifest.
+ * Describes a manifest for a client that stores its transcripts as JSON files in a directory.
  */
 interface JsonDirManifest extends ManifestCommon {
   format: 'json-dir'
@@ -160,14 +160,14 @@ export interface ManifestSource {
 const TIERS: readonly Tier[] = ['resume', 'search', 'detected']
 
 /**
- * Internal implementation for isRecord.
+ * Type guard for a plain object.
  */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
- * Internal implementation for expectRecord.
+ * Validates that a value is a plain object, throwing an error otherwise.
  */
 function expectRecord(value: unknown, field: string): Record<string, unknown> {
   if (!isRecord(value)) throw new Error(`${field} must be an object`)
@@ -175,7 +175,7 @@ function expectRecord(value: unknown, field: string): Record<string, unknown> {
 }
 
 /**
- * Internal implementation for expectString.
+ * Validates that a value is a string, throwing an error otherwise.
  */
 function expectString(value: unknown, field: string): string {
   if (typeof value !== 'string') throw new Error(`${field} must be a string`)
@@ -183,7 +183,7 @@ function expectString(value: unknown, field: string): string {
 }
 
 /**
- * Internal implementation for expectOptionalString.
+ * Validates that a value is a string or undefined, throwing an error otherwise.
  */
 function expectOptionalString(value: unknown, field: string): string | undefined {
   if (value !== undefined && typeof value !== 'string') {
@@ -193,7 +193,7 @@ function expectOptionalString(value: unknown, field: string): string | undefined
 }
 
 /**
- * Internal implementation for validateCommand.
+ * Validates that an untrusted object correctly implements CommandSpec.
  */
 function validateCommand(value: unknown, field: 'resume' | 'brief'): CommandSpec {
   const command = expectRecord(value, field)
@@ -206,7 +206,7 @@ function validateCommand(value: unknown, field: 'resume' | 'brief'): CommandSpec
 }
 
 /**
- * Internal implementation for validateSidecar.
+ * Validates that an untrusted object correctly implements SidecarSpec.
  */
 function validateSidecar(value: unknown): SidecarSpec {
   const sidecar = expectRecord(value, 'sidecar')
@@ -229,7 +229,7 @@ function validateSidecar(value: unknown): SidecarSpec {
 }
 
 /**
- * Internal implementation for validateJsonl.
+ * Validates that an untrusted object correctly implements JsonlSpec.
  */
 function validateJsonl(value: unknown): JsonlSpec {
   const jsonl = expectRecord(value, 'jsonl')
@@ -283,7 +283,7 @@ function validateJsonl(value: unknown): JsonlSpec {
 }
 
 /**
- * Internal implementation for validateSqlite.
+ * Validates that an untrusted object correctly implements SqliteSpec.
  */
 function validateSqlite(value: unknown): SqliteSpec {
   const sqlite = expectRecord(value, 'sqlite')
@@ -332,7 +332,7 @@ function validateSqlite(value: unknown): SqliteSpec {
 }
 
 /**
- * Internal implementation for validateJsonDir.
+ * Validates that an untrusted object correctly implements JsonDirSpec.
  */
 function validateJsonDir(value: unknown): JsonDirSpec {
   const jsonDir = expectRecord(value, 'jsonDir')
@@ -419,7 +419,7 @@ export function validateManifest(value: unknown): Manifest {
 }
 
 /**
- * Internal implementation for ManifestFiles.
+ * The result of scanning a directory for manifest files, with flags for boundary overflow.
  */
 interface ManifestFiles {
   files: string[]
@@ -428,7 +428,7 @@ interface ManifestFiles {
 }
 
 /**
- * Internal implementation for manifestFiles.
+ * Scans a directory for manifest JSON files up to maximum permitted limits.
  */
 function manifestFiles(directory: string): ManifestFiles {
   const names: string[] = []
@@ -463,7 +463,7 @@ function manifestFiles(directory: string): ManifestFiles {
 }
 
 /**
- * Internal implementation for readManifest.
+ * Reads and parses a manifest file from disk, returning it after full validation.
  */
 function readManifest(path: string): Manifest {
   let fd: number | undefined

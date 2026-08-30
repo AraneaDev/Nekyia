@@ -68,7 +68,7 @@ export function matchSpans(title: string, queryText: string): [string, string, s
 }
 
 /**
- * Internal implementation for boundedProjectName.
+ * Extracts and bounds a project's directory name for display in a narrow column.
  */
 function boundedProjectName(cwd: string | null): string {
   if (!cwd) return '-'
@@ -83,14 +83,14 @@ function boundedProjectName(cwd: string | null): string {
 }
 
 /**
- * Internal implementation for naturalNumber.
+ * Normalizes a number to an integer >= 0.
  */
 function naturalNumber(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
 }
 
 /**
- * Internal implementation for boundedSelection.
+ * Ensures the selected index remains within the bounds of the provided total.
  */
 function boundedSelection(selected: number, total: number): number {
   if (total === 0) return 0
@@ -162,7 +162,7 @@ export function titleColumns(columns: number): number {
 }
 
 /**
- * Internal implementation for DefaultListRow.
+ * The standard renderer for a single session row in the picker list, displaying client, project, title, and age.
  */
 function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowProps) {
   const client = boundedDisplayText(row.client, 9) || '?'

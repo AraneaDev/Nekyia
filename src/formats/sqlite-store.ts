@@ -8,13 +8,13 @@ import type { FormatModule } from './jsonl-transcript'
 import { collectPaths } from './paths'
 
 /**
- * Internal implementation for SqlRow.
+ * Represents a row retrieved from a SQLite database, where keys are column names.
  */
 type SqlRow = Record<string, unknown>
 const MAX_PROJECTED_JSON_BYTES = 4 * 1024 * 1024
 
 /**
- * Internal implementation for sensibleString.
+ * Normalizes a value to a string, returning null if it is empty, not a string, or contains null bytes.
  */
 function sensibleString(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim().length === 0 || value.includes('\0')) return null
@@ -85,7 +85,7 @@ export function parseCwd(
 }
 
 /**
- * Internal implementation for diagnostic.
+ * Constructs a Diagnostic object with the specified properties.
  */
 function diagnostic(
   client: string,
@@ -97,14 +97,14 @@ function diagnostic(
 }
 
 /**
- * Internal implementation for errorMessage.
+ * Extracts a human-readable error message from an unknown error object.
  */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
 /**
- * Internal implementation for titleFromRow.
+ * Extracts a valid title or preview string from a database row.
  */
 function titleFromRow(row: SqlRow): string | null {
   const title = sensibleString(row.title)
@@ -112,21 +112,21 @@ function titleFromRow(row: SqlRow): string | null {
 }
 
 /**
- * Internal implementation for optionalNumber.
+ * Returns the value as a number if it is a finite number, otherwise returns null.
  */
 function optionalNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 /**
- * Internal implementation for emptyDoc.
+ * Returns a minimal empty SessionDoc for a given SessionRef.
  */
 function emptyDoc(ref: SessionRef): SessionDoc {
   return { ref, prompts: [], prose: [], files: [], truncated: false }
 }
 
 /**
- * Internal implementation for isWithin.
+ * Checks if a given path is located within a specified root directory.
  */
 function isWithin(root: string, path: string): boolean {
   const fromRoot = relative(root, path)
@@ -147,7 +147,7 @@ type DatabaseLocation =
   | { kind: 'unsafe' }
 
 /**
- * Internal implementation for isNotFound.
+ * Checks if an error indicates that a file or directory was not found.
  */
 function isNotFound(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code
@@ -155,7 +155,7 @@ function isNotFound(error: unknown): boolean {
 }
 
 /**
- * Internal implementation for locateDatabase.
+ * Safely locates a SQLite database file within an allowed root directory.
  */
 function locateDatabase(root: string, file: string): DatabaseLocation {
   if (isAbsolute(file) || file.split(/[\\/]+/).includes('..')) return { kind: 'unsafe' }
@@ -179,14 +179,14 @@ function locateDatabase(root: string, file: string): DatabaseLocation {
 }
 
 /**
- * Internal implementation for innerQuery.
+ * Strips trailing semicolons and whitespace from a SQL query string.
  */
 function innerQuery(sql: string): string {
   return sql.trim().replace(/;+\s*$/, '')
 }
 
 /**
- * Internal implementation for structuredProjection.
+ * Constructs a SQL query to project structured JSON messages and parts from the raw source table.
  */
 function structuredProjection(sql: string, shape: 'opencode-part' | 'opencode-message-json'): string {
   const source = innerQuery(sql)
@@ -313,7 +313,7 @@ function structuredProjection(sql: string, shape: 'opencode-part' | 'opencode-me
 }
 
 /**
- * Internal implementation for plainProjection.
+ * Constructs a SQL query to project plain text messages directly from a column without parsing JSON.
  */
 function plainProjection(db: Database, sql: string): string {
   const source = innerQuery(sql)
@@ -346,7 +346,7 @@ function plainProjection(db: Database, sql: string): string {
 }
 
 /**
- * Internal implementation for projectedInput.
+ * Safely parses a projected JSON tool input string, enforcing size limits.
  */
 function projectedInput(value: unknown): unknown | null {
   if (typeof value !== 'string' || Buffer.byteLength(value) > MAX_PROJECTED_JSON_BYTES) {
@@ -386,7 +386,7 @@ function collectRecordedFiles(
 /** Reads SQLite-backed stores, projecting them onto Nekyia's model through the manifest's own SQL. */
 export const sqliteStore: FormatModule = {
   /**
-   * Internal implementation for discover.
+   * Discovers sessions in a SQLite database, resolving references and checking integrity.
    */
   async discover(manifest, root) {
     const spec = manifest.sqlite!
@@ -486,7 +486,7 @@ export const sqliteStore: FormatModule = {
   },
 
   /**
-   * Internal implementation for hydrate.
+   * Reads a session's content from the database and constructs a populated SessionDoc.
    */
   async hydrate(manifest, root, ref, config: Config) {
     const spec = manifest.sqlite!

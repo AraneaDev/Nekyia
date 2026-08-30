@@ -18,14 +18,14 @@ export interface SidecarEntry {
 }
 
 /**
- * Internal implementation for isRecord.
+ * Type guard to check if a value is a plain object (Record<string, unknown>).
  */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**
- * Internal implementation for isWithin.
+ * Checks if a given path is contained within the root directory.
  */
 function isWithin(root: string, path: string): boolean {
   const fromRoot = relative(root, path)
@@ -34,7 +34,7 @@ function isWithin(root: string, path: string): boolean {
 }
 
 /**
- * Internal implementation for safeSidecarPath.
+ * Resolves a file path against a root directory, ensuring it does not escape the root (e.g. via directory traversal).
  */
 function safeSidecarPath(root: string, file: string): string | null {
   if (isAbsolute(file) || file.split(/[\\/]+/).includes('..')) return null
@@ -52,7 +52,7 @@ function safeSidecarPath(root: string, file: string): string | null {
 }
 
 /**
- * Internal implementation for parseTimestamp.
+ * Parses a timestamp value, converting it to milliseconds if necessary and ensuring it is valid.
  */
 function parseTimestamp(value: unknown, unit: SidecarSpec['tsUnit']): number | null {
   let parsed: number
@@ -72,7 +72,7 @@ function parseTimestamp(value: unknown, unit: SidecarSpec['tsUnit']): number | n
 }
 
 /**
- * Internal implementation for decodeLine.
+ * Decodes an array of byte chunks into a UTF-8 string.
  */
 function decodeLine(parts: Uint8Array[]): string {
   const decoder = new TextDecoder()
@@ -82,7 +82,7 @@ function decodeLine(parts: Uint8Array[]): string {
 }
 
 /**
- * Internal implementation for readLines.
+ * Reads a file line by line in chunks, skipping any lines that exceed the maximum row size limit.
  */
 function readLines(path: string, consume: (line: string) => void): boolean {
   let descriptor: number | undefined
@@ -92,7 +92,7 @@ function readLines(path: string, consume: (line: string) => void): boolean {
   let oversized = false
 
   /**
-   * Internal implementation for append.
+   * Appends a chunk of bytes to the current line buffer, marking the line as oversized if it exceeds the limit.
    */
   const append = (part: Uint8Array): void => {
     if (oversized || part.length === 0) return
@@ -107,7 +107,7 @@ function readLines(path: string, consume: (line: string) => void): boolean {
   }
 
   /**
-   * Internal implementation for finish.
+   * Submits the buffered byte parts as a decoded string to the consumer if not oversized, and resets the buffer.
    */
   const finish = (): void => {
     if (!oversized) consume(decodeLine(parts))

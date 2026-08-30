@@ -45,9 +45,7 @@ and ordering between them is by end time only. It reads the index, never a
 transcript.
 `
 
-/**
- * Internal implementation for CliError.
- */
+/** Represents an error originating from CLI argument parsing or command validation. */
 class CliError extends Error {}
 
 const OPTIONS = {
@@ -68,9 +66,7 @@ const OPTIONS = {
   since: { type: 'string' },
 } as const
 
-/**
- * Internal implementation for parse.
- */
+/** Parses CLI arguments into typed options and positional arguments. */
 function parse(args: string[]) {
   try {
     return parseArgs({ args, allowPositionals: true, strict: true, options: OPTIONS })
@@ -79,16 +75,12 @@ function parse(args: string[]) {
   }
 }
 
-/**
- * Internal implementation for present.
- */
+/** Checks if any of the specified keys are present in the provided values object. */
 function present(values: Record<string, unknown>, keys: string[]): boolean {
   return keys.some((key) => values[key] !== undefined)
 }
 
-/**
- * Internal implementation for positiveLimit.
- */
+/** Validates and parses a string into a positive integer limit, or undefined if absent. */
 function positiveLimit(value: string | undefined): number | undefined {
   if (value === undefined) return undefined
   const limit = Number(value)
@@ -122,9 +114,7 @@ export function versionText(version: string, hyperlink = link): string {
   ].join('\n')
 }
 
-/**
- * Internal implementation for dispatch.
- */
+/** Dispatches execution to the appropriate subcommand based on the provided arguments. */
 async function dispatch(argv: string[]): Promise<number> {
   const subcommand = argv[0]
   if (subcommand === '--help' || subcommand === '-h') {

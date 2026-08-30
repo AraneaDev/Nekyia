@@ -48,14 +48,14 @@ export interface AdapterDiscovery {
 }
 
 /**
- * Internal implementation for errorMessage.
+ * Extracts a string error message from an unknown error object.
  */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
 /**
- * Internal implementation for isContained.
+ * Determines whether a path is lexically contained within a root path.
  */
 function isContained(root: string, path: string): boolean {
   const fromRoot = relative(root, path)
@@ -64,7 +64,7 @@ function isContained(root: string, path: string): boolean {
 }
 
 /**
- * Internal implementation for containsPath.
+ * Verifies that a path is contained within a root, checking both lexical boundaries and real paths if it exists.
  */
 function containsPath(root: string, path: string): boolean {
   const lexicalRoot = resolve(root)
@@ -85,7 +85,7 @@ function containsPath(root: string, path: string): boolean {
 }
 
 /**
- * Internal implementation for rootForRef.
+ * Finds the first root path that contains all of the source paths for a session reference.
  */
 function rootForRef(roots: string[], ref: SessionRef): string | null {
   const sourcePaths = ref.sourcePaths
@@ -97,7 +97,7 @@ function rootForRef(roots: string[], ref: SessionRef): string | null {
 }
 
 /**
- * Internal implementation for cloneRef.
+ * Creates a deep clone of a session reference, assigning it a new origin.
  */
 function cloneRef(ref: SessionRef, origin: Origin): SessionRef {
   return { ...ref, origin, sourcePaths: [...ref.sourcePaths] }
@@ -129,7 +129,7 @@ function unreadDoc(ref: SessionRef): SessionDoc {
 }
 
 /**
- * Internal implementation for enrichRef.
+ * Enriches a session reference with details like working directory, title, and timestamps from a sidecar entry.
  */
 function enrichRef(ref: SessionRef, entry: SidecarEntry | undefined): void {
   if (!entry) return
@@ -142,7 +142,7 @@ function enrichRef(ref: SessionRef, entry: SidecarEntry | undefined): void {
 }
 
 /**
- * Internal implementation for sidecarPath.
+ * Resolves and validates the sidecar file path from the manifest, ensuring it stays within the root.
  */
 function sidecarPath(root: string, manifest: Manifest): string | null {
   const file = manifest.sidecar?.file
@@ -152,7 +152,7 @@ function sidecarPath(root: string, manifest: Manifest): string | null {
 }
 
 /**
- * Internal implementation for includeSidecarEntry.
+ * Adds sidecar source path and updates the fingerprint of a session reference.
  */
 function includeSidecarEntry(ref: SessionRef, path: string, entry: SidecarEntry): void {
   if (!ref.sourcePaths.includes(path)) ref.sourcePaths.push(path)
@@ -174,7 +174,7 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
   const clientId = manifest.id
 
   /**
-   * Internal implementation for sidecarFor.
+   * Reads sidecar entries for a specific root, returning an empty map if no sidecar is defined.
    */
   function sidecarFor(root: string): Map<string, SidecarEntry> {
     return manifest.sidecar ? readSidecar(root, manifest.sidecar) : new Map()
@@ -185,7 +185,7 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
     manifest,
 
     /**
-     * Internal implementation for detect.
+     * Checks if any of the manifest's root paths exist on the filesystem.
      */
     detect() {
       try {
@@ -196,7 +196,7 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
     },
 
     /**
-     * Internal implementation for discover.
+     * Discovers sessions across all roots using the primary format, legacy format, and sidecar data.
      */
     async discover() {
       const diagnostics: Diagnostic[] = []
@@ -280,7 +280,7 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
     },
 
     /**
-     * Internal implementation for hydrate.
+     * Reads a session document from its root, integrating legacy formats and sidecar prompts as needed.
      */
     async hydrate(ref, cfg) {
       let root: string | null
@@ -317,7 +317,7 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
     },
 
     /**
-     * Internal implementation for plan.
+     * Generates an execution plan for launching or resuming a session, based on manifest specs.
      */
     plan(ref, promptText) {
       try {

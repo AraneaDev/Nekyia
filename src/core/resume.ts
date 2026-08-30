@@ -10,7 +10,7 @@ export interface RunResult {
 }
 
 /**
- * Internal implementation for SpawnOptions.
+ * Options for spawning a process with inherited standard streams.
  */
 interface SpawnOptions {
   cwd: string
@@ -34,7 +34,7 @@ export interface RunIo {
 }
 
 /**
- * Internal implementation for executableAt.
+ * Checks whether a given file path exists and is an executable file.
  */
 function executableAt(path: string): boolean {
   try {
@@ -47,7 +47,7 @@ function executableAt(path: string): boolean {
 }
 
 /**
- * Internal implementation for resolveCommand.
+ * Resolves a command to its absolute executable path, either directly or via the PATH environment variable.
  */
 function resolveCommand(command: string, cwd: string): string | undefined {
   if (command.includes('/')) {
@@ -89,7 +89,7 @@ export function checkPlan(plan: ExecPlan): RunResult {
 
 const defaultIo: RunIo = {
   /**
-   * Internal implementation for spawn.
+   * Spawns a process using Bun's native spawn implementation.
    */
   spawn(command, options) {
     return Bun.spawn(command, options)
@@ -132,13 +132,13 @@ function releaseStdin(): void {
  */
 function holdSignals(proc: SpawnedProcess): () => void {
   /**
-   * Internal implementation for ignoreInterrupt.
+   * No-op handler for SIGINT to ignore the interrupt signal locally.
    */
   const ignoreInterrupt = (): void => {
     // Deliberately empty: see above, the child already got this from the tty.
   }
   /**
-   * Internal implementation for forwardTerminate.
+   * Forwards a SIGTERM signal to the spawned child process.
    */
   const forwardTerminate = (): void => {
     try { proc.kill?.('SIGTERM') } catch { /* the child may already be gone */ }
@@ -174,7 +174,7 @@ export async function runPlan(plan: ExecPlan, io: RunIo = defaultIo): Promise<nu
 }
 
 /**
- * Internal implementation for quote.
+ * Encloses a string in single quotes if it contains characters requiring shell escaping.
  */
 function quote(value: string): string {
   return value !== '' && /^[\w@%+=:,./-]+$/.test(value)
@@ -188,7 +188,7 @@ const SHELL_RESERVED_WORDS = new Set([
 ])
 
 /**
- * Internal implementation for quoteCommand.
+ * Quotes a command string, taking into account shell reserved words and variable assignments.
  */
 function quoteCommand(value: string): string {
   if (SHELL_RESERVED_WORDS.has(value) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(value)) {

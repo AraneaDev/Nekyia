@@ -19,7 +19,7 @@ export function orderByPriority(refs: SessionRef[]): SessionRef[] {
 }
 
 /**
- * Internal implementation for concurrency.
+ * Determines the number of hardware concurrency threads available, defaulting to 8.
  */
 function concurrency(): number {
   try {
@@ -34,7 +34,7 @@ function concurrency(): number {
 }
 
 /**
- * Internal implementation for errorMessage.
+ * Extracts a string message from an unknown error object.
  */
 function errorMessage(error: unknown): string {
   try {
@@ -66,7 +66,7 @@ export async function hydrateAll(
   let nextProgress = 0
 
   /**
-   * Internal implementation for reportCompleted.
+   * Emits progress updates for completed hydration tasks in sequence.
    */
   function reportCompleted(): void {
     while (nextProgress < total && completed[nextProgress]) {
@@ -87,13 +87,13 @@ export async function hydrateAll(
   }
 
   /**
-   * Internal implementation for runPhase.
+   * Processes a slice of the session queue concurrently using workers.
    */
   async function runPhase(start: number, end: number): Promise<void> {
     let next = start
 
     /**
-     * Internal implementation for worker.
+     * Continuously consumes and hydrates session references from the queue until exhausted.
      */
     async function worker(): Promise<void> {
       while (true) {
