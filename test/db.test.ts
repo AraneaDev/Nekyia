@@ -190,15 +190,31 @@ test('open rejects a newer schema version without overwriting it', () => {
   try {
     const raw=new Database(path, { create: true })
     raw.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)')
-    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '4')
+    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '5')
     raw.close()
-    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 4')
+    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 5')
     const check=new Database(path)
-    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '4' })
+    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '5' })
     check.close()
   } finally {
     opened?.close(); rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('a fresh index is stamped at schema version 4', () => {
+  const db=IndexDb.open(':memory:')
+  expect(db.schemaVersion()).toBe(4); db.close()
+})
+test('schema version 4 adds the file event table', () => {
+  const db=IndexDb.open(':memory:')
+  const columns=db.raw().query('PRAGMA table_info(session_file_event)').all() as Array<{name:string}>
+  expect(columns.map(c=>c.name)).toEqual(['uid','ordinal','turn','path','kind']); db.close()
+})
+test('a session indexed before file events reads as unknown detail', () => {
+  const db=IndexDb.open(':memory:'); db.upsertRef(ref())
+  const row=db.raw().query('SELECT file_detail, file_events_truncated FROM session WHERE uid = ?')
+    .get('claude:abc') as { file_detail: string; file_events_truncated: number }
+  expect(row).toEqual({ file_detail: 'unknown', file_events_truncated: 0 }); db.close()
 })
 
 test('uidsTouchingFile treats percent and underscore literally', () => {
@@ -387,9 +403,10 @@ test('a real version 1 index migrates to the current schema with every row intac
 
     const db = IndexDb.open(path, false)
     try {
-      expect(storedVersion(path)).toBe('3')
-      expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded'])
+      expect(storedVersion(path)).toBe('4')
+      expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded', 'file_detail', 'file_events_truncated'])
       expect(tableNames(path)).toContain('session_turn')
+      expect(tableNames(path)).toContain('session_file_event')
 
       const stored = db.getRef('claude:old')!
       expect(stored.title).toBe('An indexed v1 session')
@@ -406,7 +423,7 @@ test('a real version 1 index migrates to the current schema with every row intac
       expect(db.allUids()).toEqual(['claude:old'])
       expect(db.ftsSearch('legacyprompt').map((hit) => hit.uid)).toEqual(['claude:old'])
       expect(db.uidsTouchingFile('src/legacy')).toEqual(['claude:old'])
-      expect(db.schemaVersion()).toBe(3)
+      expect(db.schemaVersion()).toBe(4)
     } finally {
       db.close()
     }
@@ -428,7 +445,7 @@ test('a migrated index and a freshly created one have the same session columns',
     IndexDb.open(fresh.path).close()
     expect(sessionColumns(migrated.path)).toEqual(sessionColumns(fresh.path))
     expect(tableNames(migrated.path)).toEqual(tableNames(fresh.path))
-    expect(storedVersion(fresh.path)).toBe('3')
+    expect(storedVersion(fresh.path)).toBe('4')
   } finally {
     rmSync(migrated.dir, { recursive: true, force: true })
     rmSync(fresh.dir, { recursive: true, force: true })
@@ -483,7 +500,7 @@ test('a migration step that fails leaves the version it started from', () => {
 })
 
 
-test('a real version 2 index migrates to version 3 with every row and flag intact', () => {
+test('a real version 2 index migrates to the current schema with every row and flag intact', () => {
   const { dir, path } = temporaryPath()
   try {
     writeV2Index(path)
@@ -491,11 +508,13 @@ test('a real version 2 index migrates to version 3 with every row and flag intac
 
     const db = IndexDb.open(path, false)
     try {
-      expect(storedVersion(path)).toBe('3')
-      expect(db.schemaVersion()).toBe(3)
-      // The step adds a table, so the session columns are untouched.
-      expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded'])
+      expect(storedVersion(path)).toBe('4')
+      expect(db.schemaVersion()).toBe(4)
+      // The version 3 step only adds a table; version 4 adds both a table and
+      // the two file-detail columns.
+      expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded', 'file_detail', 'file_events_truncated'])
       expect(tableNames(path)).toContain('session_turn')
+      expect(tableNames(path)).toContain('session_file_event')
       expect(
         (db.raw().query('PRAGMA table_info(session_turn)').all() as Array<{ name: string }>)
           .map((row) => row.name),
@@ -533,7 +552,9 @@ test('an index whose stamp disagrees with its shape is refused instead of stampe
   try {
     // A real state reachable from an unreleased development branch: stamped 2,
     // already carrying `session_turn`, but never given the `degraded` column.
-    // `migrate` trusts the stamp, so its only remaining step is a no-op create.
+    // `migrate` trusts the stamp, so it replays the version 3 step as a no-op
+    // create and then genuinely runs the version 4 step before validation
+    // catches the missing column.
     writeV1Index(path)
     const raw = new Database(path)
     try {
@@ -565,8 +586,9 @@ test('an index whose stamp disagrees with its shape is refused instead of stampe
     }
 
     // The column really is still missing, so every later open refuses too rather
-    // than handing out an index that claims to be current.
-    expect(sessionColumns(path)).toEqual(V1_COLUMNS)
+    // than handing out an index that claims to be current. The version 4 step
+    // did commit its own column additions before validation ran.
+    expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'file_detail', 'file_events_truncated'])
     expect(() => IndexDb.open(path, false)).toThrow('index schema columns do not match: session')
   } finally {
     rmSync(dir, { recursive: true, force: true })

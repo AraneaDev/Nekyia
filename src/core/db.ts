@@ -21,7 +21,7 @@ export interface FtsHit {
   score: number
 }
 
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 /** The oldest stamped schema this build still opens. Older indexes are migrated up to SCHEMA_VERSION. */
 const MIN_SCHEMA_VERSION = 1
 /**
@@ -31,6 +31,14 @@ const MIN_SCHEMA_VERSION = 1
  * index opened by a path that cannot migrate may still be stamped below this.
  */
 export const TURN_SCHEMA_VERSION = 3
+/**
+ * The version that introduced `session_file_event` and the two session columns
+ * describing what a reader could see.
+ *
+ * Read wherever the table's existence is in question rather than assumed: an
+ * index opened by a path that cannot migrate may still be stamped below this.
+ */
+export const FILE_EVENT_SCHEMA_VERSION = 4
 /** How long a statement waits for another process's lock; SQLite otherwise gives up instantly. */
 const BUSY_TIMEOUT_MS = 5_000
 
@@ -94,7 +102,7 @@ const SCHEMA_V1 = `
  * which is what keeps a freshly created database column-for-column identical to
  * a migrated one.
  *
- * Adding version 4 means adding a `4:` step here, a `4:` entry to
+ * Adding version 5 means adding a `5:` step here, a `5:` entry to
  * SESSION_COLUMNS, and raising SCHEMA_VERSION. A step that adds a table rather
  * than a column repeats the previous SESSION_COLUMNS entry and adds the table
  * to `validateExistingSchema` behind the version that introduced it.
@@ -120,6 +128,26 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
       CREATE INDEX IF NOT EXISTS session_turn_uid_idx ON session_turn(uid);
     `)
   },
+  // An ordered log of file operations, which the deduplicated `session_file`
+  // set cannot express: the same file can be read, edited and then deleted.
+  // Sessions indexed before this step keep `unknown` detail and no events
+  // until their next hydration, exactly as `session_turn` handled it.
+  4: (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS session_file_event (
+        uid TEXT NOT NULL,
+        ordinal INTEGER NOT NULL,
+        turn INTEGER,
+        path TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        PRIMARY KEY (uid, ordinal)
+      );
+      CREATE INDEX IF NOT EXISTS session_file_event_uid_idx ON session_file_event(uid);
+      CREATE INDEX IF NOT EXISTS session_file_event_path_idx ON session_file_event(path);
+      ALTER TABLE session ADD COLUMN file_detail TEXT NOT NULL DEFAULT 'unknown';
+      ALTER TABLE session ADD COLUMN file_events_truncated INTEGER NOT NULL DEFAULT 0;
+    `)
+  },
 }
 
 const SESSION_COLUMNS_V1 = [
@@ -139,6 +167,7 @@ const SESSION_COLUMNS: Record<number, string[]> = {
   2: [...SESSION_COLUMNS_V1, 'degraded'],
   // Version 3 added the `session_turn` table, not a `session` column.
   3: [...SESSION_COLUMNS_V1, 'degraded'],
+  4: [...SESSION_COLUMNS_V1, 'degraded', 'file_detail', 'file_events_truncated'],
 }
 
 /**
@@ -387,6 +416,9 @@ export class IndexDb {
     }
     if (version >= TURN_SCHEMA_VERSION) {
       expected.session_turn = ['uid', 'ordinal', 'role', 'text']
+    }
+    if (version >= FILE_EVENT_SCHEMA_VERSION) {
+      expected.session_file_event = ['uid', 'ordinal', 'turn', 'path', 'kind']
     }
     for (const [table, columns] of Object.entries(expected)) {
       const object = db.query(

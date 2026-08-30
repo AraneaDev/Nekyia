@@ -210,7 +210,10 @@ test('forget and prune CLI report real outcomes and delete the selected rows', (
 function downgradeIndex(version: 1 | 2): void {
   const raw = new Database(indexPath())
   try {
+    raw.exec('DROP TABLE IF EXISTS session_file_event')
     raw.exec('DROP TABLE IF EXISTS session_turn')
+    raw.exec('ALTER TABLE session DROP COLUMN file_events_truncated')
+    raw.exec('ALTER TABLE session DROP COLUMN file_detail')
     if (version === 1) raw.exec('ALTER TABLE session DROP COLUMN degraded')
     raw.query('UPDATE meta SET value = ? WHERE key = ?').run(String(version), 'schema_version')
   } finally {
