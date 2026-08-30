@@ -19,12 +19,14 @@
 
 > **Nekyia** (Νέκυια) is the rite in the _Odyssey_ through which Odysseus calls up
 > the dead and asks them what they know. This tool does something less dramatic
-> with old agent sessions: it brings the useful context back when you need it.
+> with old agent sessions: it brings back the useful context, and an account of
+> what they did to your files.
 
 Nekyia searches the local histories kept by your agent CLIs, ranks the sessions that
 matter, and launches the right client. Verified clients resume the exact session.
 Search-tier clients start fresh with a deterministic handover that says plainly it is
-a brief, not a resumed state.
+a brief, not a resumed state. It can also account for what those sessions did: which
+files they touched, in what order, and which of them git cannot give back.
 
 > **Status:** pre-release. Nekyia is **not yet published to npm**. Install from the
 > source repository or from the package attached to the
