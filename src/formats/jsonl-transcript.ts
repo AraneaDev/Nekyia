@@ -809,6 +809,17 @@ function classifyOversizedRow(
  * Anything absent is `unknown` on purpose. A shell command that happens to
  * mention a path proves nothing about what it did to it, and a guess there
  * would be exactly the false comfort this index refuses to offer.
+ *
+ * These six entries were checked against a real store rather than assumed, with
+ * `scripts/recovery-census.ts`: over roughly a thousand sessions, no tool that
+ * edits a file was missing from this map, and the calls that did fall through to
+ * `unknown` were a few hundred across a dozen MCP and utility tools, none of
+ * whose names suggest an edit. So `unknown` in a timeline means "a tool took this
+ * path and did something this map cannot name", which is a small and largely
+ * uninteresting share, rather than a gap worth widening the map to close.
+ *
+ * That measurement came from one developer's machine and does not generalise;
+ * re-run the script against a store that disagrees before adding an entry here.
  */
 const CLAUDE_TOOL_KINDS: Record<string, FileEventKind> = {
   Read: 'read',
