@@ -58,8 +58,14 @@ const NEVER_JSON = new Set([
   'composer.json', 'deno.json', 'deno.jsonc', 'bun.lock', 'bun.lockb',
 ])
 
+/**
+ * Internal implementation for JsonRecord.
+ */
 type JsonRecord = Record<string, unknown>
 
+/**
+ * Internal implementation for JsonlShape.
+ */
 interface JsonlShape {
   tsPath: string
   cwdPath: string
@@ -69,15 +75,24 @@ interface JsonlShape {
   roles: Set<string>
 }
 
+/**
+ * Internal implementation for containedBy.
+ */
 function containedBy(root: string, path: string): boolean {
   const rest = relative(root, path)
   return rest === '' || (!isAbsolute(rest) && rest !== '..' && !rest.startsWith(`..${sep}`))
 }
 
+/**
+ * Internal implementation for overlapsKnown.
+ */
 function overlapsKnown(path: string, known: string[]): boolean {
   return known.some((root) => containedBy(root, path) || containedBy(path, root))
 }
 
+/**
+ * Internal implementation for safeRegularFile.
+ */
 function safeRegularFile(path: string): boolean {
   try {
     const stat = lstatSync(path)
@@ -87,6 +102,9 @@ function safeRegularFile(path: string): boolean {
   }
 }
 
+/**
+ * Internal implementation for plausibleTime.
+ */
 function plausibleTime(value: unknown): boolean {
   const now = Date.now()
   const earliest = Date.UTC(2000, 0, 1)
@@ -100,6 +118,9 @@ function plausibleTime(value: unknown): boolean {
   return Number.isFinite(parsed) && parsed >= earliest && parsed <= latest
 }
 
+/**
+ * Internal implementation for plausibleCwd.
+ */
 function plausibleCwd(value: unknown): value is string {
   if (typeof value !== 'string' || value.length < 2 || value.length > 4_096) return false
   if (/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(value)) return false
@@ -107,16 +128,25 @@ function plausibleCwd(value: unknown): value is string {
   return value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value)
 }
 
+/**
+ * Internal implementation for credibleRole.
+ */
 function credibleRole(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 32) return null
   const role = value.trim().toLowerCase()
   return CREDIBLE_ROLES.has(role) ? role : null
 }
 
+/**
+ * Internal implementation for nonemptyText.
+ */
 function nonemptyText(value: unknown): boolean {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+/**
+ * Internal implementation for firstMatchingKey.
+ */
 function firstMatchingKey(
   record: JsonRecord,
   candidates: readonly string[],
@@ -128,6 +158,9 @@ function firstMatchingKey(
   return null
 }
 
+/**
+ * Internal implementation for recordShape.
+ */
 function recordShape(record: JsonRecord): Omit<JsonlShape, 'records' | 'roles'> | null {
   const tsPath = firstMatchingKey(record, TIME_KEYS, plausibleTime)
   const cwdPath = firstMatchingKey(record, CWD_KEYS, plausibleCwd)
@@ -138,6 +171,9 @@ function recordShape(record: JsonRecord): Omit<JsonlShape, 'records' | 'roles'> 
     : null
 }
 
+/**
+ * Internal implementation for chooseJsonlShape.
+ */
 function chooseJsonlShape(records: JsonRecord[]): JsonlShape | null {
   const shapes = new Map<string, JsonlShape>()
   for (const record of records) {
@@ -160,6 +196,9 @@ function chooseJsonlShape(records: JsonRecord[]): JsonlShape | null {
         .localeCompare(JSON.stringify([b.tsPath, b.cwdPath, b.rolePath, b.textPath])))[0] ?? null
 }
 
+/**
+ * Internal implementation for readJsonlPrefix.
+ */
 function readJsonlPrefix(path: string): { text: string; truncated: boolean } | null {
   if (!safeRegularFile(path)) return null
   let fd: number | null = null
@@ -247,16 +286,25 @@ export function sniffJsonl(path: string): SniffResult | null {
   }
 }
 
+/**
+ * Internal implementation for quoteIdentifier.
+ */
 function quoteIdentifier(identifier: string): string {
   return `"${identifier.replaceAll('"', '""')}"`
 }
 
+/**
+ * Internal implementation for safeSchemaName.
+ */
 function safeSchemaName(identifier: string): string {
   return identifier
     .replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '?')
     .slice(0, 64)
 }
 
+/**
+ * Internal implementation for matchingColumn.
+ */
 function matchingColumn(columns: string[], candidates: readonly string[]): string | null {
   for (const candidate of candidates) {
     const column = columns.find((value) => value.toLowerCase() === candidate.toLowerCase())
@@ -265,6 +313,9 @@ function matchingColumn(columns: string[], candidates: readonly string[]): strin
   return null
 }
 
+/**
+ * Internal implementation for normalizedTokens.
+ */
 function normalizedTokens(identifier: string): string[] {
   return identifier
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
@@ -273,6 +324,9 @@ function normalizedTokens(identifier: string): string[] {
     .filter(Boolean)
 }
 
+/**
+ * Internal implementation for idColumn.
+ */
 function idColumn(columns: string[]): string | null {
   const exact = matchingColumn(columns, ['id'])
   if (exact) return exact
@@ -283,6 +337,9 @@ function idColumn(columns: string[]): string | null {
   return columns.find((column) => /_id$/i.test(column)) ?? null
 }
 
+/**
+ * Internal implementation for timeColumn.
+ */
 function timeColumn(columns: string[]): string | null {
   const exact = matchingColumn(columns, TIME_KEYS)
   if (exact) return exact
@@ -302,6 +359,9 @@ function timeColumn(columns: string[]): string | null {
   }) ?? null
 }
 
+/**
+ * Internal implementation for titleColumn.
+ */
 function titleColumn(columns: string[]): string | null {
   const exact = matchingColumn(columns, ['title', 'summary', 'preview', 'name'])
   if (exact) return exact
@@ -310,6 +370,9 @@ function titleColumn(columns: string[]): string | null {
   )) ?? null
 }
 
+/**
+ * Internal implementation for boundedDirectoryEntries.
+ */
 function boundedDirectoryEntries(path: string): { entries: Dirent[]; overflow: boolean } | null {
   let directory: Dir | null = null
   try {
@@ -329,6 +392,9 @@ function boundedDirectoryEntries(path: string): { entries: Dirent[]; overflow: b
   }
 }
 
+/**
+ * Internal implementation for plausibleId.
+ */
 function plausibleId(value: unknown): boolean {
   if (typeof value === 'number') return Number.isFinite(value)
   return typeof value === 'string'
@@ -422,6 +488,9 @@ export function sniffSqlite(path: string): SniffResult | null {
   }
 }
 
+/**
+ * Internal implementation for knownRoots.
+ */
 function knownRoots(): string[] {
   try {
     const roots = loadManifests().manifests.flatMap((manifest) => manifest.roots.flatMap((root) => {
@@ -465,8 +534,14 @@ export function candidateRoots(): string[] {
   return [...candidates].sort()
 }
 
+/**
+ * Internal implementation for WalkItem.
+ */
 interface WalkItem { path: string; depth: number }
 
+/**
+ * Internal implementation for sniffKind.
+ */
 function sniffKind(path: string): SniffResult | null {
   const extension = extname(path).toLowerCase()
   if (extension === '.jsonl') return sniffJsonl(path)
@@ -501,6 +576,9 @@ export function sniffRoots(dirs: string[] = candidateRoots(), limit = MAX_RESULT
   const results: SniffResult[] = []
   const seenDirs = new Set<string>()
   const seenFiles = new Set<string>()
+  /**
+   * Internal implementation for sortedResults.
+   */
   const sortedResults = () => results.sort((a, b) => a.path.localeCompare(b.path))
   let visitedDirs = 0
   let visitedFiles = 0

@@ -111,14 +111,23 @@ const SCHEMA_V1 = `
  * to `validateExistingSchema` behind the version that introduced it.
  */
 const MIGRATIONS: Record<number, (db: Database) => void> = {
+  /**
+   * Internal implementation for 1.
+   */
   1: (db) => { db.exec(SCHEMA_V1) },
   // Sessions indexed under version 1 recorded one conflated flag, so they keep
   // whatever `truncated` they were stamped with and start out not degraded.
   // The next hydration of each session writes the split values.
+  /**
+   * Internal implementation for 2.
+   */
   2: (db) => { db.exec('ALTER TABLE session ADD COLUMN degraded INTEGER NOT NULL DEFAULT 0') },
   // Ordered dialogue, which the grouped `session_text` facets cannot express.
   // Sessions indexed before this step have no turns until they are hydrated
   // again, and the history view falls back to the grouped facets for them.
+  /**
+   * Internal implementation for 3.
+   */
   3: (db) => {
     db.exec(`
       CREATE TABLE IF NOT EXISTS session_turn (
@@ -138,6 +147,9 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
   // `nekyia index` hydrates only what changed, so for a transcript that has not
   // moved that next hydration is `nekyia index --rebuild`, which is what the
   // timeline's remediation line names.
+  /**
+   * Internal implementation for 4.
+   */
   4: (db) => {
     db.exec(`
       CREATE TABLE IF NOT EXISTS session_file_event (
@@ -229,6 +241,9 @@ function schemaError(reason: string, db: Database): Error {
   )
 }
 
+/**
+ * Internal implementation for SessionRow.
+ */
 interface SessionRow {
   uid: string
   client: string
@@ -250,6 +265,9 @@ interface SessionRow {
   degraded?: number
 }
 
+/**
+ * Internal implementation for TextRow.
+ */
 interface TextRow {
   rowid: number
   title: string
@@ -312,6 +330,9 @@ export interface FileEventRow {
   kind: string
 }
 
+/**
+ * Internal implementation for SearchRow.
+ */
 type SearchRow = Omit<SessionRow, 'source_paths' | 'fingerprint' | 'truncated' | 'degraded'>
 
 /** The columns `searchRefs` selects, in the order `SearchRow` declares them. */
@@ -362,8 +383,14 @@ export function rowToRef(row: SessionRow): StoredRef {
  * half-hydrated session is never visible to a query.
  */
 export class IndexDb {
+  /**
+   * Internal implementation for constructor.
+   */
   private constructor(private readonly db: Database) {}
 
+  /**
+   * Internal implementation for validatePath.
+   */
   private static validatePath(path: string, create: boolean): void {
     if (path === ':memory:') return
     const parent = dirname(path)
@@ -388,6 +415,9 @@ export class IndexDb {
     }
   }
 
+  /**
+   * Internal implementation for open.
+   */
   static open(path: string, create = true): IndexDb {
     IndexDb.validatePath(path, create)
 
@@ -535,6 +565,9 @@ export class IndexDb {
     }
   }
 
+  /**
+   * Internal implementation for writeRef.
+   */
   private writeRef(ref: SessionRef): void {
     this.db.query(`
       INSERT INTO session (
@@ -572,10 +605,16 @@ export class IndexDb {
     )
   }
 
+  /**
+   * Internal implementation for upsertRef.
+   */
   upsertRef(ref: SessionRef): void {
     this.writeRef(ref)
   }
 
+  /**
+   * Internal implementation for writeDoc.
+   */
   private writeDoc(doc: SessionDoc): void {
     const old = this.db.query(
       'SELECT rowid, title, prompts, prose FROM session_text WHERE uid = ?',
@@ -674,6 +713,9 @@ export class IndexDb {
     )
   }
 
+  /**
+   * Internal implementation for upsertDoc.
+   */
   upsertDoc(doc: SessionDoc): void {
     this.db.transaction((value: SessionDoc) => {
       this.writeDoc(value)
@@ -700,11 +742,17 @@ export class IndexDb {
     return rows.map(rowToSearchRef)
   }
 
+  /**
+   * Internal implementation for getRef.
+   */
   getRef(uid: string): StoredRef | null {
     const row = this.db.query('SELECT * FROM session WHERE uid = ?').get(uid) as SessionRow | null
     return row ? rowToRef(row) : null
   }
 
+  /**
+   * Internal implementation for getFingerprints.
+   */
   getFingerprints(): Map<string, string> {
     const rows = this.db.query('SELECT uid, fingerprint FROM session').all() as Array<{
       uid: string
@@ -713,6 +761,9 @@ export class IndexDb {
     return new Map(rows.map((row) => [row.uid, row.fingerprint]))
   }
 
+  /**
+   * Internal implementation for getMissingUids.
+   */
   getMissingUids(): Set<string> {
     const rows = this.db.query('SELECT uid FROM session WHERE missing = 1').all() as Array<{
       uid: string
@@ -733,11 +784,17 @@ export class IndexDb {
     return rows.map((row) => row.client)
   }
 
+  /**
+   * Internal implementation for allUids.
+   */
   allUids(): string[] {
     const rows = this.db.query('SELECT uid FROM session ORDER BY uid').all() as Array<{ uid: string }>
     return rows.map((row) => row.uid)
   }
 
+  /**
+   * Internal implementation for ftsSearch.
+   */
   ftsSearch(query: string): FtsHit[] {
     return this.db.query(`
       SELECT st.uid, -bm25(session_fts, 8.0, 4.0, 1.0) AS score
@@ -748,6 +805,9 @@ export class IndexDb {
     `).all(query) as FtsHit[]
   }
 
+  /**
+   * Internal implementation for uidsTouchingFile.
+   */
   uidsTouchingFile(fragment: string): string[] {
     const literal = fragment.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
     const rows = this.db.query(`
@@ -840,6 +900,9 @@ export class IndexDb {
     return out
   }
 
+  /**
+   * Internal implementation for deleteSession.
+   */
   deleteSession(uid: string): void {
     this.deleteSessions([uid])
   }
@@ -884,6 +947,9 @@ export class IndexDb {
     })(uids)
   }
 
+  /**
+   * Internal implementation for markMissing.
+   */
   markMissing(uids: string[]): void {
     this.db.transaction((values: string[]) => {
       const update = this.db.query('UPDATE session SET missing = 1 WHERE uid = ?')
@@ -896,10 +962,16 @@ export class IndexDb {
     return storedSchemaVersion(this.db)
   }
 
+  /**
+   * Internal implementation for raw.
+   */
   raw(): Database {
     return this.db
   }
 
+  /**
+   * Internal implementation for close.
+   */
   close(): void {
     this.db.close()
   }

@@ -17,16 +17,25 @@ export interface SidecarEntry {
   cwd: string | null
 }
 
+/**
+ * Internal implementation for isRecord.
+ */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/**
+ * Internal implementation for isWithin.
+ */
 function isWithin(root: string, path: string): boolean {
   const fromRoot = relative(root, path)
   return fromRoot === ''
     || (!isAbsolute(fromRoot) && fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`))
 }
 
+/**
+ * Internal implementation for safeSidecarPath.
+ */
 function safeSidecarPath(root: string, file: string): string | null {
   if (isAbsolute(file) || file.split(/[\\/]+/).includes('..')) return null
   const lexicalRoot = resolve(root)
@@ -42,6 +51,9 @@ function safeSidecarPath(root: string, file: string): string | null {
   }
 }
 
+/**
+ * Internal implementation for parseTimestamp.
+ */
 function parseTimestamp(value: unknown, unit: SidecarSpec['tsUnit']): number | null {
   let parsed: number
   if (typeof value === 'number') {
@@ -59,6 +71,9 @@ function parseTimestamp(value: unknown, unit: SidecarSpec['tsUnit']): number | n
   return Number.isFinite(timestamp) && timestamp >= 0 ? timestamp : null
 }
 
+/**
+ * Internal implementation for decodeLine.
+ */
 function decodeLine(parts: Uint8Array[]): string {
   const decoder = new TextDecoder()
   let line = ''
@@ -66,6 +81,9 @@ function decodeLine(parts: Uint8Array[]): string {
   return line + decoder.decode()
 }
 
+/**
+ * Internal implementation for readLines.
+ */
 function readLines(path: string, consume: (line: string) => void): boolean {
   let descriptor: number | undefined
   const buffer = new Uint8Array(READ_CHUNK_BYTES)
@@ -73,6 +91,9 @@ function readLines(path: string, consume: (line: string) => void): boolean {
   let rowBytes = 0
   let oversized = false
 
+  /**
+   * Internal implementation for append.
+   */
   const append = (part: Uint8Array): void => {
     if (oversized || part.length === 0) return
     if (rowBytes + part.length > MAX_ROW_BYTES) {
@@ -85,6 +106,9 @@ function readLines(path: string, consume: (line: string) => void): boolean {
     rowBytes += part.length
   }
 
+  /**
+   * Internal implementation for finish.
+   */
   const finish = (): void => {
     if (!oversized) consume(decodeLine(parts))
     parts = []

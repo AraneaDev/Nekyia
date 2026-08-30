@@ -41,6 +41,9 @@ export interface SessionsState {
   move: (delta: number) => void
 }
 
+/**
+ * Internal implementation for clampSelection.
+ */
 function clampSelection(selected: number, length: number): number {
   if (length <= 0) return 0
   const safe = Number.isFinite(selected) ? Math.floor(selected) : 0

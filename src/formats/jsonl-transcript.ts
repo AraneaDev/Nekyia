@@ -56,14 +56,29 @@ export interface FormatModule {
   ): Promise<SessionDoc>
 }
 
+/**
+ * Internal implementation for JsonObject.
+ */
 type JsonObject = Record<string, unknown>
+/**
+ * Internal implementation for BunFileHandle.
+ */
 type BunFileHandle = ReturnType<typeof Bun.file>
+/**
+ * Internal implementation for BunFileWriter.
+ */
 type BunFileWriter = ReturnType<BunFileHandle['writer']>
 
+/**
+ * Internal implementation for isObject.
+ */
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/**
+ * Internal implementation for get.
+ */
 function get(value: unknown, path: string | undefined): unknown {
   if (!path) return undefined
   let current = value
@@ -74,6 +89,9 @@ function get(value: unknown, path: string | undefined): unknown {
   return current
 }
 
+/**
+ * Internal implementation for textOf.
+ */
 function textOf(value: unknown): string {
   if (typeof value === 'string') return value.trim()
   if (!Array.isArray(value)) return ''
@@ -85,6 +103,9 @@ function textOf(value: unknown): string {
     .trim()
 }
 
+/**
+ * Internal implementation for textOfType.
+ */
 function textOfType(
   value: unknown,
   type: 'input_text' | 'output_text',
@@ -106,16 +127,25 @@ function textOfType(
  */
 const TITLE_LIMIT = 512
 
+/**
+ * Internal implementation for firstLine.
+ */
 function firstLine(value: string): string {
   const line = value.split(/\r?\n/, 1)[0]!.trim()
   return line.length <= TITLE_LIMIT ? line : `${line.slice(0, TITLE_LIMIT - 1)}…`
 }
 
+/**
+ * Internal implementation for isInjectedInput.
+ */
 function isInjectedInput(value: string): boolean {
   const trimmed = value.trimStart()
   return INJECTED_INPUT_PREFIXES.some((prefix) => trimmed.startsWith(prefix))
 }
 
+/**
+ * Internal implementation for codexInputText.
+ */
 function codexInputText(value: unknown): string {
   return textOfType(value, 'input_text', (text) => !isInjectedInput(text))
 }
@@ -159,6 +189,9 @@ interface FileLog {
   eventsTruncated: boolean
 }
 
+/**
+ * Internal implementation for newFileLog.
+ */
 function newFileLog(): FileLog {
   return { files: new Set(), events: [], filesTruncated: false, eventsTruncated: false }
 }
@@ -208,6 +241,9 @@ function recordFileCalls(
   }
 }
 
+/**
+ * Internal implementation for nativeIdFromFilename.
+ */
 function nativeIdFromFilename(path: string): string {
   const name = basename(path)
   if (name.endsWith('.jsonl')) return name.slice(0, -'.jsonl'.length)
@@ -227,6 +263,9 @@ function nativeIdFromFilename(path: string): string {
  */
 const CODEX_ROLLOUT_ID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
 
+/**
+ * Internal implementation for codexIdFromFilename.
+ */
 function codexIdFromFilename(path: string): string | null {
   return CODEX_ROLLOUT_ID.exec(basename(path))?.[1] ?? null
 }
@@ -254,6 +293,9 @@ function isCodexWorkerMetadata(payload: JsonObject): boolean {
   return source === 'exec' && payload.originator === 'codex_sdk_ts'
 }
 
+/**
+ * Internal implementation for warn.
+ */
 function warn(client: string, path: string | null, error: unknown): Diagnostic {
   return {
     client,
@@ -263,10 +305,16 @@ function warn(client: string, path: string | null, error: unknown): Diagnostic {
   }
 }
 
+/**
+ * Internal implementation for readHead.
+ */
 async function readHead(path: string, maxBytes: number): Promise<string> {
   return Bun.file(path).slice(0, maxBytes).text()
 }
 
+/**
+ * Internal implementation for parseHead.
+ */
 function parseHead(text: string): {
   rows: JsonObject[]
   malformed: boolean
@@ -291,6 +339,9 @@ function parseHead(text: string): {
   return { rows, malformed, incompleteFinalLine }
 }
 
+/**
+ * Internal implementation for baseRef.
+ */
 function baseRef(
   manifest: Manifest,
   path: string,
@@ -320,6 +371,9 @@ function baseRef(
   }
 }
 
+/**
+ * Internal implementation for discoverClaude.
+ */
 function discoverClaude(
   manifest: Manifest,
   path: string,
@@ -397,6 +451,9 @@ function codexMetadataId(payload: JsonObject): string | null {
   return null
 }
 
+/**
+ * Internal implementation for discoverCodex.
+ */
 function discoverCodex(
   manifest: Manifest,
   path: string,
@@ -460,6 +517,9 @@ function discoverCodex(
     : baseRef(manifest, path, stat, nativeId, startedAt, cwd, null, title)
 }
 
+/**
+ * Internal implementation for discoverGeneric.
+ */
 function discoverGeneric(
   manifest: Manifest & { format: 'jsonl-transcript' },
   path: string,
@@ -509,6 +569,9 @@ function discoverGeneric(
   return baseRef(manifest, path, stat, nativeId, startedAt, cwd, null, title)
 }
 
+/**
+ * Internal implementation for rowsFromStream.
+ */
 async function rowsFromStream(
   path: string,
   visit: (row: JsonObject) => void,
@@ -522,6 +585,9 @@ async function rowsFromStream(
   let spoolWriter: BunFileWriter | null = null
   let skippedOversizedRow = false
 
+  /**
+   * Internal implementation for visitLine.
+   */
   function visitLine(line: string): void {
     const trimmed = line.trim()
     if (!trimmed) return
@@ -533,6 +599,9 @@ async function rowsFromStream(
     }
   }
 
+  /**
+   * Internal implementation for finishRow.
+   */
   async function finishRow(): Promise<void> {
     const file = spoolFile
     const writer = spoolWriter
@@ -563,6 +632,9 @@ async function rowsFromStream(
     scanner = new JsonRowScanner(manifest)
   }
 
+  /**
+   * Internal implementation for startSpool.
+   */
   async function startSpool(segment: string): Promise<void> {
     const directory = mkdtempSync(join(tmpdir(), 'nekyia-jsonl-spool-'))
     spoolDir = directory
@@ -576,6 +648,9 @@ async function rowsFromStream(
     buffer = ''
   }
 
+  /**
+   * Internal implementation for cleanupSpool.
+   */
   async function cleanupSpool(): Promise<void> {
     const file = spoolFile
     const writer = spoolWriter
@@ -594,6 +669,9 @@ async function rowsFromStream(
     }
   }
 
+  /**
+   * Internal implementation for consume.
+   */
   async function consume(text: string): Promise<void> {
     let offset = 0
     while (offset < text.length) {
@@ -633,6 +711,9 @@ async function rowsFromStream(
   }
 }
 
+/**
+ * Internal implementation for ScanContext.
+ */
 type ScanContext = {
   kind: 'object' | 'array'
   path: string[]
@@ -640,6 +721,9 @@ type ScanContext = {
   expectingKey: boolean
 }
 
+/**
+ * Internal implementation for JsonRowScanner.
+ */
 class JsonRowScanner {
   private readonly contexts: ScanContext[] = []
   private readonly keys = new Set<string>()
@@ -651,6 +735,9 @@ class JsonRowScanner {
   private token = ''
   private tokenTruncated = false
 
+  /**
+   * Internal implementation for constructor.
+   */
   constructor(manifest: Manifest & { format: 'jsonl-transcript' }) {
     if (manifest.jsonl.variant === 'codex') {
       this.relevantValues.add('payload.type')
@@ -664,6 +751,9 @@ class JsonRowScanner {
     }
   }
 
+  /**
+   * Internal implementation for feed.
+   */
   feed(text: string): void {
     for (const character of text) {
       if (this.inString) {
@@ -711,18 +801,30 @@ class JsonRowScanner {
     }
   }
 
+  /**
+   * Internal implementation for hasKey.
+   */
   hasKey(path: string): boolean {
     return this.keys.has(path)
   }
 
+  /**
+   * Internal implementation for hasValue.
+   */
   hasValue(path: string, value: string): boolean {
     return this.values.get(path)?.has(value) ?? false
   }
 
+  /**
+   * Internal implementation for valuesAt.
+   */
   valuesAt(path: string): ReadonlySet<string> {
     return this.values.get(path) ?? new Set()
   }
 
+  /**
+   * Internal implementation for finishString.
+   */
   private finishString(): void {
     const context = this.contexts.at(-1)
     if (!context) return
@@ -749,11 +851,17 @@ class JsonRowScanner {
     if (context.kind === 'object') context.key = null
   }
 
+  /**
+   * Internal implementation for appendToken.
+   */
   private appendToken(text: string): void {
     if (this.token.length + text.length <= 256) this.token += text
     else this.tokenTruncated = true
   }
 
+  /**
+   * Internal implementation for decodeToken.
+   */
   private decodeToken(): string | null {
     if (this.tokenTruncated) return null
     try {
@@ -764,6 +872,9 @@ class JsonRowScanner {
     }
   }
 
+  /**
+   * Internal implementation for takeValuePath.
+   */
   private takeValuePath(): string[] {
     const context = this.contexts.at(-1)
     if (!context) return []
@@ -774,6 +885,9 @@ class JsonRowScanner {
   }
 }
 
+/**
+ * Internal implementation for classifyOversizedRow.
+ */
 function classifyOversizedRow(
   scanner: JsonRowScanner,
   manifest: Manifest & { format: 'jsonl-transcript' },
@@ -832,6 +946,9 @@ const CLAUDE_TOOL_KINDS: Record<string, FileEventKind> = {
   NotebookEdit: 'edit',
 }
 
+/**
+ * Internal implementation for hydrateClaude.
+ */
 function hydrateClaude(
   row: JsonObject,
   overCap: boolean,
@@ -874,6 +991,9 @@ function hydrateClaude(
   return 1
 }
 
+/**
+ * Internal implementation for hydrateCodex.
+ */
 function hydrateCodex(
   row: JsonObject,
   overCap: boolean,
@@ -937,6 +1057,9 @@ function hydrateCodex(
   return 0
 }
 
+/**
+ * Internal implementation for hydrateGeneric.
+ */
 function hydrateGeneric(
   row: JsonObject,
   overCap: boolean,
@@ -968,6 +1091,9 @@ function hydrateGeneric(
 
 /** Reads line-per-record transcripts, either through a client-specific variant or a manifest-described generic shape. */
 export const jsonlTranscript: FormatModule = {
+  /**
+   * Internal implementation for discover.
+   */
   async discover(manifest, root) {
     const refs: SessionRef[] = []
     const diagnostics: Diagnostic[] = []
@@ -1017,6 +1143,9 @@ export const jsonlTranscript: FormatModule = {
     return { refs, diagnostics }
   },
 
+  /**
+   * Internal implementation for hydrate.
+   */
   async hydrate(manifest, _root, ref, config) {
     if (manifest.format !== 'jsonl-transcript') {
       throw new Error('not a jsonl manifest')

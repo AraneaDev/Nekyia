@@ -17,10 +17,16 @@ export interface Scan {
   diagnostics: Diagnostic[]
 }
 
+/**
+ * Internal implementation for Discovered.
+ */
 interface Discovered extends AdapterDiscovery {
   client: string
 }
 
+/**
+ * Internal implementation for errorMessage.
+ */
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }

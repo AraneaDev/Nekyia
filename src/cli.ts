@@ -45,6 +45,9 @@ and ordering between them is by end time only. It reads the index, never a
 transcript.
 `
 
+/**
+ * Internal implementation for CliError.
+ */
 class CliError extends Error {}
 
 const OPTIONS = {
@@ -65,6 +68,9 @@ const OPTIONS = {
   since: { type: 'string' },
 } as const
 
+/**
+ * Internal implementation for parse.
+ */
 function parse(args: string[]) {
   try {
     return parseArgs({ args, allowPositionals: true, strict: true, options: OPTIONS })
@@ -73,10 +79,16 @@ function parse(args: string[]) {
   }
 }
 
+/**
+ * Internal implementation for present.
+ */
 function present(values: Record<string, unknown>, keys: string[]): boolean {
   return keys.some((key) => values[key] !== undefined)
 }
 
+/**
+ * Internal implementation for positiveLimit.
+ */
 function positiveLimit(value: string | undefined): number | undefined {
   if (value === undefined) return undefined
   const limit = Number(value)
@@ -110,6 +122,9 @@ export function versionText(version: string, hyperlink = link): string {
   ].join('\n')
 }
 
+/**
+ * Internal implementation for dispatch.
+ */
 async function dispatch(argv: string[]): Promise<number> {
   const subcommand = argv[0]
   if (subcommand === '--help' || subcommand === '-h') {

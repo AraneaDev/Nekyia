@@ -46,6 +46,9 @@ function EmptyState({ searching, narrowed }: { searching: boolean; narrowed: boo
   )
 }
 
+/**
+ * Internal implementation for SparseHint.
+ */
 function SparseHint({ project }: { project: string }) {
   return (
     <Box marginTop={1} flexDirection="column" flexShrink={0}>
@@ -98,12 +101,18 @@ const UNSAFE_COMMAND = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u20
 
 export type { ClipboardLike } from './clipboard'
 
+/**
+ * Internal implementation for Confirmation.
+ */
 interface Confirmation {
   plan: ExecPlan
   chars: number
   client: string
 }
 
+/**
+ * Internal implementation for sanitizePromptForClipboard.
+ */
 function sanitizePromptForClipboard(text: string): string {
   let sample = text.slice(0, COPY_PROMPT_CHARS)
   const last = sample.charCodeAt(sample.length - 1)
@@ -121,6 +130,9 @@ export interface CommandCopyWork {
   scannedCodeUnits: number
 }
 
+/**
+ * Internal implementation for commandUnitUnsafe.
+ */
 function commandUnitUnsafe(code: number): boolean {
   return code <= 0x1f
     || (code >= 0x7f && code <= 0x9f)
@@ -172,6 +184,9 @@ export function safeCommandForClipboard(plan: ExecPlan, work?: CommandCopyWork):
   }
 }
 
+/**
+ * Internal implementation for deleteLastGrapheme.
+ */
 function deleteLastGrapheme(text: string): string {
   let last = 0
   for (const part of GRAPHEMES.segment(text)) last = part.index
@@ -185,15 +200,27 @@ export function terminalRows(rows: unknown, fallback = 24): number {
     : fallback
 }
 
+/**
+ * Internal implementation for TerminalSize.
+ */
 interface TerminalSize { rows: number; columns: number }
 
+/**
+ * Internal implementation for useTerminalSize.
+ */
 function useTerminalSize(rowsIn?: number, columnsIn?: number): TerminalSize {
+  /**
+   * Internal implementation for read.
+   */
   const read = (): TerminalSize => ({
     rows: terminalRows(rowsIn ?? process.stdout.rows),
     columns: terminalRows(columnsIn ?? process.stdout.columns, 80),
   })
   const [size, setSize] = useState(read)
   useEffect(() => {
+    /**
+     * Internal implementation for update.
+     */
     const update = () => setSize((previous) => {
       const next = read()
       return previous.rows === next.rows && previous.columns === next.columns ? previous : next
@@ -311,14 +338,23 @@ export function App({
 
   useEffect(() => () => { mounted.current = false }, [])
 
+  /**
+   * Internal implementation for announce.
+   */
   function announce(message: string): void {
     if (mounted.current) setNote(message)
   }
 
+  /**
+   * Internal implementation for adapterFor.
+   */
   function adapterFor(client: string): Adapter | undefined {
     return adapters.find((adapter) => adapter.id === client)
   }
 
+  /**
+   * Internal implementation for emit.
+   */
   function emit(plan: ExecPlan): void {
     if (executing.current) return
     executing.current = true
@@ -326,6 +362,9 @@ export function App({
     exit()
   }
 
+  /**
+   * Internal implementation for planSafely.
+   */
   function planSafely(adapter: Adapter, row: NonNullable<typeof selectedRow>, brief?: string): {
     plan: ExecPlan | null
     failed: boolean
@@ -338,6 +377,9 @@ export function App({
     }
   }
 
+  /**
+   * Internal implementation for activate.
+   */
   function activate(): void {
     const row = selectedRow
     if (!row || executing.current) return
@@ -372,6 +414,9 @@ export function App({
     setConfirm({ plan, chars: brief.length, client: boundedDisplayText(row.client, 32) })
   }
 
+  /**
+   * Internal implementation for writeClipboard.
+   */
   async function writeClipboard(text: string, success: string): Promise<void> {
     if (!clipboardApi) { announce('clipboard unavailable'); return }
     try {
@@ -382,6 +427,9 @@ export function App({
     }
   }
 
+  /**
+   * Internal implementation for copyPrompt.
+   */
   function copyPrompt(): void {
     const row = selectedRow
     if (!row) return
@@ -397,6 +445,9 @@ export function App({
     }
   }
 
+  /**
+   * Internal implementation for copyCommand.
+   */
   function copyCommand(): void {
     const row = selectedRow
     if (!row) return

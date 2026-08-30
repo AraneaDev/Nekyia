@@ -18,15 +18,24 @@ export interface ClipboardRuntime {
   writeTty(sequence: string): Promise<void>
 }
 
+/**
+ * Internal implementation for Helper.
+ */
 interface Helper {
   command: string
   args: string[]
 }
 
+/**
+ * Internal implementation for nonempty.
+ */
 function nonempty(value: string | undefined): boolean {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+/**
+ * Internal implementation for helpers.
+ */
 function helpers(platform: string, env: Record<string, string | undefined>): Helper[] {
   if (platform === 'darwin') return [{ command: 'pbcopy', args: [] }]
   if (platform === 'win32') return [{ command: 'clip', args: [] }]
@@ -41,6 +50,9 @@ function helpers(platform: string, env: Record<string, string | undefined>): Hel
   return result
 }
 
+/**
+ * Internal implementation for checkedUtf8.
+ */
 function checkedUtf8(text: string): Uint8Array {
   // Every retained code unit costs at least one encoded byte. Sampling one
   // beyond the ceiling proves oversize without encoding an unbounded string.
@@ -52,6 +64,9 @@ function checkedUtf8(text: string): Uint8Array {
   return bytes
 }
 
+/**
+ * Internal implementation for sendOsc52.
+ */
 async function sendOsc52(runtime: ClipboardRuntime, bytes: Uint8Array): Promise<'sent'> {
   const payload = Buffer.from(bytes).toString('base64')
   await runtime.writeTty(`\u001b]52;c;${payload}\u0007`)
@@ -62,7 +77,13 @@ async function sendOsc52(runtime: ClipboardRuntime, bytes: Uint8Array): Promise<
 const defaultRuntime: ClipboardRuntime = {
   platform: process.platform,
   env: process.env,
+  /**
+   * Internal implementation for which.
+   */
   which: (command) => Bun.which(command),
+  /**
+   * Internal implementation for run.
+   */
   async run(command, args, text) {
     const proc = Bun.spawn([command, ...args], {
       stdin: 'pipe',
@@ -74,6 +95,9 @@ const defaultRuntime: ClipboardRuntime = {
     return await proc.exited
   },
   isTTY: process.stdout.isTTY === true,
+  /**
+   * Internal implementation for writeTty.
+   */
   writeTty: (sequence) => new Promise<void>((resolve, reject) => {
     process.stdout.write(sequence, (error) => error ? reject(error) : resolve())
   }),
@@ -90,6 +114,9 @@ export function createHostClipboard(runtime: ClipboardRuntime = defaultRuntime):
     }
     if (!command) continue
     return {
+      /**
+       * Internal implementation for writeText.
+       */
       async writeText(text) {
         const bytes = checkedUtf8(text)
         try {
@@ -106,6 +133,9 @@ export function createHostClipboard(runtime: ClipboardRuntime = defaultRuntime):
 
   if (!runtime.isTTY) return null
   return {
+    /**
+     * Internal implementation for writeText.
+     */
     async writeText(text) {
       return sendOsc52(runtime, checkedUtf8(text))
     },

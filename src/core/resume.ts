@@ -9,6 +9,9 @@ export interface RunResult {
   exitCode?: number
 }
 
+/**
+ * Internal implementation for SpawnOptions.
+ */
 interface SpawnOptions {
   cwd: string
   stdin: 'inherit'
@@ -30,6 +33,9 @@ export interface RunIo {
   spawn(command: string[], options: SpawnOptions): SpawnedProcess
 }
 
+/**
+ * Internal implementation for executableAt.
+ */
 function executableAt(path: string): boolean {
   try {
     if (!statSync(path).isFile()) return false
@@ -40,6 +46,9 @@ function executableAt(path: string): boolean {
   }
 }
 
+/**
+ * Internal implementation for resolveCommand.
+ */
 function resolveCommand(command: string, cwd: string): string | undefined {
   if (command.includes('/')) {
     const path = isAbsolute(command) ? command : resolve(cwd, command)
@@ -79,6 +88,9 @@ export function checkPlan(plan: ExecPlan): RunResult {
 }
 
 const defaultIo: RunIo = {
+  /**
+   * Internal implementation for spawn.
+   */
   spawn(command, options) {
     return Bun.spawn(command, options)
   },
@@ -119,9 +131,15 @@ function releaseStdin(): void {
  * exited between the signal arriving and the kill, so the kill is guarded.
  */
 function holdSignals(proc: SpawnedProcess): () => void {
+  /**
+   * Internal implementation for ignoreInterrupt.
+   */
   const ignoreInterrupt = (): void => {
     // Deliberately empty: see above, the child already got this from the tty.
   }
+  /**
+   * Internal implementation for forwardTerminate.
+   */
   const forwardTerminate = (): void => {
     try { proc.kill?.('SIGTERM') } catch { /* the child may already be gone */ }
   }
@@ -155,6 +173,9 @@ export async function runPlan(plan: ExecPlan, io: RunIo = defaultIo): Promise<nu
   }
 }
 
+/**
+ * Internal implementation for quote.
+ */
 function quote(value: string): string {
   return value !== '' && /^[\w@%+=:,./-]+$/.test(value)
     ? value
@@ -166,6 +187,9 @@ const SHELL_RESERVED_WORDS = new Set([
   'then', 'until', 'while',
 ])
 
+/**
+ * Internal implementation for quoteCommand.
+ */
 function quoteCommand(value: string): string {
   if (SHELL_RESERVED_WORDS.has(value) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(value)) {
     return `'${value.replace(/'/g, `'\\''`)}'`

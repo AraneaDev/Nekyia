@@ -25,6 +25,9 @@ export interface AdapterSet {
   diagnostics: Diagnostic[]
 }
 
+/**
+ * Internal implementation for contained.
+ */
 function contained(root: string, candidate: string): boolean {
   const fromRoot = relative(root, candidate)
   return fromRoot === ''
@@ -69,6 +72,9 @@ function adaptersForRun(): AdapterSet {
   return { adapters, diagnostics }
 }
 
+/**
+ * Internal implementation for showDiagnostics.
+ */
 function showDiagnostics(diagnostics: Diagnostic[], quiet: boolean): void {
   if (quiet) return
   for (const diagnostic of diagnostics) {
@@ -78,6 +84,9 @@ function showDiagnostics(diagnostics: Diagnostic[], quiet: boolean): void {
   }
 }
 
+/**
+ * Internal implementation for hydrationFailed.
+ */
 function hydrationFailed(diagnostic: Diagnostic): boolean {
   return diagnostic.message === 'no adapter for client'
     || diagnostic.message.startsWith('hydrate failed:')
@@ -167,7 +176,10 @@ export async function runReindex(opts: ReindexOptions = {}): Promise<number> {
         ? await opts.consent(adapterSet.adapters, { yes: opts.yes })
         : await askConsent(adapterSet.adapters, {
           yes: opts.yes,
-          ...(opts.quiet ? { write: () => {} } : {}),
+          ...(opts.quiet ? { /**
+                              * Internal implementation for write.
+                              */
+          write: () => {} } : {}),
         })
     if (!accepted) return 1
     if (indexPathIsObstructed()) {

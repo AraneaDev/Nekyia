@@ -81,20 +81,41 @@ export function mountPicker(props: AppProps, renderer: typeof render = render): 
 }
 
 const defaults: PickDependencies = {
+  /**
+   * Internal implementation for isTTY.
+   */
   isTTY: () => process.stdin.isTTY === true && process.stdout.isTTY === true,
   indexExists: existsSync,
   needsConsent,
   indexPath,
   loadConfig,
   buildAdapters,
+  /**
+   * Internal implementation for openDb.
+   */
   openDb: (path) => IndexDb.open(path, false),
+  /**
+   * Internal implementation for cwd.
+   */
   cwd: () => process.cwd(),
+  /**
+   * Internal implementation for now.
+   */
   now: () => Date.now(),
   mount: mountPicker,
   checkPlan,
   runPlan,
+  /**
+   * Internal implementation for ensureIndex.
+   */
   ensureIndex: () => runReindex({ yes: false }),
+  /**
+   * Internal implementation for error.
+   */
   error: (message) => { console.error(message) },
+  /**
+   * Internal implementation for indexedAt.
+   */
   indexedAt: (path) => {
     try {
       return statSync(path).mtimeMs
@@ -104,6 +125,9 @@ const defaults: PickDependencies = {
   },
 }
 
+/**
+ * Internal implementation for message.
+ */
 function message(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error)
   return boundedDisplayText(raw, 512) || 'unknown error'
@@ -183,6 +207,9 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
       cwd: deps.cwd(),
       now: deps.now(),
       indexedAt: deps.indexedAt(path),
+      /**
+       * Internal implementation for onExec.
+       */
       onExec: (plan, copy) => {
         if (pending) return
         pending = plan

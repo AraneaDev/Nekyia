@@ -50,11 +50,17 @@ export interface ConsentOptions {
   readLine?: () => Promise<string | null>
 }
 
+/**
+ * Internal implementation for RootEstimate.
+ */
 interface RootEstimate {
   count: number
   failed: boolean
 }
 
+/**
+ * Internal implementation for displayText.
+ */
 function displayText(value: unknown, max: number): string {
   const raw = typeof value === 'string' ? value : String(value)
   const clipped = raw.length > max ? `${raw.slice(0, Math.max(0, max - 1))}…` : raw
@@ -65,14 +71,23 @@ function displayText(value: unknown, max: number): string {
   return clean.length <= max ? clean : `${clean.slice(0, Math.max(0, max - 1))}…`
 }
 
+/**
+ * Internal implementation for compareText.
+ */
 function compareText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
+/**
+ * Internal implementation for consentPath.
+ */
 function consentPath(): string {
   return join(dataDir(), CONSENT_FILE)
 }
 
+/**
+ * Internal implementation for dataDirectoryState.
+ */
 function dataDirectoryState(): 'safe' | 'missing' | 'unsafe' {
   try {
     const info = lstatSync(dataDir())
@@ -164,12 +179,18 @@ export function indexPathIsObstructed(): boolean {
   }
 }
 
+/**
+ * Internal implementation for isContained.
+ */
 function isContained(root: string, candidate: string): boolean {
   const fromRoot = relative(root, candidate)
   return fromRoot === ''
     || (!isAbsolute(fromRoot) && fromRoot !== '..' && !fromRoot.startsWith(`..${sep}`))
 }
 
+/**
+ * Internal implementation for safeRoot.
+ */
 function safeRoot(raw: unknown): { path: string; real: string } | null {
   if (typeof raw !== 'string' || raw.length === 0 || raw.length > MAX_PATH_INPUT) return null
   try {
@@ -181,6 +202,9 @@ function safeRoot(raw: unknown): { path: string; real: string } | null {
   }
 }
 
+/**
+ * Internal implementation for safeCandidate.
+ */
 function safeCandidate(root: { path: string; real: string }, relativePath: string): string | null {
   if (typeof relativePath !== 'string' || relativePath.length > MAX_PATH_INPUT) return null
   const candidate = resolve(root.path, relativePath)
@@ -192,6 +216,9 @@ function safeCandidate(root: { path: string; real: string }, relativePath: strin
   }
 }
 
+/**
+ * Internal implementation for countGlob.
+ */
 function countGlob(
   root: { path: string; real: string },
   pattern: unknown,
@@ -219,6 +246,9 @@ function countGlob(
   }
 }
 
+/**
+ * Internal implementation for sqliteEstimate.
+ */
 function sqliteEstimate(root: { path: string; real: string }, manifest: Manifest): RootEstimate {
   if (manifest.format !== 'sqlite-store') return { count: 0, failed: true }
   let count = 0
@@ -259,6 +289,9 @@ function sqliteEstimate(root: { path: string; real: string }, manifest: Manifest
   return { count, failed }
 }
 
+/**
+ * Internal implementation for estimateRoot.
+ */
 function estimateRoot(root: { path: string; real: string }, manifest: Manifest): RootEstimate {
   try {
     if (manifest.format === 'jsonl-transcript') {
@@ -310,6 +343,9 @@ export async function describePlan(adapters: Adapter[]): Promise<PlanRow[]> {
   return out.sort((a, b) => compareText(a.client, b.client))
 }
 
+/**
+ * Internal implementation for ConsentInput.
+ */
 interface ConsentInput {
   destroyed: boolean
   readableEnded: boolean
@@ -334,18 +370,27 @@ export function readConsentLine(input: ConsentInput = process.stdin): Promise<st
     let value = ''
     let bytes = 0
     let settled = false
+    /**
+     * Internal implementation for cleanup.
+     */
     const cleanup = () => {
       input.off('data', onData)
       input.off('end', onEnd)
       input.off('error', onError)
       if (wasPaused) input.pause()
     }
+    /**
+     * Internal implementation for finish.
+     */
     const finish = (answer: string | null) => {
       if (settled) return
       settled = true
       cleanup()
       resolvePromise(answer)
     }
+    /**
+     * Internal implementation for onData.
+     */
     const onData = (chunk: Buffer | string) => {
       let buffer: Buffer
       if (typeof chunk === 'string') {
@@ -369,7 +414,13 @@ export function readConsentLine(input: ConsentInput = process.stdin): Promise<st
         finish(value)
       }
     }
+    /**
+     * Internal implementation for onEnd.
+     */
     const onEnd = () => finish(value + decoder.end() || null)
+    /**
+     * Internal implementation for onError.
+     */
     const onError = () => finish(null)
     input.on('data', onData)
     input.once('end', onEnd)
@@ -377,6 +428,9 @@ export function readConsentLine(input: ConsentInput = process.stdin): Promise<st
   })
 }
 
+/**
+ * Internal implementation for countLabel.
+ */
 function countLabel(row: PlanRow): string {
   if (row.sessions === null) return 'unknown'
   if (row.estimate === 'at-least') return `at least ${row.sessions}`

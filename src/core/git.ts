@@ -26,6 +26,9 @@ export interface TrackedFiles {
 const NOT_CONSULTED: TrackedFiles = { consulted: false, tracked: new Set() }
 
 const defaultIo: GitIo = {
+  /**
+   * Internal implementation for spawn.
+   */
   spawn(command, options) {
     return Bun.spawn(command, options)
   },

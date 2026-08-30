@@ -6,6 +6,9 @@ export interface BriefOpts {
   maxChars?: number
 }
 
+/**
+ * Internal implementation for StoredText.
+ */
 interface StoredText {
   prompts: string
   prose: string
@@ -31,20 +34,32 @@ function fileMarkerFor(remaining: number, capped: boolean): string | null {
 }
 
 // Keep line feeds and tabs, but do not let indexed text execute terminal controls.
+/**
+ * Internal implementation for safeText.
+ */
 function safeText(value: string): string {
   return value.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, '')
 }
 
+/**
+ * Internal implementation for oneLine.
+ */
 function oneLine(value: string): string {
   return safeText(value).replace(/[\r\n]+/g, ' ').trim()
 }
 
+/**
+ * Internal implementation for timestamp.
+ */
 function timestamp(value: number): string {
   if (!Number.isFinite(value)) return '(unknown)'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? '(unknown)' : date.toISOString()
 }
 
+/**
+ * Internal implementation for budgetOf.
+ */
 function budgetOf(value: number | undefined): number {
   if (value === undefined) return DEFAULT_MAX_CHARS
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -96,6 +111,9 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
   // The markers are parameters rather than something render() derives, so that
   // the mandatory-body measurement below can ask for a brief without them and
   // then price each marker in as an entry of its own.
+  /**
+   * Internal implementation for render.
+   */
   const render = (
     proseStart: number,
     fileCount: number,
@@ -157,6 +175,9 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
   const FILE_HEADING_COST = 3 + '## Files touched'.length
   const PROSE_OMITTED_COST = 2 + PROSE_OMITTED_LINE.length // blank line + the notice
   const PROSE_HEADING_COST = 3 + '## Where it ended'.length
+  /**
+   * Internal implementation for markerCost.
+   */
   const markerCost = (marker: string | null): number => (marker === null ? 0 : 1 + marker.length)
 
   const allFilesMarker = fileMarkerFor(0, cappedByLimit)

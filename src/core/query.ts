@@ -166,21 +166,36 @@ function literalFtsQuery(text: string): string | null {
   return terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(' ')
 }
 
+/**
+ * Internal implementation for finite.
+ */
 function finite(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
+/**
+ * Internal implementation for compareUid.
+ */
 function compareUid(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
+/**
+ * Internal implementation for Components.
+ */
 class Components {
   private readonly parents: number[]
 
+  /**
+   * Internal implementation for constructor.
+   */
   constructor(size: number) {
     this.parents = Array.from({ length: size }, (_, index) => index)
   }
 
+  /**
+   * Internal implementation for find.
+   */
   find(index: number): number {
     let root = index
     while (this.parents[root] !== root) root = this.parents[root]!
@@ -192,6 +207,9 @@ class Components {
     return root
   }
 
+  /**
+   * Internal implementation for union.
+   */
   union(left: number, right: number): void {
     const leftRoot = this.find(left)
     const rightRoot = this.find(right)
@@ -234,6 +252,9 @@ function chainComponents(rows: readonly SearchRef[]): Components {
   return components
 }
 
+/**
+ * Internal implementation for collapseChains.
+ */
 function collapseChains(
   rows: Row[],
   allRows: readonly SearchRef[],

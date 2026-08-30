@@ -50,6 +50,9 @@ const SOURCE_LINE_BREAK = /\r?\n|(?<=(?:^|[^\\])(?:\\\\)*)(?:\\r)?\\n/u
 /** The three patch headers that name a file, and nothing else in the grammar. */
 const PATCH_FILE_HEADER = /^\*\*\* (Add|Update|Delete) File: (.+)$/u
 
+/**
+ * Internal implementation for isPlausiblePath.
+ */
 function isPlausiblePath(value: string): boolean {
   if (value.length <= 1 || /[\r\n]/.test(value)) return false
   if (!/\s/.test(value)) return true
@@ -65,6 +68,9 @@ function isPlausiblePath(value: string): boolean {
  * look like a path, so prose and URLs do not become touched files.
  */
 export function collectPaths(value: unknown, out = new Set<string>()): string[] {
+  /**
+   * Internal implementation for walk.
+   */
   function walk(item: unknown): void {
     if (Array.isArray(item)) {
       for (const child of item) walk(child)
