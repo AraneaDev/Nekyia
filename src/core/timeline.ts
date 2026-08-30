@@ -106,7 +106,7 @@ export function timeline(db: IndexDb, opts: TimelineOpts): TimelineSession[] {
     // A reader that records names only still has something to say about this
     // directory, and dropping it would make a client silently vanish from a
     // recovery view. Its facets come back unordered, which is what they are.
-    const entries = level === 'ordered'
+    let entries = level === 'ordered'
       ? eventsByUid.get(uid) ?? []
       : db.fileFacetsForUid(uid)
         .map((path) => ({ path, resolved: resolveFacetPath(path, ref.cwd) }))
@@ -117,10 +117,26 @@ export function timeline(db: IndexDb, opts: TimelineOpts): TimelineSession[] {
           ordinal: null, turn: null, kind: 'unknown' as FileEventKind,
           path: item.path, resolved: item.resolved,
         }))
+    let resolvedDetail: 'unknown' | 'paths' | 'ordered' = level
+    if (level === 'ordered' && entries.length === 0 && (details.get(uid)?.eventsTruncated ?? false)) {
+      const fallback = db.fileFacetsForUid(uid)
+        .map((path) => ({ path, resolved: resolveFacetPath(path, ref.cwd) }))
+        .filter((item): item is { path: string; resolved: string } => (
+          item.resolved !== null && under(item.resolved, dir)
+        ))
+        .map((item) => ({
+          ordinal: null, turn: null, kind: 'unknown' as FileEventKind,
+          path: item.path, resolved: item.resolved,
+        }))
+      if (fallback.length > 0) {
+        entries = fallback
+        resolvedDetail = 'paths'
+      }
+    }
     if (entries.length === 0) continue
     sessions.push({
       ref,
-      detail: level,
+      detail: resolvedDetail,
       eventsTruncated: details.get(uid)?.eventsTruncated ?? false,
       entries,
     })

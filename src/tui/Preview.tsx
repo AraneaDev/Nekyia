@@ -270,7 +270,7 @@ export function buildPreviewLines(
   // it, opening prompt included even though the title repeats it. A session
   // indexed before ordered turns existed has none, and falls through to the
   // grouped blocks below until it is hydrated again.
-  if (full && dialogue.length > 0) {
+  if (full && (dialogue.length > 0 || fileEvents.length > 0)) {
     const out = [...head]
     for (const turn of dialogue) {
       const lines = textLines(turn.text).flatMap((line) => wrappedDisplayLines(line, width))

@@ -32,7 +32,7 @@ const ROOTS = [
 ]
 
 /** A tool result shorter than this is a status line, not a file. */
-const CONTENT_FLOOR = 200
+
 
 /** What a tool call proves about the file it names. */
 type Recoverability = 'whole' | 'patch' | 'mention'
@@ -158,17 +158,7 @@ function record(files: Map<string, Evidence>, path: string, evidence: Evidence):
   }
 }
 
-/** The text of a tool result, however the transcript spelled it. */
-function resultText(content: unknown): string {
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-  return content
-    .map((part) => (typeof part === 'object' && part !== null
-      && typeof (part as { text?: unknown }).text === 'string'
-      ? (part as { text: string }).text
-      : ''))
-    .join('')
-}
+
 
 const trackedByRoot = new Map<string, Set<string> | null>()
 const rootByCwd = new Map<string, string | null>()
@@ -306,8 +296,7 @@ async function readSession(file: string, client: string, counts: Counts): Promis
           const call = pending.get(block.tool_use_id)
           pending.delete(block.tool_use_id)
           if (!call || block.is_error === true) continue
-          const body = resultText(block.content)
-          if (body.length < CONTENT_FLOOR) continue
+          if (typeof block.content !== 'string' && !Array.isArray(block.content)) continue
           if (call.name === 'Read' || call.name === 'NotebookRead') {
             record(files, call.path, call.windowed ? 'fragment' : 'whole')
           }
@@ -317,9 +306,36 @@ async function readSession(file: string, client: string, counts: Counts): Promis
 
     const payload = (row.type === 'response_item' ? row.payload : row) as
       Record<string, unknown> | undefined
-    if (client === 'codex' && payload?.type === 'custom_tool_call'
-      && typeof payload.input === 'string') {
-      classifyCodex(payload.input, counts, files)
+    if (client === 'codex') {
+      if (payload?.type === 'custom_tool_call' && typeof payload.input === 'string') {
+        classifyCodex(payload.input, counts, files)
+      }
+      if (payload?.type === 'function_call' && typeof payload.arguments === 'string') {
+        try {
+          const parsed = JSON.parse(payload.arguments) as Record<string, unknown>
+          const path = firstPath(parsed)
+          if (path !== null) {
+            const name = typeof payload.name === 'string' ? payload.name : 'unknown'
+            classifyClaude(name, parsed, counts)
+            pending.set('codex', {
+              name,
+              path,
+              windowed: parsed.offset !== undefined || parsed.limit !== undefined,
+            })
+          }
+        } catch {
+          // Malformed tool arguments
+        }
+      }
+      if (payload?.type === 'function_call_output') {
+        const call = pending.get('codex')
+        pending.delete('codex')
+        if (call && typeof payload.output === 'string') {
+          if (call.name === 'Read' || call.name === 'NotebookRead') {
+            record(files, call.path, call.windowed ? 'fragment' : 'whole')
+          }
+        }
+      }
     }
     // Codex states its working directory once, in the metadata row that opens a
     // rollout, which is nested under `payload` like a response item but is not

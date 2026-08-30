@@ -26,7 +26,7 @@ Nekyia searches the local histories kept by your agent CLIs, ranks the sessions 
 matter, and launches the right client. Verified clients resume the exact session.
 Search-tier clients start fresh with a deterministic handover that says plainly it is
 a brief, not a resumed state. It can also account for what those sessions did: which
-files they touched, in what order, and which of them git cannot give back.
+files they touched, in what order, and whether git is currently tracking them.
 
 > **Status:** pre-release. Nekyia is **not yet published to npm**. Install from the
 > source repository or from the package attached to the
@@ -135,9 +135,10 @@ o  codex        6h  api-gateway       add structured logging around the upstream
 
 The number beside each operation is the turn it happened on, so it points back into the
 session's own history. Where the directory is a git repository, each path git does not
-already have is marked `untracked`; that is the half worth your attention, because git can
-return the rest. The header says outright when git could not be asked, as it does above,
-since a missing marker would otherwise read as "git has this".
+track is marked `untracked`; you should inspect both tracked and untracked
+paths when recovering session changes, because tracking only means git knows the path,
+not that it has your latest edits. The header says outright when git could not be asked,
+as it does above, since a missing marker would otherwise read as "git tracks this".
 
 File operations are recorded from the next hydration onward, so sessions already in the
 index list their files without any operations until you run `nekyia index --rebuild`. A
