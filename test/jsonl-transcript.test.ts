@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
 import { jsonlTranscript } from '../src/formats/jsonl-transcript'
-import { collectPatchPaths, collectPaths } from '../src/formats/paths'
+import { collectPatchEntries, collectPatchPaths, collectPaths } from '../src/formats/paths'
 import { validateManifest } from '../src/manifests/load'
 import { MAX_SESSION_FILES } from '../src/types'
 
@@ -163,6 +163,19 @@ test('collectPatchPaths bounds the body it reads and the paths it returns', () =
   // A bare body is read verbatim, so a Windows path keeps its own separators.
   expect(collectPatchPaths('*** Update File: C:\\new\\thing.ts', 'apply_patch'))
     .toEqual(['C:\\new\\thing.ts'])
+})
+
+test('apply_patch headers carry their verb as a kind', () => {
+  const body = '*** Add File: a.ts\n*** Update File: b.ts\n*** Delete File: c.ts\n'
+  expect(collectPatchEntries(body, 'apply_patch')).toEqual([
+    { path: 'a.ts', kind: 'write' },
+    { path: 'b.ts', kind: 'edit' },
+    { path: 'c.ts', kind: 'delete' },
+  ])
+})
+test('collectPatchPaths still returns bare paths', () => {
+  const body = '*** Add File: a.ts\n*** Update File: b.ts\n'
+  expect(collectPatchPaths(body, 'apply_patch')).toEqual(['a.ts', 'b.ts'])
 })
 
 test('discover rejects empty native IDs for every JSONL variant', async () => {
@@ -377,6 +390,35 @@ test('Claude hydration keeps the order the transcript was written in', async () 
       { role: 'user', text: 'second question' },
       { role: 'assistant', text: 'second answer' },
     ])
+  })
+})
+
+test('Claude hydration records what each tool call did, in order', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'projects', 'p')
+    mkdirSync(directory, { recursive: true })
+    writeJsonl(join(directory, 'kinds.jsonl'), [
+      { message: { role: 'user', content: 'fix the sse race' } },
+      { message: { role: 'assistant', content: [
+        { type: 'tool_use', name: 'Read', input: { file_path: 'src/sse.ts' } },
+      ] } },
+      { message: { role: 'assistant', content: [
+        { type: 'tool_use', name: 'Edit', input: { file_path: 'src/sse.ts' } },
+        { type: 'tool_use', name: 'Bash', input: { path: 'scripts/run.sh' } },
+      ] } },
+    ])
+    const { refs } = await jsonlTranscript.discover(claude, root)
+    const doc = await jsonlTranscript.hydrate(claude, root, refs[0]!, DEFAULT_CONFIG)
+
+    expect(doc.fileDetail).toBe('ordered')
+    // A shell command that names a path proves nothing about what it did to it.
+    expect(doc.fileEvents?.map((event) => [event.kind, event.path])).toEqual([
+      ['read', 'src/sse.ts'],
+      ['edit', 'src/sse.ts'],
+      ['unknown', 'scripts/run.sh'],
+    ])
+    // The deduplicated set is what search and blame read, and it is unchanged.
+    expect(doc.files.sort()).toEqual(['scripts/run.sh', 'src/sse.ts'])
   })
 })
 
