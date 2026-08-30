@@ -4,6 +4,14 @@ Measured on 2026-08-30 with `scripts/recovery-census.ts`, over this machine's ow
 session store: 1049 claude sessions, 97 codex sessions. Counts only. No path, prompt or
 file content was read into this document.
 
+**This is one developer's machine, and an atypical one.** The store belongs to the author
+of this tool, whose work is spread across scratch directories, throwaway worktrees, plans
+and notes that live outside any repository, which is not how most of this tool's users
+work. Every percentage below describes that store and nothing wider. Read them as a
+demonstration that the script measures what it claims to, and as a rough sense of the
+shape, never as a population figure. The script is here so anyone can run it against their
+own store and get numbers that actually apply to them.
+
 A call counts only when its input actually names a file. Codex has always been counted
 that way, one `*** ... File:` patch header at a time, and claude is gated the same way, so
 the two clients' columns measure the same thing. Calls that name no file at all, `Bash`
@@ -76,27 +84,39 @@ not have. Asked only of files with whole or fragment evidence.
 Codex work is almost entirely inside git repositories. Claude work is not: a third of the
 files it touched with recoverable content are files git cannot give back.
 
-Two limits worth stating rather than hiding. Tracked status is read as of now, not as of
-when the session ran, which is the honest cost of measuring after the fact. And a session
-whose directory no longer exists counts as "could not check" rather than as untracked,
-because guessing there would inflate the one number this decision rests on. Some of those
-951 are presumably directories that were themselves deleted, which is the very case a
-recovery command exists for.
+This table is the least trustworthy one here, and it errs in both directions at once.
 
-## What this means
+It overstates the gap, because this store is unusually full of work outside repositories,
+and because `git ls-files` does not list ignored files, so a build artifact or a log counts
+as untracked exactly like a lost source file would. It understates the gap, because
+"tracked" means git knows the file, not that git holds the version that was lost: a
+tracked file with hours of uncommitted work has a stale copy in git and its recent state
+only in the transcript. Neither error can be separated out from a single machine.
 
-The pessimistic reading of the by-call table does not survive the per-file one. For a
-file a claude session touched, there is usually a whole copy in the transcript, and a
-third of those files are ones git never had.
+The "could not check" column is directories that no longer exist or were never
+repositories. On this machine many are throwaway worktrees, which is housekeeping rather
+than loss.
 
-That supports a narrow command and not a broad one. What is feasible is returning the last
-known contents of a named file, with provenance, newest first. What is not feasible is
-reconstructing a working tree by replaying patches against bases nothing can verify, and
-the `fragment` column is the reason: for a fifth of claude's files and a third of codex's,
+## What this measures, and what it does not
+
+The pessimistic reading of the by-call table does not survive the per-file one. For a file
+a claude session on this machine touched, there is usually a whole copy in the transcript.
+That much is a fact about transcripts rather than about this store, because it follows
+from what the tools record: a read returns the file it was given.
+
+The rest does not generalise. How much of that content git already holds depends entirely
+on how a given person works, and one developer's ratio says nothing about anyone else's.
+This document deliberately stops short of concluding that a recovery command is or is not
+worth building, because that conclusion needs a population this census does not have.
+
+What the numbers do bound is the shape such a command could take. Returning the last known
+contents of a named file, with provenance, is supported by the `whole` column. Reconstructing
+a working tree by replaying patches against bases nothing can verify is not, and the
+`fragment` column is the reason: for a fifth of claude's files here and a third of codex's,
 a diff is all there is.
 
-Two caveats bound even the narrow command. Coverage is opportunistic, since only files the
-agent actually opened are present at all. And a copy is as of the moment the agent last
-read it, so it can be hours stale and competes with an editor's own undo history, which is
-often better. A command built on this must say which file, from which session, at which
-turn, and never imply the result is current.
+Two caveats hold whoever is measured. Coverage is opportunistic, since only files the agent
+actually opened are present at all. And a copy is as of the moment the agent last read it,
+so it can be hours stale and competes with an editor's own undo history, which is often
+better. Anything built on this must say which file, from which session, at which turn, and
+never imply the result is current.
