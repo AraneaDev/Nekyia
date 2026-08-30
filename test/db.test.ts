@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { IndexDb } from '../src/core/db'
-import type { DialogueTurn, SessionRef, SessionDoc } from '../src/types'
+import type { DialogueTurn, FileEvent, FileEventKind, SessionRef, SessionDoc } from '../src/types'
 
 function ref(over: Partial<SessionRef> = {}): SessionRef {
   return {
@@ -625,4 +625,48 @@ test('a version 2 index stays usable by the commands that cannot migrate it', ()
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+const events: FileEvent[] = [
+  { path: 'src/sse.ts', kind: 'read', turn: 2 },
+  { path: 'src/sse.ts', kind: 'edit', turn: 5 },
+  { path: 'test/sse.test.ts', kind: 'write', turn: 6 },
+]
+test('file events are stored in order with a dense ordinal', () => {
+  const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
+  db.upsertDoc(doc(r,{ fileEvents: events, fileDetail: 'ordered' }))
+  const rows=db.raw().query('SELECT ordinal, turn, path, kind FROM session_file_event WHERE uid = ? ORDER BY ordinal').all('claude:abc')
+  expect(rows).toEqual([
+    { ordinal: 0, turn: 2, path: 'src/sse.ts', kind: 'read' },
+    { ordinal: 1, turn: 5, path: 'src/sse.ts', kind: 'edit' },
+    { ordinal: 2, turn: 6, path: 'test/sse.test.ts', kind: 'write' },
+  ]); db.close()
+})
+test('re-hydrating replaces the event log rather than appending to it', () => {
+  const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
+  db.upsertDoc(doc(r,{ fileEvents: events, fileDetail: 'ordered' }))
+  db.upsertDoc(doc(r,{ fileEvents: [{ path: 'a.ts', kind: 'edit', turn: 0 }], fileDetail: 'ordered' }))
+  const rows=db.raw().query('SELECT path FROM session_file_event WHERE uid = ?').all('claude:abc')
+  expect(rows).toEqual([{ path: 'a.ts' }]); db.close()
+})
+test('a document with no events reads as paths detail, never unknown', () => {
+  const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r); db.upsertDoc(doc(r))
+  const row=db.raw().query('SELECT file_detail FROM session WHERE uid = ?').get('claude:abc')
+  expect(row).toEqual({ file_detail: 'paths' }); db.close()
+})
+test('the event cap flag is stored without touching truncated', () => {
+  const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
+  db.upsertDoc(doc(r,{ fileEvents: events, fileDetail: 'ordered', fileEventsTruncated: true }))
+  const row=db.raw().query('SELECT truncated, file_events_truncated FROM session WHERE uid = ?').get('claude:abc')
+  expect(row).toEqual({ truncated: 0, file_events_truncated: 1 }); db.close()
+})
+test('an event with an unrecognised kind is dropped rather than stored', () => {
+  const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
+  db.upsertDoc(doc(r,{ fileEvents: [{ path: 'a.ts', kind: 'sideways' as FileEventKind, turn: 0 }], fileDetail: 'ordered' }))
+  expect(db.raw().query('SELECT COUNT(*) AS n FROM session_file_event').get()).toEqual({ n: 0 }); db.close()
+})
+test('forget removes a session event log', () => {
+  const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
+  db.upsertDoc(doc(r,{ fileEvents: events, fileDetail: 'ordered' })); db.deleteSession('claude:abc')
+  expect(db.raw().query('SELECT COUNT(*) AS n FROM session_file_event').get()).toEqual({ n: 0 }); db.close()
 })

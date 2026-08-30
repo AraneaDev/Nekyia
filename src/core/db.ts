@@ -42,6 +42,9 @@ export const FILE_EVENT_SCHEMA_VERSION = 4
 /** How long a statement waits for another process's lock; SQLite otherwise gives up instantly. */
 const BUSY_TIMEOUT_MS = 5_000
 
+/** Kinds `writeFileEvents` accepts; anything else is a format this build does not know and is dropped. */
+const FILE_EVENT_KINDS = new Set<string>(['read', 'write', 'edit', 'delete', 'move', 'unknown'])
+
 /** The whole schema as version 1 shipped it, kept verbatim as the first rung of the ladder. */
 const SCHEMA_V1 = `
   CREATE TABLE IF NOT EXISTS meta (
@@ -590,6 +593,7 @@ export class IndexDb {
     for (const path of new Set(doc.files)) insertFile.run(doc.ref.uid, path)
 
     this.writeTurns(doc.ref.uid, doc.dialogue)
+    this.writeFileEvents(doc)
 
     this.db.query('UPDATE session SET hydrated = 1, truncated = ?, degraded = ? WHERE uid = ?')
       .run(doc.truncated ? 1 : 0, doc.degraded ? 1 : 0, doc.ref.uid)
@@ -619,6 +623,43 @@ export class IndexDb {
       if (typeof turn.text !== 'string' || turn.text.length === 0) continue
       insertTurn.run(uid, ordinal++, turn.role, turn.text)
     }
+  }
+
+  /**
+   * Replaces a session's file events, renumbering them from zero.
+   *
+   * The ordinal is assigned here rather than trusted from the reader, so
+   * density is guaranteed in one place. A reader that passes nothing still
+   * clears what an earlier hydration left behind: a stale log would be read as
+   * this session's history. Kinds are validated rather than trusted, because a
+   * manifest-described format decides what a tool is.
+   *
+   * Only writers reach this, and every writing path opens through `open`, which
+   * migrates, so the table always exists by the time this runs.
+   */
+  private writeFileEvents(doc: SessionDoc): void {
+    const uid = doc.ref.uid
+    this.db.query('DELETE FROM session_file_event WHERE uid = ?').run(uid)
+    const insert = this.db.query(
+      'INSERT INTO session_file_event (uid, ordinal, turn, path, kind) VALUES (?, ?, ?, ?, ?)',
+    )
+    let ordinal = 0
+    for (const event of doc.fileEvents ?? []) {
+      if (!event || typeof event.path !== 'string' || event.path.length === 0) continue
+      if (!FILE_EVENT_KINDS.has(event.kind)) continue
+      const turn = typeof event.turn === 'number' && Number.isSafeInteger(event.turn)
+        && event.turn >= 0
+        ? event.turn
+        : null
+      insert.run(uid, ordinal++, turn, event.path, event.kind)
+    }
+    this.db.query(
+      'UPDATE session SET file_detail = ?, file_events_truncated = ? WHERE uid = ?',
+    ).run(
+      doc.fileDetail === 'ordered' ? 'ordered' : 'paths',
+      doc.fileEventsTruncated ? 1 : 0,
+      uid,
+    )
   }
 
   upsertDoc(doc: SessionDoc): void {
@@ -742,6 +783,11 @@ export class IndexDb {
       const deleteTurn = storedSchemaVersion(this.db) >= TURN_SCHEMA_VERSION
         ? this.db.query('DELETE FROM session_turn WHERE uid = ?')
         : null
+      // Same reasoning as deleteTurn: an index stamped below FILE_EVENT_SCHEMA_VERSION
+      // may not have this table, and forget/prune open without migrating.
+      const deleteEvent = storedSchemaVersion(this.db) >= FILE_EVENT_SCHEMA_VERSION
+        ? this.db.query('DELETE FROM session_file_event WHERE uid = ?')
+        : null
       const deleteRef = this.db.query('DELETE FROM session WHERE uid = ?')
 
       for (const value of new Set(values)) {
@@ -752,6 +798,7 @@ export class IndexDb {
         }
         deleteFile.run(value)
         deleteTurn?.run(value)
+        deleteEvent?.run(value)
         deleteRef.run(value)
       }
     })(uids)
