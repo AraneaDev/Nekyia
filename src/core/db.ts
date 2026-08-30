@@ -300,6 +300,15 @@ export interface FileFacet {
   path: string
 }
 
+/** One stored file event, without any content the call carried. */
+export interface FileEventRow {
+  uid: string
+  ordinal: number
+  turn: number | null
+  path: string
+  kind: string
+}
+
 type SearchRow = Omit<SessionRow, 'source_paths' | 'fingerprint' | 'truncated' | 'degraded'>
 
 /** The columns `searchRefs` selects, in the order `SearchRow` declares them. */
@@ -758,6 +767,68 @@ export class IndexDb {
       WHERE path LIKE ? ESCAPE '\\'
       ORDER BY uid, path COLLATE BINARY
     `).all(`%${literal}%`) as FileFacet[]
+  }
+
+  /** One session's recorded file facets, as stored. */
+  fileFacetsForUid(uid: string): string[] {
+    const rows = this.db.query(`
+      SELECT path FROM session_file WHERE uid = ? ORDER BY path COLLATE BINARY
+    `).all(uid) as Array<{ path: string }>
+    return rows.map((row) => row.path)
+  }
+
+  /**
+   * Sessions holding a path that already starts with this absolute prefix.
+   *
+   * A prefix match, not a substring one, so both indexed `path` columns answer
+   * it without a scan. It is only half of a directory's candidates: a session
+   * that named its files relatively is found by its own working directory
+   * instead.
+   */
+  uidsUnderPrefix(prefix: string): string[] {
+    const literal = prefix.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+    const like = `${literal}/%`
+    const events = this.schemaVersion() >= FILE_EVENT_SCHEMA_VERSION
+      ? this.db.query(
+        "SELECT DISTINCT uid FROM session_file_event WHERE path LIKE ? ESCAPE '\\'",
+      ).all(like) as Array<{ uid: string }>
+      : []
+    const files = this.db.query(
+      "SELECT DISTINCT uid FROM session_file WHERE path LIKE ? ESCAPE '\\'",
+    ).all(like) as Array<{ uid: string }>
+    return [...new Set([...events, ...files].map((row) => row.uid))].sort()
+  }
+
+  /** Every stored event for these sessions, in order. Empty on an index below version 4. */
+  fileEventsFor(uids: string[]): FileEventRow[] {
+    if (uids.length === 0 || this.schemaVersion() < FILE_EVENT_SCHEMA_VERSION) return []
+    // Placeholders are generated from the list length, never from its contents.
+    const holes = uids.map(() => '?').join(', ')
+    return this.db.query(`
+      SELECT uid, ordinal, turn, path, kind FROM session_file_event
+      WHERE uid IN (${holes}) ORDER BY uid, ordinal
+    `).all(...uids) as FileEventRow[]
+  }
+
+  /** What each session's reader could see, and whether its log was capped. */
+  fileDetailsFor(uids: string[]): Map<string, { detail: string; eventsTruncated: boolean }> {
+    const out = new Map<string, { detail: string; eventsTruncated: boolean }>()
+    if (uids.length === 0) return out
+    if (this.schemaVersion() < FILE_EVENT_SCHEMA_VERSION) {
+      for (const uid of uids) out.set(uid, { detail: 'unknown', eventsTruncated: false })
+      return out
+    }
+    const holes = uids.map(() => '?').join(', ')
+    const rows = this.db.query(`
+      SELECT uid, file_detail, file_events_truncated FROM session WHERE uid IN (${holes})
+    `).all(...uids) as Array<{ uid: string; file_detail: string; file_events_truncated: number }>
+    for (const row of rows) {
+      out.set(row.uid, {
+        detail: row.file_detail,
+        eventsTruncated: Boolean(row.file_events_truncated),
+      })
+    }
+    return out
   }
 
   deleteSession(uid: string): void {

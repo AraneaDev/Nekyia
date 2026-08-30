@@ -46,7 +46,8 @@ export function recencyDecay(endedAt: number, now: number, halfLifeDays: number)
   return Math.pow(0.5, ageDays / halfLifeDays)
 }
 
-function normalizedPath(value: string): string | null {
+/** Collapses a path to a canonical, lowercase-drive/UNC-aware, slash-normalized form, or null if it names nothing. */
+export function normalizedPath(value: string): string | null {
   const trimmed = value.trim()
   if (!trimmed) return null
 
@@ -111,7 +112,7 @@ function underScope(cwd: string | null, scope: string): boolean {
 }
 
 /** True for a normalized path that already names a root: POSIX, UNC, or a drive letter. */
-function isAbsolutePath(value: string): boolean {
+export function isAbsolutePath(value: string): boolean {
   return value.startsWith('/') || /^[a-z]:\//u.test(value)
 }
 
@@ -122,7 +123,7 @@ function isAbsolutePath(value: string): boolean {
  * a relative facet only means something against the working directory of the
  * session that recorded it. Returns null when nothing can anchor it.
  */
-function resolveFacetPath(value: string, cwd: string | null): string | null {
+export function resolveFacetPath(value: string, cwd: string | null): string | null {
   const facet = normalizedPath(value)
   if (!facet) return null
   if (isAbsolutePath(facet)) return facet
