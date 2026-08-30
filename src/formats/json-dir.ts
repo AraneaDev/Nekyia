@@ -131,7 +131,7 @@ async function readHeadTailSnapshot(
   tailBytes: number,
 ): Promise<{ head: string; tail: string; token: SnapshotToken }> {
   /**
-   * Normalizes a number to a valid positive integer.
+   * Normalizes a number to a non-negative integer, returning 0 as a fallback for non-finite or non-positive inputs.
    */
   const normalized = (value: number): number => Number.isFinite(value) && value > 0
     ? Math.floor(value)

@@ -363,7 +363,7 @@ export function App({
   }
 
   /**
-   * Safely calls the adapter's plan method, returning null on error.
+   * Safely calls the adapter's plan method, returning an object containing the plan and a boolean indicating if an adapter planning exception occurred.
    */
   function planSafely(adapter: Adapter, row: NonNullable<typeof selectedRow>, brief?: string): {
     plan: ExecPlan | null

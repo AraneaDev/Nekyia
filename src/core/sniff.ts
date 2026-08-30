@@ -76,7 +76,7 @@ interface JsonlShape {
 }
 
 /**
- * Checks if a given path is located strictly within a root directory.
+ * Checks if a given path is located within or equal to a root directory.
  */
 function containedBy(root: string, path: string): boolean {
   const rest = relative(root, path)
