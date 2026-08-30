@@ -44,7 +44,8 @@ export async function trackedFiles(dir: string, io: GitIo = defaultIo): Promise<
       stdout: 'pipe',
       stderr: 'ignore',
     })
-    const text = proc.stdout ? await new Response(proc.stdout).text() : ''
+    if (proc.stdout === null) return NOT_CONSULTED
+    const text = await new Response(proc.stdout).text()
     if (await proc.exited !== 0) return NOT_CONSULTED
     const base = dir.replace(/\/+$/u, '')
     const tracked = new Set<string>()

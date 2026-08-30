@@ -29,3 +29,14 @@ test('an empty repository is consulted and tracks nothing', async () => {
   const result=await trackedFiles('/root/proj', io(0, ''))
   expect(result).toEqual({ consulted: true, tracked: new Set() })
 })
+test('a null stdout is unreadable output', async () => {
+  const result=await trackedFiles('/root/proj', {
+    spawn() {
+      return {
+        stdout: null,
+        exited: Promise.resolve(0),
+      }
+    },
+  })
+  expect(result).toEqual({ consulted: false, tracked: new Set() })
+})
