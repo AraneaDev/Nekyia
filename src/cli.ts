@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { runReindex } from './commands/reindex'
 import { runSearch, type SearchOptions } from './commands/search'
 import { runShow } from './commands/show'
+import { parseSince, runTimeline } from './commands/timeline'
 import { parseUid } from './types'
 
 /** The help text, and the single source of truth for the command surface. */
@@ -13,6 +14,7 @@ usage:
   nekyia                        open the picker
   nekyia search <query>         search without the picker
   nekyia blame <path>           list recent sessions that touched this file
+  nekyia timeline [--dir <p>]   what happened to files in a directory, in order
   nekyia last                   resume or re-brief the latest session here
   nekyia index [--rebuild]      refresh the index
   nekyia show <uid>             print a deterministic handover as markdown
@@ -32,9 +34,15 @@ options:
   --max-chars <n>   character budget for show (default 40000)
   --sniff           inspect likely unsupported stores (doctor only)
   --emit-manifest <path>  write a draft for the first sniffed store (doctor only)
+  --dir <path>      directory a timeline covers (default: the current one)
+  --since <when>    30m, 12h, 2d, 3w, or a date such as 2026-08-01
 
 blame takes only --client, --limit, and --json: it always searches every
 directory, newest first, for the one file the path resolves to.
+
+timeline groups events by session because ordering inside a session is exact
+and ordering between them is by end time only. It reads the index, never a
+transcript.
 `
 
 class CliError extends Error {}
@@ -53,6 +61,8 @@ const OPTIONS = {
   sniff: { type: 'boolean' },
   'emit-manifest': { type: 'string' },
   missing: { type: 'boolean' },
+  dir: { type: 'string' },
+  since: { type: 'string' },
 } as const
 
 function parse(args: string[]) {
@@ -117,7 +127,7 @@ async function dispatch(argv: string[]): Promise<number> {
     const { runPick } = await import('./commands/pick')
     return runPick()
   }
-  if (!['index', 'search', 'blame', 'last', 'show', 'doctor', 'forget', 'prune', 'exclude'].includes(subcommand)) {
+  if (!['index', 'search', 'blame', 'timeline', 'last', 'show', 'doctor', 'forget', 'prune', 'exclude'].includes(subcommand)) {
     console.error(`unknown command: ${subcommand}\n`)
     console.error(USAGE)
     return 2
@@ -158,7 +168,7 @@ async function dispatch(argv: string[]): Promise<number> {
   }
   if (subcommand === 'doctor') {
     if (positionals.length > 0) throw new CliError('doctor does not accept positional arguments')
-    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'rebuild', 'yes', 'quiet', 'max-chars', 'missing'])) {
+    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'rebuild', 'yes', 'quiet', 'max-chars', 'missing', 'dir', 'since'])) {
       throw new CliError('only --json, --sniff, and --emit-manifest can be used with doctor')
     }
     if (values['emit-manifest'] !== undefined && values.sniff !== true) {
@@ -185,7 +195,7 @@ async function dispatch(argv: string[]): Promise<number> {
     } catch {
       throw new CliError(`malformed uid: ${positionals[0]}`)
     }
-    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'rebuild', 'yes', 'quiet', 'sniff', 'emit-manifest', 'missing'])) {
+    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'rebuild', 'yes', 'quiet', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
       throw new CliError('only --max-chars can be used with show')
     }
     let maxChars: number | undefined
@@ -197,13 +207,37 @@ async function dispatch(argv: string[]): Promise<number> {
     }
     return runShow({ uid: positionals[0], maxChars })
   }
+  if (subcommand === 'timeline') {
+    if (positionals.length > 0) throw new CliError('timeline takes no positional arguments')
+    if (present(values, [
+      'file', 'sort', 'all', 'rebuild', 'yes', 'quiet', 'max-chars',
+      'sniff', 'emit-manifest', 'missing',
+    ])) {
+      throw new CliError('only --dir, --since, --client, --limit, and --json can be used with timeline')
+    }
+    let since: number | undefined
+    if (values.since !== undefined) {
+      try {
+        since = parseSince(values.since)
+      } catch (error) {
+        throw new CliError(error instanceof Error ? error.message : String(error))
+      }
+    }
+    return runTimeline({
+      dir: resolve(values.dir ?? process.cwd()),
+      since,
+      client: values.client,
+      limit: positiveLimit(values.limit),
+      json: values.json === true,
+    })
+  }
   if (subcommand === 'blame') {
     if (positionals.length !== 1 || !positionals[0]) {
       throw new CliError('blame accepts exactly one path')
     }
     if (present(values, [
       'file', 'sort', 'all', 'rebuild', 'yes', 'quiet', 'max-chars',
-      'sniff', 'emit-manifest', 'missing',
+      'sniff', 'emit-manifest', 'missing', 'dir', 'since',
     ])) {
       throw new CliError('only --client, --limit, and --json can be used with blame')
     }
@@ -221,7 +255,7 @@ async function dispatch(argv: string[]): Promise<number> {
   }
   if (subcommand === 'index') {
     if (positionals.length > 0) throw new CliError('index does not accept positional arguments')
-    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'max-chars', 'sniff', 'emit-manifest', 'missing'])) {
+    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'max-chars', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
       throw new CliError('search options cannot be used with index')
     }
     return runReindex({
@@ -231,7 +265,7 @@ async function dispatch(argv: string[]): Promise<number> {
     })
   }
 
-  if (present(values, ['rebuild', 'yes', 'quiet', 'max-chars', 'sniff', 'emit-manifest', 'missing'])) {
+  if (present(values, ['rebuild', 'yes', 'quiet', 'max-chars', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
     throw new CliError('index options cannot be used with search')
   }
   const sort = values.sort

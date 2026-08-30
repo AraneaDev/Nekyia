@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { formatRow, projectName, relTime, tierGlyph, userPromptText } from '../src/render'
+import { formatRow, formatTimeline, projectName, relTime, tierGlyph, userPromptText } from '../src/render'
 import type { Row } from '../src/core/query'
 
 const NOW = 1_800_000_000_000
@@ -118,4 +118,41 @@ test('an unbounded title is cut to the title column', () => {
   } satisfies Row
   expect(formatRow(row, NOW)).toContain('a'.repeat(120))
   expect(formatRow(row, NOW)).not.toContain('a'.repeat(121))
+})
+
+test('a timeline groups events under their session', () => {
+  const lines=formatTimeline([{
+    ref: { uid:'claude:a', client:'claude', nativeId:'a', cwd:'/root/proj', gitBranch:'main',
+      title:'fix the sse race', startedAt:1000, endedAt:2000, turns:4, parentNativeId:null,
+      tier:'resume', origin:'manifest', missing:false },
+    detail:'ordered', eventsTruncated:false,
+    entries:[
+      { ordinal:0, turn:3, kind:'edit', path:'src/sse.ts', resolved:'/root/proj/src/sse.ts' },
+      { ordinal:1, turn:9, kind:'delete', path:'scratch.ts', resolved:'/root/proj/scratch.ts' },
+    ],
+  }], { dir:'/root/proj', git:{ consulted:true, tracked:new Set(['/root/proj/src/sse.ts']) }, now:2000 })
+  expect(lines.join('\n')).toContain('3  edit    src/sse.ts')
+  expect(lines.join('\n')).toContain('9  delete  scratch.ts')
+  expect(lines.join('\n')).toContain('untracked')
+})
+test('a paths-only session says so instead of showing an order', () => {
+  const lines=formatTimeline([{
+    ref: { uid:'copilot:b', client:'copilot', nativeId:'b', cwd:'/root/proj', gitBranch:null,
+      title:null, startedAt:1000, endedAt:2000, turns:0, parentNativeId:null,
+      tier:'search', origin:'manifest', missing:false },
+    detail:'paths', eventsTruncated:false,
+    entries:[{ ordinal:null, turn:null, kind:'unknown', path:'src/db.ts', resolved:'/root/proj/src/db.ts' }],
+  }], { dir:'/root/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
+  expect(lines.join('\n')).toContain('this client records file names only')
+  expect(lines.join('\n')).not.toContain('untracked')
+})
+test('sessions indexed before file events are counted in the header', () => {
+  const lines=formatTimeline([{
+    ref: { uid:'claude:c', client:'claude', nativeId:'c', cwd:'/root/proj', gitBranch:null,
+      title:null, startedAt:1000, endedAt:2000, turns:0, parentNativeId:null,
+      tier:'resume', origin:'manifest', missing:false },
+    detail:'unknown', eventsTruncated:false,
+    entries:[{ ordinal:null, turn:null, kind:'unknown', path:'x.ts', resolved:'/root/proj/x.ts' }],
+  }], { dir:'/root/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
+  expect(lines.join('\n')).toContain('run "nekyia index"')
 })

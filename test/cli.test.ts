@@ -1,5 +1,7 @@
 import { afterAll, expect, test } from 'bun:test'
+import Database from 'bun:sqlite'
 import { versionText } from '../src/cli'
+import { parseSince } from '../src/commands/timeline'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -341,6 +343,66 @@ test('show rejects missing or malformed uids and invalid budgets cleanly', () =>
     expect(result.exitCode).toBe(2)
     expect(result.stderr.toString()).toContain(args.length === 1 ? 'usage:' : 'error:')
   }
+})
+
+test('since accepts the spans relTime prints', () => {
+  const now=Date.parse('2026-08-30T12:00:00Z')
+  expect(parseSince('2d', now)).toBe(now - 2*86_400_000)
+  expect(parseSince('30m', now)).toBe(now - 30*60_000)
+  expect(parseSince('3w', now)).toBe(now - 21*86_400_000)
+  expect(parseSince('2026-08-01', now)).toBe(Date.parse('2026-08-01T00:00:00Z'))
+})
+test('since rejects what it cannot read', () => {
+  expect(() => parseSince('yesterday')).toThrow('--since')
+})
+test('timeline rejects a positional argument', () => {
+  const result = run(['timeline', 'src/sse.ts'])
+  expect(result.exitCode).toBe(2)
+  expect(result.stderr.toString()).toContain('error:')
+})
+test('timeline rejects flags it cannot honour', () => {
+  const result = run(['timeline', '--sort', 'recent'])
+  expect(result.exitCode).toBe(2)
+  expect(result.stderr.toString()).toContain('error:')
+})
+test('timeline rejects a since it cannot read', () => {
+  const result = run(['timeline', '--since', 'yesterday'])
+  expect(result.exitCode).toBe(2)
+  expect(result.stderr.toString()).toContain('--since')
+})
+
+// `timeline` is the first command to read the file-event tables through
+// `IndexDb.openReadonly`, which never migrates. Nothing else in the suite
+// opens an index stamped below schema version 4 and then reads through it,
+// so the below-version-4 guards in `fileDetailsFor`, `fileEventsFor`, and
+// `uidsUnderPrefix` were never exercised. This reuses the downgrade technique
+// `test/privacy.test.ts`'s `downgradeIndex` uses for `forget` and `prune`:
+// drop what schema version 4 added and restamp `schema_version`, the shape a
+// real index has before its first reindex after this upgrade, then run the
+// command itself and check it answers instead of throwing.
+test('timeline runs cleanly against an index stamped below schema version 4', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+
+  const dbPath = join(env.XDG_DATA_HOME, 'nekyia', 'index.db')
+  const raw = new Database(dbPath)
+  try {
+    raw.exec('DROP TABLE IF EXISTS session_file_event')
+    raw.exec('DROP TABLE IF EXISTS session_turn')
+    raw.exec('ALTER TABLE session DROP COLUMN file_events_truncated')
+    raw.exec('ALTER TABLE session DROP COLUMN file_detail')
+    raw.query('UPDATE meta SET value = ? WHERE key = ?').run('2', 'schema_version')
+  } finally {
+    raw.close()
+  }
+
+  const result = run(['timeline', '--dir', '/root/proj'], env)
+  expect(result.exitCode).toBe(0)
+  expect(result.stderr.toString()).toBe('')
+  // Below schema version 4 the file-event tables and columns are gone, so
+  // every session reads back as `unknown` detail rather than throwing.
+  expect(result.stdout.toString()).toContain('sessions indexed before file events')
+  expect(result.stdout.toString()).toContain('indexed before file events; re-index to fill this in')
 })
 
 test('version names the release and where it came from', () => {
