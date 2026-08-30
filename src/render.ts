@@ -1,4 +1,6 @@
 import type { Row } from './core/query'
+import type { TrackedFiles } from './core/git'
+import type { TimelineSession } from './core/timeline'
 import { boundedDisplayText, padColumns } from './tui/text'
 
 const MIN = 60_000
@@ -93,4 +95,63 @@ export function userPromptText(text: string): string {
   for (const block of HARNESS_BLOCKS) rest = rest.replace(block, ' ')
   rest = rest.trim()
   return INJECTED_SKILL.test(rest) ? '' : rest
+}
+
+const KIND_COLUMNS = 8
+
+/**
+ * Renders a directory's history, grouped by the session that made it.
+ *
+ * The grouping carries the honesty: everything inside a group is in the order
+ * it happened, and only the groups are placed by end time, which the index
+ * knows coarsely. A flat stream would present one ordering that is accurate
+ * only in parts.
+ *
+ * The header names a session count that predates file events only when one
+ * exists, and absence of an `untracked` marker means tracked only when git was
+ * actually consulted, which is why the git line is never omitted.
+ */
+export function formatTimeline(
+  sessions: TimelineSession[],
+  { dir, git, now = Date.now() }: { dir: string; git: TrackedFiles; now?: number },
+): string[] {
+  const base = `${dir.replace(/\/+$/u, '')}/`
+  const entries = sessions.reduce((total, session) => total + session.entries.length, 0)
+  const stale = sessions.filter((session) => session.detail === 'unknown').length
+  const tracked = sessions
+    .flatMap((session) => session.entries)
+    .filter((entry) => git.tracked.has(entry.resolved)).length
+
+  const lines: string[] = [
+    `${dir} · ${sessions.length} sessions · ${entries} events · `
+    + (git.consulted ? `git: ${tracked} of ${entries} tracked` : 'git was not consulted'),
+    'exact order inside a session, end-time order between them',
+  ]
+  if (stale > 0) {
+    lines.push(`${stale} sessions indexed before file events; run "nekyia index"`)
+  }
+
+  for (const session of sessions) {
+    lines.push('')
+    lines.push(formatRow({ ...session.ref, score: 0, collapsed: 0 }, now))
+    if (session.detail === 'paths') {
+      lines.push('     this client records file names only; no operations, no order')
+    }
+    if (session.detail === 'unknown') {
+      lines.push('     indexed before file events; re-index to fill this in')
+    }
+    if (session.eventsTruncated) {
+      lines.push('     event log capped for this session')
+    }
+    for (const entry of session.entries) {
+      const position = entry.turn === null ? '' : String(entry.turn)
+      const kind = entry.kind === 'unknown' ? '?' : entry.kind
+      const path = entry.resolved.startsWith(base)
+        ? entry.resolved.slice(base.length)
+        : entry.resolved
+      const marker = git.consulted && !git.tracked.has(entry.resolved) ? '  untracked' : ''
+      lines.push(`  ${position.padStart(5)}  ${kind.padEnd(KIND_COLUMNS)}${path}${marker}`)
+    }
+  }
+  return lines
 }

@@ -41,6 +41,7 @@ a brief, not a resumed state.
 - **Two-Phase Indexing**: discover cheap fingerprints first, then hydrate only sessions that changed
 - **Fast Local Search**: SQLite FTS5 combines weighted prompt relevance with recency decay
 - **Exact File History**: ask which sessions touched one file, resolved against each session's own directory
+- **Directory Timelines**: see every file operation recorded under a directory, grouped by session, with each path marked against what git already has
 - **Interactive and Scriptable**: use the virtualized Ink picker or plain, JSON-capable CLI commands
 - **Privacy Controls**: forget one session, prune deleted sources, or exclude a directory and everything under it
 - **Extensible Manifests**: describe another client locally and use the conservative sniffer to scaffold a draft
@@ -102,6 +103,11 @@ appeared in indexed tool input; it does not prove that the session modified the 
 `--json` adds `sourcePaths` to every row, so an agent can read the raw transcript
 itself instead of trusting the indexed summary.
 
+`nekyia timeline` covers a directory rather than one file. Ordering inside a session is
+exact; between sessions it is by end time, which the index knows coarsely, so events stay
+grouped by session rather than merged into one stream. A session whose own directory sits
+elsewhere and which named these files relatively is not found, the same limit `blame` has.
+
 The picker opens on the project you are standing in. Started from your home
 directory, from a filesystem root, or from somewhere nothing has been indexed under,
 it opens on the whole index instead, because a scoped list there would be empty.
@@ -162,6 +168,7 @@ gets the same interface rather than a broken one:
 | `nekyia` | Open the interactive picker |
 | `nekyia search <query>` | Search from the terminal, with optional JSON output |
 | `nekyia blame <path>` | List recent sessions that touched this exact file |
+| `nekyia timeline [--dir <path>]` | What happened to files in a directory, in the order it happened |
 | `nekyia last` | Launch the newest visible session in this directory |
 | `nekyia index [--rebuild]` | Refresh fingerprints and changed session content |
 | `nekyia show <uid>` | Print a deterministic handover as Markdown |
