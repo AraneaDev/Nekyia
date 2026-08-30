@@ -10,7 +10,7 @@
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { IndexDb } from '../src/core/db'
-import type { DialogueTurn, SessionRef, Tier } from '../src/types'
+import type { DialogueTurn, FileEvent, SessionRef, Tier } from '../src/types'
 
 const root = process.argv[2] ?? '/tmp/nekyia-demo'
 const HOUR = 3_600_000
@@ -239,16 +239,45 @@ function interleave(prompts: string[], replies: string[]): DialogueTurn[] {
   return turns
 }
 
+/**
+ * Invents a plausible ordered history for a seeded session.
+ *
+ * There are no transcripts behind the demo index, so these cannot be read from
+ * anywhere; they are derived from the file list the seed already carries, which
+ * keeps the two consistent by construction. A file is looked at before it is
+ * changed, tests and documents are written rather than edited, and the turns are
+ * spread across the session so the numbers beside them read like a conversation
+ * rather than a loop counter.
+ *
+ * Without this the picker and the timeline would both show the seeded sessions
+ * as predating file events, and every shot of either would document the
+ * fallback rather than the feature.
+ */
+function eventsFor(seed: Seed, paths: string[]): FileEvent[] {
+  const events: FileEvent[] = []
+  const stride = Math.max(1, Math.floor(seed.turns / Math.max(1, paths.length + 1)))
+  paths.forEach((path, index) => {
+    const turn = index * stride + 2
+    const written = /(?:^|\/)test\//u.test(path) || /\.test\./u.test(path) || path.endsWith('.md')
+    events.push({ path, kind: 'read', turn })
+    events.push({ path, kind: written ? 'write' : 'edit', turn: turn + 1 })
+  })
+  return events
+}
+
 const db = IndexDb.open(join(data, 'index.db'))
 SEEDS.forEach((seed, index) => {
   const ref = seedRef(seed, index)
+  const files = (seed.files ?? []).map((file) => `/home/dev/work/${seed.project}/${file}`)
   db.upsertRef(ref)
   db.upsertDoc({
     ref,
     prompts: seed.prompts ?? [],
     prose: seed.replies ?? [],
     dialogue: interleave(seed.prompts ?? [], seed.replies ?? []),
-    files: (seed.files ?? []).map((file) => `/home/dev/work/${seed.project}/${file}`),
+    files,
+    fileEvents: eventsFor(seed, files),
+    fileDetail: 'ordered',
     truncated: false,
   })
 })

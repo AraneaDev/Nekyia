@@ -108,6 +108,35 @@ exact; between sessions it is by end time, which the index knows coarsely, so ev
 grouped by session rather than merged into one stream. A session whose own directory sits
 elsewhere and which named these files relatively is not found, the same limit `blame` has.
 
+```
+$ nekyia timeline --dir . --since 7d --limit 2
+
+/home/dev/work/api-gateway · 2 sessions · 12 events · git was not consulted
+exact order inside a session, end-time order between them
+
+*  claude      23m  api-gateway       the retry budget is shared across tenants, it should be per tenant
+      2  read    src/gateway/retry-budget.ts
+      3  edit    src/gateway/retry-budget.ts
+      8  read    src/gateway/tenant.ts
+      9  edit    src/gateway/tenant.ts
+     14  read    src/gateway/router.ts
+     15  edit    src/gateway/router.ts
+     20  read    test/retry-budget.test.ts
+     21  write   test/retry-budget.test.ts
+     26  read    docs/rate-limits.md
+     27  write   docs/rate-limits.md
+
+o  codex        6h  api-gateway       add structured logging around the upstream timeout path
+      2  read    src/gateway/logging.ts
+      3  edit    src/gateway/logging.ts
+```
+
+The number beside each operation is the turn it happened on, so it points back into the
+session's own history. Where the directory is a git repository, each path git does not
+already have is marked `untracked`; that is the half worth your attention, because git can
+return the rest. The header says outright when git could not be asked, as it does above,
+since a missing marker would otherwise read as "git has this".
+
 File operations are recorded from the next hydration onward, so sessions already in the
 index list their files without any operations until you run `nekyia index --rebuild`. A
 plain `nekyia index` will not fill them in: it hydrates only sessions whose transcript
