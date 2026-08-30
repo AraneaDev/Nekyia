@@ -376,7 +376,7 @@ export async function discoverLegacy(
 }
 
 /**
- * Collects and orders metadata for all readable JSON files within a directory by their creation time.
+ * Collects and orders metadata for all JSON files within a directory by their creation time, including unreadable entries.
  */
 function orderedJsonMetadata(base: string, directory: string, unit: 'ms' | 's' | 'iso'): {
   rows: NamedJson[]
