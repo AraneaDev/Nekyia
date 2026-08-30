@@ -91,6 +91,36 @@ export interface SessionRef {
 export const MAX_SESSION_FILES = 1024
 
 /**
+ * Per-session ceiling on recorded file events, separate from the path ceiling.
+ *
+ * A session can name few files and operate on them many times, so the two
+ * bounds count different things and each says only what it means: a complete
+ * file list next to a capped event log is a normal, honest state.
+ */
+export const MAX_SESSION_FILE_EVENTS = 4096
+
+/** What a tool call did to the file it named. */
+export type FileEventKind = 'read' | 'write' | 'edit' | 'delete' | 'move' | 'unknown'
+
+/**
+ * One file operation, as the index is willing to know it.
+ *
+ * `turn` counts the dialogue turns recorded before the call, which is the index
+ * `session_turn` uses, so a reader can jump from an event to what was being
+ * said. It counts recorded turns: when assistant prose was dropped over the
+ * byte cap the count sits below the true conversation position, so it is a
+ * position in the indexed dialogue and never a transcript line number.
+ *
+ * No content of any kind appears here. The index says where; the transcript
+ * says what.
+ */
+export interface FileEvent {
+  path: string
+  kind: FileEventKind
+  turn: number | null
+}
+
+/**
  * The expensive half of a session, produced by hydration.
  *
  * Tool output is deliberately absent: it is large, noisy, and likely to
@@ -111,6 +141,25 @@ export interface SessionDoc {
    */
   dialogue?: DialogueTurn[]
   files: string[]
+  /**
+   * The same operations as `files`, kept in the order they happened rather than
+   * deduplicated by path.
+   *
+   * Optional, like `dialogue`: a reader that cannot order its file operations
+   * must not claim it can. `files` keeps its own meaning and its own cap, and
+   * nothing that reads it is affected by this being present or absent.
+   */
+  fileEvents?: FileEvent[]
+  /**
+   * What this reader could see: `ordered` for operations in order, `paths` for
+   * file names only. Absent means `paths`, because a reader running under this
+   * schema would have said `ordered` if it could. The third level, `unknown`,
+   * is reachable only through the migration default, which is what makes it
+   * mean "indexed before file events" rather than "this client never will".
+   */
+  fileDetail?: 'paths' | 'ordered'
+  /** `MAX_SESSION_FILE_EVENTS` stopped the log short. Distinct from `truncated`, which no setting change fixes here. */
+  fileEventsTruncated?: boolean
   /**
    * A size cap stopped the read short: the whole file was over `maxFileBytes`,
    * a running byte budget ran out, or a single value was too large to keep.
