@@ -5,7 +5,7 @@
 **Find the session. Pick up the thread.**
 
 [![Release](https://img.shields.io/github/v/release/AraneaDev/Nekyia?label=release&include_prereleases)](https://github.com/AraneaDev/Nekyia/releases)
-[![Project page](https://img.shields.io/badge/project%20page-aranea--development.nl-0b7285)](https://aranea-development.nl/en/projects/nekyia)
+[![Tool page](https://img.shields.io/badge/tool%20page-aranea--development.nl-0b7285)](https://aranea-development.nl/en/tools/nekyia)
 [![CI](https://img.shields.io/github/actions/workflow/status/AraneaDev/Nekyia/ci.yml?label=CI)](https://github.com/AraneaDev/Nekyia/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/AraneaDev/Nekyia?label=license&color=yellow)](./LICENSE)
 [![Language](https://img.shields.io/github/languages/top/AraneaDev/Nekyia)](https://github.com/AraneaDev/Nekyia)
