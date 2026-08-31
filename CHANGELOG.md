@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.15](https://github.com/AraneaDev/Nekyia/compare/v0.0.14...v0.0.15) (2026-08-31)
+
+
+### Documentation
+
+* point the badge at the renamed /tools section ([#37](https://github.com/AraneaDev/Nekyia/issues/37)) ([8604a12](https://github.com/AraneaDev/Nekyia/commit/8604a128700e14369a2bc25c0c7fbc7e9cf94296))
+
 ## [0.0.14](https://github.com/AraneaDev/Nekyia/compare/v0.0.13...v0.0.14) (2026-08-30)
 
 
