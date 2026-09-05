@@ -42,8 +42,10 @@ export async function runShow(opts: ShowOptions): Promise<number> {
     return 1
   }
 
-  // Like search, show must never turn a missing/deleted index into an empty one.
-  const db = IndexDb.open(path, false)
+  // Printing a handover is a read. A readonly handle cannot migrate, so it
+  // never upgrades the schema on the way, and like search it will not create
+  // an index that a deletion race has removed.
+  const db = IndexDb.openReadonly(path)
   try {
     const brief = buildBrief(db, opts.uid, { maxChars: opts.maxChars })
     if (!brief) {

@@ -826,3 +826,59 @@ test('searching still answers on a broken config, but says the config was not ho
   expect(result.stdout.toString()).toContain('sse reconnect')
   expect(result.stderr.toString()).toContain('hiddenClients')
 })
+
+// Reading is not a writing operation. `doctor`, `last` and `timeline` already
+// open the index readonly; `search` and `show` opened it readwrite and ran the
+// migration ladder, so printing a handover could upgrade the schema underneath
+// the user. The observable half of that is the migration itself: with the file
+// closed cleanly SQLite leaves no WAL behind, and these tests run as root, so
+// neither stray journal files nor a read-only mode bit would tell the two
+// opens apart. What does tell them apart is whether the stamp moved.
+function downgradeIndex(env: Record<string, string>, version: string): void {
+  const raw = new Database(join(env.XDG_DATA_HOME, 'nekyia', 'index.db'))
+  try {
+    raw.exec('DROP TABLE IF EXISTS session_file_event')
+    raw.exec('DROP TABLE IF EXISTS session_turn')
+    raw.exec('ALTER TABLE session DROP COLUMN file_events_truncated')
+    raw.exec('ALTER TABLE session DROP COLUMN file_detail')
+    raw.query('UPDATE meta SET value = ? WHERE key = ?').run(version, 'schema_version')
+  } finally {
+    raw.close()
+  }
+}
+
+function schemaVersion(env: Record<string, string>): string {
+  const raw = new Database(join(env.XDG_DATA_HOME, 'nekyia', 'index.db'))
+  try {
+    return (raw.query('SELECT value FROM meta WHERE key = ?').get('schema_version') as {
+      value: string
+    }).value
+  } finally {
+    raw.close()
+  }
+}
+
+test('search answers on an unmigrated index and leaves it unmigrated', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  downgradeIndex(env, '2')
+
+  const result = run(['search', 'reconnect', '--all'], env)
+  expect(result.exitCode).toBe(0)
+  expect(result.stdout.toString()).toContain('sse reconnect')
+  expect(schemaVersion(env)).toBe('2')
+})
+
+test('show answers on an unmigrated index and leaves it unmigrated', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const uid = JSON.parse(
+    run(['search', 'reconnect', '--all', '--json'], env).stdout.toString(),
+  )[0].uid as string
+  downgradeIndex(env, '2')
+
+  const result = run(['show', uid], env)
+  expect(result.exitCode).toBe(0)
+  expect(result.stdout.toString()).toContain('sse reconnect')
+  expect(schemaVersion(env)).toBe('2')
+})
