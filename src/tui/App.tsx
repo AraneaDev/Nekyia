@@ -94,6 +94,20 @@ export function indexAgeSeverity(ageMs: number): IndexAgeSeverity {
   return 'fresh'
 }
 
+/**
+ * How old the index is, in words that survive their own youngest case.
+ *
+ * `relTime` answers "now" for anything under a minute, which is right on its
+ * own in a column and wrong the moment a suffix is glued to it: "index now old"
+ * contradicts itself, and contradicts the green it is drawn in. The line used to
+ * appear only once an index was an hour stale, so the phrasing had never met the
+ * case that always showing it introduced.
+ */
+function freshlyIndexed(indexedAt: number, now: number): string {
+  const span = relTime(indexedAt, now)
+  return span === 'now' ? 'index just refreshed' : `index ${span} old`
+}
+
 /** The status-line color for each age severity, escalating from confirmation to warning. */
 export const SEVERITY_COLOR: Record<IndexAgeSeverity, string> = {
   fresh: 'green',
@@ -617,7 +631,7 @@ export function App({
   // at every tier, not just once stale, so the color also confirms things are
   // fine rather than only ever warning.
   const indexAge = indexedAt !== undefined && Number.isFinite(indexedAt)
-    ? { text: `index ${relTime(indexedAt, now)} old`, color: SEVERITY_COLOR[indexAgeSeverity(now - indexedAt)] }
+    ? { text: freshlyIndexed(indexedAt, now), color: SEVERITY_COLOR[indexAgeSeverity(now - indexedAt)] }
     : undefined
   // Offered once the index is at least stale, not at every tier: a fresh index
   // has nothing to fix, and offering the key anyway would make it look like it does.

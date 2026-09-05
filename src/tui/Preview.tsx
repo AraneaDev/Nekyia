@@ -53,6 +53,18 @@ function textLines(value: string | null | undefined): string[] {
     .filter(Boolean)
 }
 
+/**
+ * When a session ended, in words that survive their own youngest case.
+ *
+ * `relTime` names a point for anything under a minute and the suffix here wants
+ * a span, so gluing them gave "now ago". Bare in a column "now" is right, which
+ * is why the fix belongs to whoever adds the word rather than to `relTime`.
+ */
+function endedPhrase(endedAt: number, now: number): string {
+  const span = relTime(endedAt, now)
+  return span === 'now' ? 'just now' : `${span} ago`
+}
+
 /** One stored turn, as the history reads it back out of the index. */
 interface PreviewTurn { role: 'user' | 'assistant'; text: string }
 
@@ -258,7 +270,7 @@ export function buildPreviewLines(
     { text: safe(title, headWidth), bold: true },
     {
       text: safe(
-        `${cwd}${branch ? ` · ${branch}` : ''} · ${relTime(row.endedAt, now)} ago`
+        `${cwd}${branch ? ` · ${branch}` : ''} · ${endedPhrase(row.endedAt, now)}`
         + `${turns ? ` · ${turns} turns` : ''}`,
         headWidth,
       ),
