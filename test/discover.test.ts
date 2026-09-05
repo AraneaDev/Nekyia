@@ -369,3 +369,50 @@ test('sidecar entry changes affect only their matching session fingerprint', asy
   expect(added.changed[0]!.sourcePaths).toContain(history)
   db.close()
 })
+
+test('an exclusion reaches an indexed session whose source has already disappeared', async () => {
+  // Exclusions were evaluated only against what a scan rediscovered, so a
+  // session whose transcript was deleted could never be tested against a new
+  // exclusion: it fell to `missing`, which is reversible and keeps the indexed
+  // text searchable. The README promises `index --rebuild` deletes what was
+  // already indexed there, and the stored directory is enough to keep it.
+  const db = IndexDb.open(':memory:')
+  const gone = ref('alpha', 'gone', { cwd: '/root/secret' })
+  db.upsertRef(gone)
+  const result = await scan(db, {
+    ...DEFAULT_CONFIG,
+    exclude: ['/root/secret'],
+  }, [fakeAdapter('alpha', { refs: [] })])
+  expect(result.excluded).toEqual(['alpha:gone'])
+  expect(result.missing).toEqual([])
+  db.close()
+})
+
+test('a gone session outside every exclusion is still only missing, never deleted', async () => {
+  const db = IndexDb.open(':memory:')
+  const gone = ref('alpha', 'gone', { cwd: '/root/work' })
+  db.upsertRef(gone)
+  const result = await scan(db, {
+    ...DEFAULT_CONFIG,
+    exclude: ['/root/secret'],
+  }, [fakeAdapter('alpha', { refs: [] })])
+  expect(result.excluded).toEqual([])
+  expect(result.missing).toEqual(['alpha:gone'])
+  db.close()
+})
+
+test('a rediscovered session is judged on where it is now, not where it was indexed', async () => {
+  // The live directory is the truth. A session that moved out of an excluded
+  // directory must come back rather than be deleted on its stored path.
+  const db = IndexDb.open(':memory:')
+  db.upsertRef(ref('alpha', 'moved', { cwd: '/root/secret' }))
+  const moved = ref('alpha', 'moved', { cwd: '/root/work', fingerprint: 'moved:2' })
+  const result = await scan(db, {
+    ...DEFAULT_CONFIG,
+    exclude: ['/root/secret'],
+  }, [fakeAdapter('alpha', { refs: [moved] })])
+  expect(result.excluded).toEqual([])
+  expect(result.missing).toEqual([])
+  expect(result.changed.map((value) => value.uid)).toEqual(['alpha:moved'])
+  db.close()
+})
