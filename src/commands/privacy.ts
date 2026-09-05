@@ -1,5 +1,5 @@
 import { lstatSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { MAX_CONFIG_ITEMS, indexPath, updateConfig, type Config } from '../config'
 import { IndexDb } from '../core/db'
 import { expandRoot } from '../manifests/load'
@@ -112,13 +112,23 @@ export function addExclude(cfg: Config, glob: string): Config {
  * and would never see a tilde. A pattern without glob syntax is a directory,
  * and `nekyia exclude <dir>` promises the directory and everything beneath it,
  * which Glob's whole-path matching only delivers as two separate patterns.
+ * A relative directory is resolved against `cwd` for the same reason the tilde
+ * is expanded: what it is matched against is always an absolute path.
  */
-export function excludePatterns(glob: string): string[] {
+export function excludePatterns(glob: string, cwd: string = process.cwd()): string[] {
   const expanded = expandRoot(glob)
+  // A pattern is the explicit form and is stored as written. `**/node_modules`
+  // means "anywhere", and anchoring it to one directory would quietly narrow
+  // what was asked for.
   if (GLOB_META.test(expanded)) return [expanded]
   // A trailing slash would otherwise produce a doubled separator that matches
   // neither the directory nor its children.
-  const directory = expanded.replace(/\/+$/, '') || '/'
+  const trimmed = expanded.replace(/\/+$/, '') || '/'
+  // Exclusions are matched against the absolute directory a session recorded,
+  // so a relative one could never match anything: `nekyia exclude secret`
+  // reported success and excluded nothing. A bare directory names a place, and
+  // the place it names is the one the command was run in.
+  const directory = resolve(cwd, trimmed)
   return [directory, join(directory, '**')]
 }
 

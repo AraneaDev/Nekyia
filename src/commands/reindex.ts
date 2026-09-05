@@ -153,9 +153,17 @@ export async function reindexWith(
   if (!quiet && changed.length > 0) process.stderr.write('\n')
   showDiagnostics([...discoveryDiagnostics, ...hydrationDiagnostics], quiet)
   if (!quiet) {
-    console.error(
-      `${discovered.refs.length} sessions, ${changed.length} updated, ${discovered.missing.length} missing`,
-    )
+    // `changed` is what was attempted. A hydration that failed leaves the
+    // previous document in place, so counting it as updated would report work
+    // that did not happen, in the one line most runs are read by.
+    const failed = hydrationDiagnostics.filter(hydrationFailed).length
+    const parts = [
+      `${discovered.refs.length} sessions`,
+      `${changed.length - failed} updated`,
+      ...(failed > 0 ? [`${failed} failed`] : []),
+      `${discovered.missing.length} missing`,
+    ]
+    console.error(parts.join(', '))
   }
   return discoveryDiagnostics.some((diagnostic) => diagnostic.level === 'error')
     || hydrationDiagnostics.some(hydrationFailed)
