@@ -4,7 +4,7 @@ import { buildAdapter, buildAdapters, originFor, type Adapter } from '../core/ad
 import { IndexDb } from '../core/db'
 import { extractionFingerprint, scan } from '../core/discover'
 import { hydrateAll } from '../core/hydrate'
-import { indexPath, loadConfig, type Config } from '../config'
+import { indexPath, loadConfigChecked, type Config } from '../config'
 import { loadManifests } from '../manifests/load'
 import type { Diagnostic, SessionRef } from '../types'
 
@@ -173,7 +173,18 @@ export async function reindexWith(
 
 /** Refreshes fingerprints, then hydrates only the sessions that changed. */
 export async function runReindex(opts: ReindexOptions = {}): Promise<number> {
-  const cfg = loadConfig()
+  // Indexing is the operation that acts on `exclude`, and it acts permanently.
+  // A config that could not be honoured falls back to an empty exclusion list,
+  // so continuing would write the directories the user asked Nekyia to stay out
+  // of. Refuse here, before consent and before IndexDb.open creates anything.
+  const { config: cfg, problem } = loadConfigChecked()
+  if (problem !== null) {
+    if (!opts.quiet) {
+      console.error(`refusing to index: ${problem}`)
+      console.error('fix the config, or move it aside to index with the defaults.')
+    }
+    return 1
+  }
   const adapterSet = opts.adapterSet ?? adaptersForRun()
   // Manifest construction errors make the adapter set incomplete. Refuse before
   // consent and, critically, before IndexDb.open creates any first-run files.
