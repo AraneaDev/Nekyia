@@ -95,7 +95,14 @@ const COPY_PROMPT_CHARS = 65_536
 const COPY_PROMPT_BYTES = 16_384
 const COPY_COMMAND_BYTES = 8_192
 const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
-const CLIPBOARD_CONTROLS = /[\u0000-\u001f\u007f-\u009f]/gu
+/**
+ * Everything a copied prompt must not carry, which is every control but one.
+ *
+ * A newline is a prompt's own shape rather than a terminal instruction, and a
+ * prompt written across several lines is worth pasting as it was written. A
+ * lone carriage return is not spared: it moves a cursor rather than a line.
+ */
+const CLIPBOARD_CONTROLS = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/gu
 const CLIPBOARD_BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f\ufeff]/gu
 const UNSAFE_COMMAND = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f\ufeff]/u
 
@@ -117,7 +124,10 @@ function sanitizePromptForClipboard(text: string): string {
   let sample = text.slice(0, COPY_PROMPT_CHARS)
   const last = sample.charCodeAt(sample.length - 1)
   if (last >= 0xd800 && last <= 0xdbff) sample = sample.slice(0, -1)
-  const safe = sample.replace(CLIPBOARD_CONTROLS, ' ').replace(CLIPBOARD_BIDI, '')
+  const safe = sample
+    .replace(/\r\n/gu, '\n')
+    .replace(CLIPBOARD_CONTROLS, ' ')
+    .replace(CLIPBOARD_BIDI, '')
   const bytes = new TextEncoder().encode(safe)
   if (bytes.byteLength <= COPY_PROMPT_BYTES) return safe
   let end = COPY_PROMPT_BYTES
@@ -428,16 +438,38 @@ export function App({
   }
 
   /**
+   * The first thing the user actually asked, whole.
+   */
+  function firstPromptText(uid: string): string {
+    // The ordered turns are the only place a prompt's own boundaries survive.
+    // The `prompts` facet is every prompt joined by newlines, so its first line
+    // is the first line of the first prompt, and a prompt written across
+    // several lines came back with the rest of itself missing.
+    try {
+      const turn = db.raw().query(`
+        SELECT substr(text, 1, ?) AS text FROM session_turn
+        WHERE uid = ? AND role = 'user' ORDER BY ordinal LIMIT 1
+      `).get(COPY_PROMPT_CHARS, uid) as { text: string | null } | null
+      if (turn?.text) return turn.text
+    } catch {
+      // No turn table, or none that can be read: a session indexed before
+      // ordered turns existed has only the flat facet, and so does one whose
+      // reader records no dialogue. Fall through rather than refuse.
+    }
+    const flat = db.raw().query(`
+      SELECT substr(prompts, 1, ?) AS prompts FROM session_text WHERE uid = ?
+    `).get(COPY_PROMPT_CHARS, uid) as { prompts: string | null } | null
+    return flat?.prompts?.split(/\r?\n/u, 1)[0] ?? ''
+  }
+
+  /**
    * Retrieves and copies the first valid prompt from the selected session to the clipboard.
    */
   function copyPrompt(): void {
     const row = selectedRow
     if (!row) return
     try {
-      const result = db.raw().query(`
-        SELECT substr(prompts, 1, ?) AS prompts FROM session_text WHERE uid = ?
-      `).get(COPY_PROMPT_CHARS, row.uid) as { prompts: string | null } | null
-      const prompt = sanitizePromptForClipboard(result?.prompts?.split(/\r?\n/u, 1)[0] ?? '')
+      const prompt = sanitizePromptForClipboard(firstPromptText(row.uid))
       if (!prompt) { announce('no indexed prompt for this session'); return }
       pendingCopy.current = writeClipboard(prompt, 'first prompt copied')
     } catch {

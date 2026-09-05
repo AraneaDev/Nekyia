@@ -9,7 +9,7 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { DEFAULT_CONFIG } from '../config'
 import type { Config } from '../config'
 import type { Manifest } from '../manifests/load'
-import type { Diagnostic, SessionDoc, SessionRef } from '../types'
+import type { DialogueTurn, Diagnostic, SessionDoc, SessionRef } from '../types'
 import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
 import { collectPaths } from './paths'
 import { parseSqlTimeNullable } from './sqlite-store'
@@ -411,6 +411,10 @@ export async function hydrateLegacy(
 ): Promise<SessionDoc> {
   const prompts: string[] = []
   const prose: string[] = []
+  // Parts arrive under their message's role, so the conversation is there to
+  // record rather than reconstruct. Kept in step with the facets above: a turn
+  // appears exactly when its text was kept.
+  const dialogue: DialogueTurn[] = []
   const files = new Set<string>()
   const legacy = manifest.sqlite?.legacy
   const base = legacy ? safeLegacyBase(root, legacy.path) : null
@@ -499,8 +503,13 @@ export async function hydrateLegacy(
 
       if (part.type === 'text') {
         const text = normalizedString(part.text)
-        if (text !== null && role === 'user') prompts.push(text)
-        else if (text !== null && role === 'assistant' && withinBudget) prose.push(text)
+        if (text !== null && role === 'user') {
+          prompts.push(text)
+          dialogue.push({ role: 'user', text })
+        } else if (text !== null && role === 'assistant' && withinBudget) {
+          prose.push(text)
+          dialogue.push({ role: 'assistant', text })
+        }
       } else if (part.type === 'tool') {
         if (!isObject(part.state)) {
           degraded = true
@@ -519,5 +528,5 @@ export async function hydrateLegacy(
     }
   }
 
-  return { ref, prompts, prose, files: [...files], truncated, degraded }
+  return { ref, prompts, prose, dialogue, files: [...files], truncated, degraded }
 }

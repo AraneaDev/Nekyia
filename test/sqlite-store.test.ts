@@ -852,3 +852,13 @@ test('a revision naming a column the projection does not return falls back and s
   expect(refs[0]!.fingerprint).toBe(refs[1]!.fingerprint)
   expect(diagnostics.some((item) => item.message.includes('revision'))).toBe(true)
 })
+
+test('the sqlite reader records the conversation in order too', async () => {
+  const { refs } = await sqliteStore.discover(opencode, join(FIX, 'opencode'))
+  const ref = refs.find((candidate) => candidate.nativeId === 'ses_aaa')!
+  const doc = await sqliteStore.hydrate(opencode, join(FIX, 'opencode'), ref, DEFAULT_CONFIG)
+  expect(doc.dialogue).toEqual([
+    { role: 'user', text: 'why does the event stream drop' },
+    { role: 'assistant', text: 'The reader is not awaited.' },
+  ])
+})
