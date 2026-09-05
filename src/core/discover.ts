@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto'
 import { type Config, isExcluded } from '../config'
+import type { Manifest } from '../manifests/load'
 import type { Diagnostic, SessionRef } from '../types'
 import type { Adapter, AdapterDiscovery } from './adapter'
 import type { IndexDb } from './db'
@@ -15,6 +17,42 @@ export interface Scan {
    */
   excluded: string[]
   diagnostics: Diagnostic[]
+}
+
+/**
+ * Bumped when a reader starts extracting something different from an unchanged
+ * source: a new field, a different notion of a prompt, a fixed parse.
+ *
+ * Nothing derives this. A change in what the readers keep is a decision someone
+ * made, so it is recorded by hand, the way the schema ladder is.
+ */
+const EXTRACTION_VERSION = 1
+
+/**
+ * What this build would extract from a client's sources, rather than what those
+ * sources are.
+ *
+ * A source fingerprint answers "have the bytes changed", which is not the only
+ * way an indexed document goes out of date: the same bytes yield something else
+ * once the size cap moves, a manifest describes the store differently, or a
+ * reader learns to read more. The two questions are kept apart because they
+ * have different answers and different granularities.
+ *
+ * Deliberately narrow. `halfLifeDays` orders results and changes nothing about
+ * what was read, so re-ranking stays free. `exclude` and `hiddenClients` decide
+ * what is retained rather than what is extracted, and are answered elsewhere in
+ * this pass.
+ */
+export function extractionFingerprint(manifest: Manifest, cfg: Config): string {
+  return createHash('sha256').update(JSON.stringify([
+    EXTRACTION_VERSION,
+    cfg.maxFileBytes,
+    manifest.format,
+    manifest.jsonl ?? null,
+    manifest.sqlite ?? null,
+    manifest.jsonDir ?? null,
+    manifest.sidecar ?? null,
+  ])).digest('hex')
 }
 
 /**
@@ -132,8 +170,28 @@ export async function scan(db: IndexDb, cfg: Config, adapters: Adapter[]): Promi
 
   const refs = [...refsByUid.values()]
   const missingBeforeScan = db.getMissingUids()
+  // A client whose extraction policy moved has every one of its sessions to
+  // read again, however untouched their sources are: what is indexed for them
+  // is not what this build would produce now. `truncated` says as much already,
+  // promising that raising the cap can recover what it dropped, and only a
+  // rebuild was keeping that promise.
+  const restated = new Set(installed
+    .filter((adapter) => {
+      // An index that has never recorded what extracted it says nothing about
+      // the past, and inventing an answer either way is worse than leaving it
+      // alone: claiming it is current risks a stale document, and claiming it
+      // is stale re-reads every transcript on disk the first time this build
+      // runs. Nothing about those sessions' policy has changed, so nothing here
+      // has grounds to re-read them. The value is recorded at the end of this
+      // run, and every later change to it is caught.
+      const recorded = db.getExtraction(adapter.id)
+      return recorded !== null && recorded !== extractionFingerprint(adapter.manifest, cfg)
+    })
+    .map((adapter) => adapter.id))
   const changed = refs.filter((ref) =>
-    known.get(ref.uid) !== ref.fingerprint || missingBeforeScan.has(ref.uid))
+    restated.has(ref.client)
+    || known.get(ref.uid) !== ref.fingerprint
+    || missingBeforeScan.has(ref.uid))
   const indexed = [...known.keys()]
   // Seeing a ref and rejecting it on the exclusion list is a positive
   // observation, so it holds even for a client whose scan was partial.

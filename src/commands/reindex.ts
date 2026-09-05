@@ -2,7 +2,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { buildAdapter, buildAdapters, originFor, type Adapter } from '../core/adapter'
 import { IndexDb } from '../core/db'
-import { scan } from '../core/discover'
+import { extractionFingerprint, scan } from '../core/discover'
 import { hydrateAll } from '../core/hydrate'
 import { indexPath, loadConfig, type Config } from '../config'
 import { loadManifests } from '../manifests/load'
@@ -137,6 +137,18 @@ export async function reindexWith(
       )
     },
   )
+
+  // Recorded only now, and only for a client that got everything it asked for.
+  // The value claims the stored documents were produced by this policy, so a
+  // client with a failed hydration keeps its old one and is asked again next
+  // run rather than being written off as current.
+  const failedClients = new Set(
+    hydrationDiagnostics.filter(hydrationFailed).map((diagnostic) => diagnostic.client),
+  )
+  for (const adapter of adapterSet.adapters) {
+    if (failedClients.has(adapter.id)) continue
+    db.setExtraction(adapter.id, extractionFingerprint(adapter.manifest, cfg))
+  }
 
   if (!quiet && changed.length > 0) process.stderr.write('\n')
   showDiagnostics([...discoveryDiagnostics, ...hydrationDiagnostics], quiet)

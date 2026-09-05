@@ -6,7 +6,7 @@ import { DEFAULT_CONFIG } from '../src/config'
 import type { Adapter } from '../src/core/adapter'
 import { buildAdapter } from '../src/core/adapter'
 import { IndexDb } from '../src/core/db'
-import { scan } from '../src/core/discover'
+import { extractionFingerprint, scan } from '../src/core/discover'
 import { validateManifest } from '../src/manifests/load'
 import type { Diagnostic, SessionRef } from '../src/types'
 
@@ -34,6 +34,17 @@ function ref(client: string, nativeId: string, over: Partial<SessionRef> = {}): 
     sourcePaths: [`/${client}/${nativeId}`],
     fingerprint: `${nativeId}:1`,
     ...over,
+  }
+}
+
+/**
+ * What a completed index run records, so a later scan can tell an index that is
+ * caught up from one that has never been read under this extraction policy.
+ * `reindexWith` does exactly this, per client, once hydration has succeeded.
+ */
+function completePass(db: IndexDb, adapters: Adapter[], cfg = DEFAULT_CONFIG): void {
+  for (const adapter of adapters) {
+    db.setExtraction(adapter.id, extractionFingerprint(adapter.manifest, cfg))
   }
 }
 
@@ -100,6 +111,7 @@ test('nothing is changed on a second scan with no edits', async () => {
   const db = IndexDb.open(':memory:')
   const first = await scan(db, DEFAULT_CONFIG, [claude])
   for (const item of first.changed) db.upsertRef(item)
+  completePass(db, [claude])
   expect((await scan(db, DEFAULT_CONFIG, [claude])).changed).toEqual([])
   db.close()
 })
@@ -201,6 +213,7 @@ test('a returned missing ref is changed even when its fingerprint is unchanged',
   const returned = ref('alpha', 'restored')
   db.upsertRef(returned)
   db.markMissing([returned.uid])
+  completePass(db, [fakeAdapter('alpha')])
 
   const restored = await scan(db, DEFAULT_CONFIG, [fakeAdapter('alpha', { refs: [returned] })])
   expect(restored.changed).toEqual([returned])
@@ -348,6 +361,7 @@ test('sidecar entry changes affect only their matching session fingerprint', asy
     expect(item.sourcePaths).toContain(history)
     db.upsertRef(item)
   }
+  completePass(db, [adapter])
 
   writeFileSync(history, [
     historyLine(firstId, 'a meaningfully longer prompt'),
@@ -414,5 +428,61 @@ test('a rediscovered session is judged on where it is now, not where it was inde
   expect(result.excluded).toEqual([])
   expect(result.missing).toEqual([])
   expect(result.changed.map((value) => value.uid)).toEqual(['alpha:moved'])
+  db.close()
+})
+
+test('raising the size cap makes the sessions it truncated changed again', async () => {
+  // A fingerprint answers "has the source changed", and the source has not. But
+  // what was extracted from it depends on the cap that was in force, so a
+  // session indexed under a small cap holds less than the same source would
+  // yield now. Comparing the source alone leaves that session looking current
+  // for good, and `truncated` promises the opposite: that raising the cap can
+  // recover it.
+  const db = IndexDb.open(':memory:')
+  const indexed = ref('alpha', 'capped')
+  const adapter = fakeAdapter('alpha', { refs: [indexed] })
+
+  const small = { ...DEFAULT_CONFIG, maxFileBytes: 1_024 }
+  const first = await scan(db, small, [adapter])
+  expect(first.changed).toHaveLength(1)
+  for (const item of first.changed) db.upsertRef(item)
+  completePass(db, [adapter], small)
+  expect((await scan(db, small, [adapter])).changed).toEqual([])
+
+  const large = { ...DEFAULT_CONFIG, maxFileBytes: 64 * 1_024 * 1_024 }
+  expect((await scan(db, large, [adapter])).changed.map((item) => item.uid))
+    .toEqual(['alpha:capped'])
+  db.close()
+})
+
+test('a ranking preference is not an extraction policy and re-reads nothing', async () => {
+  // The whole point of separating the two. Changing how results are ordered
+  // must not cost a full re-read of every transcript on disk.
+  const db = IndexDb.open(':memory:')
+  const indexed = ref('alpha', 'ranked')
+  const adapter = fakeAdapter('alpha', { refs: [indexed] })
+
+  const first = await scan(db, DEFAULT_CONFIG, [adapter])
+  for (const item of first.changed) db.upsertRef(item)
+  completePass(db, [adapter])
+
+  const reranked = { ...DEFAULT_CONFIG, halfLifeDays: DEFAULT_CONFIG.halfLifeDays + 30 }
+  expect((await scan(db, reranked, [adapter])).changed).toEqual([])
+  db.close()
+})
+
+test('an index that never recorded an extraction is left alone rather than re-read', async () => {
+  // Every index written before this build knows nothing about what extracted
+  // it. Guessing is worse either way: calling it current risks serving a stale
+  // document, and calling it stale re-reads every transcript on disk the first
+  // time someone upgrades. Nothing about these sessions changed, so nothing
+  // here has grounds to re-read them; the value is recorded at the end of the
+  // run and every later change to it is caught.
+  const db = IndexDb.open(':memory:')
+  const indexed = ref('alpha', 'legacy')
+  db.upsertRef(indexed)
+  const adapter = fakeAdapter('alpha', { refs: [indexed] })
+
+  expect((await scan(db, DEFAULT_CONFIG, [adapter])).changed).toEqual([])
   db.close()
 })
