@@ -205,6 +205,8 @@ export async function runExclude(glob?: string): Promise<number> {
   })
   const stored = patterns.join(' and ')
   console.error(duplicate ? `already excluded ${stored}` : `excluded ${stored}`)
-  console.error('Exclusions apply at index time. Run "nekyia index --rebuild" to drop what is already indexed.')
+  // A plain index is enough: an exclusion hard-deletes what it now covers
+  // before anything else touches the database, whether or not the run rebuilds.
+  console.error('Exclusions apply at index time. Run "nekyia index" to drop what is already indexed.')
   return 0
 }

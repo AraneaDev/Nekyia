@@ -344,7 +344,7 @@ test('privacy CLI validates exact positional and option ownership', () => {
 test('exclude writes a private config atomically, does not duplicate, and announces rebuild', () => {
   const first = run(['exclude', '/root/client-work/**'])
   expect(first.exitCode).toBe(0)
-  expect(first.stderr.toString()).toContain('index --rebuild')
+  expect(first.stderr.toString()).toContain('Run "nekyia index" to drop')
   const path = join(configDir(), 'config.json')
   expect(lstatSync(path).mode & 0o777).toBe(0o600)
   expect(loadConfig().exclude).toEqual(['/root/client-work/**'])

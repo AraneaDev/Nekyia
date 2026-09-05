@@ -281,8 +281,9 @@ that retention explicitly:
 - `nekyia forget <uid>` purges one indexed session
 - `nekyia prune --missing` purges sessions whose source files disappeared
 - `nekyia exclude '/work/private'` adds an exclusion covering that directory and everything
-  under it, expanding a leading `~`, and `nekyia index --rebuild` then deletes what was
-  already indexed there
+  under it, expanding a leading `~` and resolving a relative directory against the one you
+  ran it in, and the next `nekyia index` then deletes what was already indexed there,
+  including sessions whose transcripts have since been deleted
 
 `exclude` and `hiddenClients` are instructions rather than preferences, and the values
 they fall back to are the permissive ones, so a config file Nekyia cannot read would
