@@ -15,6 +15,8 @@ export interface SearchOptions {
   sort?: 'auto' | 'recent' | 'relevance'
   limit?: number
   json?: boolean
+  /** Print only the session ids, so a result found by eye can be passed to `show` or `forget`. */
+  ids?: boolean
 }
 
 /**
@@ -41,6 +43,9 @@ function publicRow(row: ReturnType<typeof query>[number], sourcePaths: string[])
     origin: row.origin,
     score: row.score,
     collapsed: row.collapsed,
+    // Present only when the chain's score was earned by a different session
+    // than the one named here, so `score` is never read as this row's own.
+    ...(row.matchedUid === undefined ? {} : { matchedUid: row.matchedUid }),
     sourcePaths,
   }
 }
@@ -84,6 +89,12 @@ export async function runSearch(opts: SearchOptions = {}): Promise<number> {
         null,
         2,
       ))
+    } else if (opts.ids) {
+      // Nothing but the identifiers, so the output is usable as it stands:
+      // `nekyia search x --ids | head -1 | xargs nekyia show`. A run that
+      // matched nothing prints nothing and still succeeds, which is what a
+      // pipeline wants from an empty result.
+      for (const row of rows) console.log(row.uid)
     } else if (rows.length === 0) {
       console.error('no sessions matched')
     } else {

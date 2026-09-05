@@ -204,7 +204,7 @@ gets the same interface rather than a broken one:
 | Command | What it does |
 | --- | --- |
 | `nekyia` | Open the interactive picker |
-| `nekyia search <query>` | Search from the terminal, with optional JSON output |
+| `nekyia search <query>` | Search from the terminal, with optional JSON or id-only output |
 | `nekyia blame <path>` | List recent sessions that touched this exact file |
 | `nekyia timeline [--dir <path>]` | What happened to files in a directory, in the order it happened |
 | `nekyia last` | Launch the newest visible session in this directory |
@@ -214,6 +214,13 @@ gets the same interface rather than a broken one:
 | `nekyia forget <uid>` | Remove one session and every searchable facet from the index |
 | `nekyia prune --missing` | Remove indexed sessions whose sources disappeared |
 | `nekyia exclude <glob>` | Add an index-time directory exclusion |
+
+`--ids` prints only the session ids, one per line, so a session you picked out by eye
+can be handed straight to another command:
+
+```bash
+nekyia search "sse reconnect" --ids | head -1 | xargs nekyia show
+```
 
 Run `nekyia --help` for search filters, sort modes, limits, and command-specific options.
 
