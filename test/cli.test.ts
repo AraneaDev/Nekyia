@@ -2,7 +2,7 @@ import { afterAll, expect, spyOn, test } from 'bun:test'
 import Database from 'bun:sqlite'
 import { main, planCli, versionText } from '../src/cli'
 import { parseSince } from '../src/commands/timeline'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
@@ -766,4 +766,63 @@ test('a run with nothing to report says so without inventing a failure count', a
 
   expect(lines.find((line) => line.includes('sessions,'))).toBe('1 sessions, 1 updated, 0 missing')
   db.close()
+})
+
+test('indexing refuses a config it cannot honour rather than indexing everything', () => {
+  // The defaults a broken config falls back to carry an empty `exclude`, so
+  // continuing would write exactly the directories the user asked Nekyia to
+  // stay out of, permanently and silently. Refuse before the database exists.
+  const env = environment()
+  mkdirSync(join(env.XDG_CONFIG_HOME, 'nekyia'), { recursive: true })
+  writeFileSync(join(env.XDG_CONFIG_HOME, 'nekyia', 'config.json'), '{not json')
+
+  const result = run(['index', '--yes'], env)
+  expect(result.exitCode).toBe(1)
+  expect(result.stderr.toString()).toContain('config.json')
+  expect(existsSync(join(env.XDG_DATA_HOME, 'nekyia', 'index.db'))).toBe(false)
+})
+
+test('indexing refuses when only the exclusion list is unusable', () => {
+  const env = environment()
+  mkdirSync(join(env.XDG_CONFIG_HOME, 'nekyia'), { recursive: true })
+  writeFileSync(
+    join(env.XDG_CONFIG_HOME, 'nekyia', 'config.json'),
+    JSON.stringify({ exclude: '/root/secret' }),
+  )
+
+  const result = run(['index', '--yes'], env)
+  expect(result.exitCode).toBe(1)
+  expect(result.stderr.toString()).toContain('exclude')
+  expect(existsSync(join(env.XDG_DATA_HOME, 'nekyia', 'index.db'))).toBe(false)
+})
+
+test('indexing is unbothered by a config whose only fault is a preference', () => {
+  const env = environment()
+  mkdirSync(join(env.XDG_CONFIG_HOME, 'nekyia'), { recursive: true })
+  writeFileSync(
+    join(env.XDG_CONFIG_HOME, 'nekyia', 'config.json'),
+    JSON.stringify({ halfLifeDays: 'fourteen' }),
+  )
+
+  const result = run(['index', '--yes'], env)
+  expect(result.exitCode).toBe(0)
+  expect(existsSync(join(env.XDG_DATA_HOME, 'nekyia', 'index.db'))).toBe(true)
+})
+
+test('searching still answers on a broken config, but says the config was not honoured', () => {
+  // Stopping a search over a config typo was never the intent. Saying nothing
+  // was the bug: the results are drawn without the visibility rules the user
+  // wrote, and nothing on screen admits it.
+  const env = environment()
+  expect(run(['index', '--yes'], env).exitCode).toBe(0)
+  mkdirSync(join(env.XDG_CONFIG_HOME, 'nekyia'), { recursive: true })
+  writeFileSync(
+    join(env.XDG_CONFIG_HOME, 'nekyia', 'config.json'),
+    JSON.stringify({ hiddenClients: 42 }),
+  )
+
+  const result = run(['search', 'reconnect', '--all'], env)
+  expect(result.exitCode).toBe(0)
+  expect(result.stdout.toString()).toContain('sse reconnect')
+  expect(result.stderr.toString()).toContain('hiddenClients')
 })

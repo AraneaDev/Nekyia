@@ -269,6 +269,14 @@ that retention explicitly:
   under it, expanding a leading `~`, and `nekyia index --rebuild` then deletes what was
   already indexed there
 
+`exclude` and `hiddenClients` are instructions rather than preferences, and the values
+they fall back to are the permissive ones, so a config file Nekyia cannot read would
+otherwise widen what it holds. Indexing refuses outright on a config whose exclusions
+could not be honoured, before it writes anything, and names the file. Searching still
+answers, because a typo should not cost you your history, but it says on stderr that the
+config was not honoured. A malformed preference, such as `halfLifeDays`, is still just
+ignored for that run.
+
 Nekyia does not promise secret redaction or index encryption. Review `show`, `doctor`,
 and JSON output before pasting it into a public issue.
 

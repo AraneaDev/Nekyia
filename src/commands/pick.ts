@@ -4,7 +4,7 @@ import { render } from 'ink'
 import { buildAdapters } from '../core/adapter'
 import { IndexDb } from '../core/db'
 import { checkPlan, runPlan, type RunResult } from '../core/resume'
-import { indexPath, loadConfig } from '../config'
+import { indexPath, loadConfigChecked, type Config } from '../config'
 import { App, type AppProps } from '../tui/App'
 import { boundedDisplayText } from '../tui/text'
 import type { ExecPlan } from '../types'
@@ -52,7 +52,7 @@ export interface PickDependencies {
   indexExists(path: string): boolean
   needsConsent(): boolean
   indexPath(): string
-  loadConfig: typeof loadConfig
+  loadConfig: () => Config
   buildAdapters: typeof buildAdapters
   openDb(path: string): IndexDb
   cwd(): string
@@ -86,7 +86,17 @@ const defaults: PickDependencies = {
   indexExists: existsSync,
   needsConsent,
   indexPath,
-  loadConfig,
+  /**
+   * Loads the config, saying so when the one on disk could not be honoured.
+   *
+   * The command still runs: a config typo was never meant to stop it. What it
+   * must not do is apply the permissive defaults in silence.
+   */
+  loadConfig: () => {
+    const { config, problem } = loadConfigChecked()
+    if (problem !== null) console.error(`warning: ${problem}`)
+    return config
+  },
   buildAdapters,
   /** Opens the index database for reading. */
   openDb: (path) => IndexDb.open(path, false),

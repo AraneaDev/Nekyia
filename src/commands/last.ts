@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { indexPath, loadConfig, type Config } from '../config'
+import { indexPath, loadConfigChecked, type Config } from '../config'
 import { buildAdapters, type Adapter } from '../core/adapter'
 import { buildBrief } from '../core/brief'
 import { IndexDb } from '../core/db'
@@ -29,7 +29,17 @@ const defaults: LastDependencies = {
   indexPath,
   indexExists: existsSync,
   needsConsent,
-  loadConfig,
+  /**
+   * Loads the config, saying so when the one on disk could not be honoured.
+   *
+   * The command still runs: a config typo was never meant to stop it. What it
+   * must not do is apply the permissive defaults in silence.
+   */
+  loadConfig: () => {
+    const { config, problem } = loadConfigChecked()
+    if (problem !== null) console.error(`warning: ${problem}`)
+    return config
+  },
   buildAdapters,
   /** Opens the index database in readonly mode. */
   openDb: (path) => IndexDb.openReadonly(path),

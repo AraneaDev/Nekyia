@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { indexPath, loadConfig } from '../config'
+import { indexPath, loadConfigChecked } from '../config'
 import { IndexDb } from '../core/db'
 import { query } from '../core/query'
 import { formatRow } from '../render'
@@ -47,7 +47,11 @@ function publicRow(row: ReturnType<typeof query>[number], sourcePaths: string[])
 
 /** Searches from the terminal, printing a table or machine-readable JSON. */
 export async function runSearch(opts: SearchOptions = {}): Promise<number> {
-  const cfg = loadConfig()
+  // A search is never stopped by a config it cannot read, but it does say so:
+  // the results below are drawn without whatever visibility rule was lost, and
+  // nothing else on screen would admit that. Stderr, so `--json` stays clean.
+  const { config: cfg, problem } = loadConfigChecked()
+  if (problem !== null) console.error(`warning: ${problem}`)
   const path = indexPath()
   if (!existsSync(path)) {
     if (opts.json) console.log('[]')

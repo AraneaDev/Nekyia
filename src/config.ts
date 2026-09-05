@@ -56,6 +56,17 @@ const CONFIG_FIELDS = new Set([
  * so the next write simply leaves it out.
  */
 const RETIRED_CONFIG_FIELDS = new Set(['showSniffed'])
+/**
+ * Fields that carry an instruction about what Nekyia may hold or show, rather
+ * than a preference about how it ranks or reads.
+ *
+ * The difference decides what a config nobody can honour means. Losing
+ * `halfLifeDays` costs the user their ranking preference for one run. Losing
+ * `exclude` silently indexes directories they asked Nekyia to stay out of, and
+ * the defaults these fall back to are the permissive ones, so the failure
+ * broadens what is held instead of narrowing it.
+ */
+const POLICY_FIELDS = new Set(['exclude', 'hiddenClients'])
 const LOCK_ATTEMPTS = 50
 const LOCK_WAIT_MS = 10
 const LOCK_STALE_MS = 30_000
@@ -162,7 +173,7 @@ function isFiniteNumber(value: unknown): value is number {
 /**
  * Parses a raw configuration string, optionally throwing errors on unknown or invalid fields.
  */
-function parseConfig(raw: string, strict: boolean): Config {
+function parseConfig(raw: string, strict: boolean, dropped?: string[]): Config {
   const parsed: unknown = JSON.parse(raw)
   const config = freshDefaults()
   if (!isPlainObject(parsed)) {
@@ -186,6 +197,9 @@ function parseConfig(raw: string, strict: boolean): Config {
     if (parsed[key] === undefined) return
     if (!valid(parsed[key])) {
       if (strict) throw new Error(`config field is invalid: ${key}`)
+      // A non-strict read keeps going on the fields it can use, but the caller
+      // still has to learn which instruction it just lost.
+      dropped?.push(key)
       return
     }
     ;(config as unknown as Record<string, unknown>)[key] = copy(parsed[key])
@@ -247,19 +261,66 @@ function ensureSafeDirectory(directory: string): void {
   }
 }
 
+/** A config to work from, and whether the one on disk could actually be honoured. */
+export interface ConfigLoad {
+  config: Config
+  /**
+   * Null when there is no config file, or when the one there was honoured in
+   * full. Otherwise a printable account of what was lost.
+   *
+   * Only the fields in `POLICY_FIELDS` set this. A dropped preference really is
+   * the harmless case the fallback was written for; a dropped instruction is
+   * not, because the value it falls back to is the permissive one.
+   */
+  problem: string | null
+}
+
+/**
+ * Reads the config file, reporting whether it could be honoured.
+ *
+ * A missing, oversized or malformed config must never stop a search, so a
+ * usable config always comes back. What it must not do is pass silently: the
+ * defaults it falls back to include an empty `exclude` and an empty
+ * `hiddenClients`, so a config nobody can read widens what Nekyia indexes and
+ * shows rather than leaving it alone. Callers that are about to write on the
+ * strength of those fields need to know before they do.
+ */
+export function loadConfigChecked(): ConfigLoad {
+  const path = join(configDir(), 'config.json')
+  let raw: string
+  try {
+    raw = readBoundedConfig(path)
+  } catch (error) {
+    // No config is not a broken config: the defaults are the whole intent.
+    if (errorCode(error) === 'ENOENT') return { config: freshDefaults(), problem: null }
+    const detail = error instanceof Error ? error.message : String(error)
+    return { config: freshDefaults(), problem: `${path} could not be read: ${detail}` }
+  }
+
+  const dropped: string[] = []
+  let config: Config
+  try {
+    config = parseConfig(raw, false, dropped)
+  } catch {
+    return { config: freshDefaults(), problem: `${path} is not valid JSON` }
+  }
+
+  const lost = dropped.filter((key) => POLICY_FIELDS.has(key)).sort()
+  return {
+    config,
+    problem: lost.length === 0 ? null : `${path} has an unusable ${lost.join(' and ')}`,
+  }
+}
+
 /**
  * Reads the config file, falling back to defaults rather than failing.
  *
- * A missing, oversized or malformed config must never stop a search: the
- * worst case is that the user's tuning is ignored for this run.
+ * Kept for every caller that has nothing to decide on the answer. A caller that
+ * is about to act on `exclude` or `hiddenClients` wants `loadConfigChecked`,
+ * which says whether those survived the read.
  */
 export function loadConfig(): Config {
-  try {
-    const raw = readBoundedConfig(join(configDir(), 'config.json'))
-    return parseConfig(raw, false)
-  } catch {
-    return freshDefaults()
-  }
+  return loadConfigChecked().config
 }
 
 /** Writes the config atomically, validating and sizing the payload before touching the filesystem. */

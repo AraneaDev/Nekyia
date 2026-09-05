@@ -6,6 +6,7 @@ import {
   loadConfig,
   isExcluded,
   updateConfig,
+  loadConfigChecked,
   DEFAULT_CONFIG,
 } from '../src/config'
 import { mkdtempSync, realpathSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
@@ -168,4 +169,61 @@ test('isExcluded is false for a null cwd', () => {
 test('isExcluded is false for an empty cwd', () => {
   const c = { ...DEFAULT_CONFIG, exclude: ['**'] }
   expect(isExcluded('', c)).toBe(false)
+})
+
+test('an absent config is not a problem: defaults are what the user asked for', () => {
+  const loaded = loadConfigChecked()
+  expect(loaded.problem).toBeNull()
+  expect(loaded.config).toEqual(DEFAULT_CONFIG)
+})
+
+test('a config that cannot be parsed is reported rather than silently replaced', () => {
+  // The defaults this falls back to include an empty `exclude`, so a config
+  // nobody can read broadens what gets indexed instead of narrowing it. The
+  // caller has to be able to tell that apart from having no config at all.
+  mkdirSync(configDir(), { recursive: true })
+  writeFileSync(join(configDir(), 'config.json'), '{not json')
+  const loaded = loadConfigChecked()
+  expect(loaded.problem).toContain('config.json')
+  expect(loaded.config).toEqual(DEFAULT_CONFIG)
+})
+
+test('an invalid privacy field is reported even when the rest of the config is fine', () => {
+  mkdirSync(configDir(), { recursive: true })
+  writeFileSync(join(configDir(), 'config.json'), JSON.stringify({
+    exclude: '/root/secret',
+    halfLifeDays: 30,
+  }))
+  const loaded = loadConfigChecked()
+  expect(loaded.problem).toContain('exclude')
+  // The fields that did parse are still honoured; only the instruction that
+  // was lost makes the config untrustworthy.
+  expect(loaded.config.halfLifeDays).toBe(30)
+  expect(loaded.config.exclude).toEqual([])
+})
+
+test('an invalid hidden client list is reported: visibility is an instruction too', () => {
+  mkdirSync(configDir(), { recursive: true })
+  writeFileSync(join(configDir(), 'config.json'), JSON.stringify({ hiddenClients: 42 }))
+  expect(loadConfigChecked().problem).toContain('hiddenClients')
+})
+
+test('an invalid tuning field is not a problem, which is what the fallback was always for', () => {
+  mkdirSync(configDir(), { recursive: true })
+  writeFileSync(join(configDir(), 'config.json'), JSON.stringify({
+    halfLifeDays: 'fourteen',
+    exclude: ['/root/secret'],
+  }))
+  const loaded = loadConfigChecked()
+  expect(loaded.problem).toBeNull()
+  expect(loaded.config.halfLifeDays).toBe(DEFAULT_CONFIG.halfLifeDays)
+  expect(loaded.config.exclude).toEqual(['/root/secret'])
+})
+
+test('loadConfig still answers with a usable config in every one of those cases', () => {
+  mkdirSync(configDir(), { recursive: true })
+  for (const raw of ['{not json', JSON.stringify({ exclude: 42 })]) {
+    writeFileSync(join(configDir(), 'config.json'), raw)
+    expect(loadConfig()).toEqual(DEFAULT_CONFIG)
+  }
 })
