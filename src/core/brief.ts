@@ -69,12 +69,34 @@ function budgetOf(value: number | undefined): number {
 }
 
 /**
+ * A session's dialogue in the order it was said, or nothing when it has none.
+ *
+ * A session indexed before ordered turns existed, or read by a client that
+ * records none, simply has no answer here, and the caller falls back to the
+ * facets rather than inventing boundaries for them.
+ */
+function readTurns(db: IndexDb, uid: string): Array<{ role: string; text: string }> {
+  try {
+    return db.raw().query(
+      'SELECT role, text FROM session_turn WHERE uid = ? ORDER BY ordinal',
+    ).all(uid) as Array<{ role: string; text: string }>
+  } catch {
+    // No turn table at all: an index opened by a path that cannot migrate is
+    // still readable, and a handover is worth more than an error.
+    return []
+  }
+}
+
+/**
  * Build a deterministic, model-free handover from the privacy-filtered index.
  *
- * The index stores each text facet newline-delimited, so line boundaries are
- * not treated as trustworthy prompt/message boundaries here. Prompt text is
- * carried verbatim (apart from terminal controls); prose is trimmed by its
- * oldest stored lines first. Whatever the budget or the file cap leaves out is
+ * Messages come from the ordered turns when the session has them, so each one
+ * is carried and trimmed whole and is labelled with its position. A session
+ * indexed before those existed has only the newline-joined facets, where the
+ * boundaries are genuinely unknown: it keeps the unlabelled text it really is
+ * and is trimmed by stored line, because numbering lines would invent a
+ * structure the index never recorded. Prompt text is carried verbatim (apart
+ * from terminal controls); the tail is dropped oldest first. Whatever the budget or the file cap leaves out is
  * announced by a marker line, because the receiving model acts on this text and
  * must never read a shortened list as a complete one.
  *
@@ -94,8 +116,23 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
   // A discovered but not yet hydrated row has no safe handover content.
   if (!text) return null
 
-  const prompts = safeText(text.prompts ?? '')
-  const prose = safeText(text.prose ?? '').split('\n').filter((line) => line.length > 0)
+  // The ordered turns are where a message's own boundaries survive; the facets
+  // are those messages joined by newlines, which cannot say where one ended.
+  const turns = readTurns(db, uid)
+  const asked = turns.filter((turn) => turn.role === 'user').map((turn) => safeText(turn.text))
+  const replied = turns
+    .filter((turn) => turn.role === 'assistant')
+    .map((turn) => safeText(turn.text))
+  const labelled = turns.length > 0
+  const prompts = labelled
+    ? asked.map((textOf, index) => `**Prompt ${index + 1}**\n${textOf}`).join('\n\n')
+    : safeText(text.prompts ?? '')
+  // Each entry is one thing the budget may keep or drop whole. With turns that
+  // is a message; without them it is a stored line, which is all there is.
+  const prose = labelled
+    ? replied.map((textOf, index) => `**Reply ${index + 1}**\n${textOf}`)
+      .filter((entry) => entry.length > 0)
+    : safeText(text.prose ?? '').split('\n').filter((line) => line.length > 0)
   // One row past the cap, so a session with exactly FILE_LIMIT files is
   // distinguishable from one the cap truncated. Only the cap is ever rendered.
   const fileRows = db.raw().query(`
@@ -152,7 +189,13 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
     }
     if (proseStart < prose.length) {
       out.push('', '## Where it ended', '')
-      for (let index = proseStart; index < prose.length; index++) out.push(prose[index]!)
+      for (let index = proseStart; index < prose.length; index++) {
+        // A blank line between messages, so a labelled one cannot read as the
+        // continuation of the one above it. Unlabelled lines keep their old
+        // shape: they were never separate messages to begin with.
+        if (labelled && index > proseStart) out.push('')
+        out.push(prose[index]!)
+      }
     } else if (proseOmitted) {
       out.push('', PROSE_OMITTED_LINE)
     }
@@ -228,7 +271,10 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
   if (!filesNeedTrimming && prose.length > 0 && selectedLength + PROSE_HEADING_COST <= budget) {
     let proseCost = PROSE_HEADING_COST
     for (let index = prose.length - 1; index >= 0; index--) {
-      const nextCost = 1 + prose[index]!.length
+      // The joining newline, the entry, and for a labelled message the blank
+      // line that will separate it from the one after it.
+      const separator = labelled && index < prose.length - 1 ? 1 : 0
+      const nextCost = 1 + prose[index]!.length + separator
       if (selectedLength + proseCost + nextCost > budget) break
       proseCost += nextCost
       proseStart = index

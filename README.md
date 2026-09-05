@@ -39,7 +39,7 @@ files they touched, in what order, and whether git is currently tracking them.
 
 - **One Search Surface**: query Claude Code, Codex, GitHub Copilot CLI, opencode, Kilo Code, Codebuff, and Antigravity histories together
 - **Verified Resume**: attach to the selected session by ID only where that exact command was tested
-- **Deterministic Handovers**: start search-tier clients with every indexed user prompt, touched files, branch context, bounded assistant prose, and a note of whatever had to be left out
+- **Deterministic Handovers**: start search-tier clients with every indexed user prompt, each message kept whole and in order, touched files, branch context, bounded assistant prose, and a note of whatever had to be left out
 - **Two-Phase Indexing**: discover cheap fingerprints first, then hydrate only sessions that changed
 - **Fast Local Search**: SQLite FTS5 combines weighted prompt relevance with recency decay
 - **Exact File History**: ask which sessions touched one file, resolved against each session's own directory

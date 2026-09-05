@@ -336,3 +336,119 @@ test('the disclosure lines are priced into the mandatory body, not paid for by t
   plain.close()
   disclosing.close()
 })
+
+/** Seeds a session that also carries the ordered dialogue its facets were built from. */
+function seedWithTurns(db: IndexDb, prompts: string[], prose: string[]) {
+  const ref: SessionRef = {
+    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/root/proj', gitBranch: 'main',
+    title: 'Fix the SSE reconnect race', startedAt: 1_800_000_000_000,
+    endedAt: 1_800_003_600_000, turns: prompts.length + prose.length, parentNativeId: null,
+    tier: 'resume', origin: 'manifest', sourcePaths: ['/x'], fingerprint: 'f',
+  }
+  db.upsertRef(ref)
+  db.upsertDoc({
+    ref,
+    prompts,
+    prose,
+    files: [],
+    truncated: false,
+    dialogue: [
+      ...prompts.map((text) => ({ role: 'user' as const, text })),
+      ...prose.map((text) => ({ role: 'assistant' as const, text })),
+    ],
+  })
+}
+
+test('each message is delimited, so a multi-line one is not read as several', () => {
+  // Both sections were newline-joined blobs. A prompt written across three
+  // lines and three prompts of one line each produced the same text, so the
+  // model acting on the handover could not tell one instruction from the next.
+  const db = IndexDb.open(':memory:')
+  seedWithTurns(db, ['refactor the parser\nkeep the messages\nadd a test', 'then ship it'], [])
+  const brief = buildBrief(db, 'claude:a')!
+
+  expect(brief).toContain('**Prompt 1**\nrefactor the parser\nkeep the messages\nadd a test')
+  expect(brief).toContain('**Prompt 2**\nthen ship it')
+  db.close()
+})
+
+test('the tail is trimmed by whole messages, never mid-sentence', () => {
+  // Trimming by stored line meant a handover could open partway through a
+  // sentence, with nothing saying the start of it was gone.
+  const db = IndexDb.open(':memory:')
+  const long = 'a reply that runs across\nseveral separate lines\nand ends here'
+  seedWithTurns(db, ['ask'], [long, 'the last word'])
+
+  const whole = buildBrief(db, 'claude:a')!
+  expect(whole).toContain(long)
+
+  // A budget with room for the newest message but not the one before it.
+  const tight = buildBrief(db, 'claude:a', { maxChars: whole.length - 20 })!
+  expect(tight).toContain('the last word')
+  expect(tight).not.toContain('several separate lines')
+  // And no fragment of the dropped message survives on its own.
+  expect(tight).not.toContain('and ends here')
+  db.close()
+})
+
+test('a reply keeps its position, so a trimmed tail says what it is the tail of', () => {
+  const db = IndexDb.open(':memory:')
+  seedWithTurns(db, ['ask'], ['first reply', 'second reply', 'third reply'])
+  const brief = buildBrief(db, 'claude:a')!
+  expect(brief).toContain('**Reply 1**\nfirst reply')
+  expect(brief).toContain('**Reply 3**\nthird reply')
+  // Separated, so one message cannot read as the continuation of the last.
+  expect(brief).toContain('first reply\n\n**Reply 2**')
+  db.close()
+})
+
+test('a session with no recorded dialogue claims no boundaries it does not know', () => {
+  // Indexed before ordered turns existed, so where one message ended is simply
+  // not known. Numbering the stored lines would invent a structure the index
+  // never had, which is worse than the blob it really is.
+  const db = IndexDb.open(':memory:')
+  seed(db, ['a prompt\nwrapped over two lines'], ['a reply'])
+  const brief = buildBrief(db, 'claude:a')!
+  expect(brief).toContain('a prompt\nwrapped over two lines')
+  expect(brief).not.toContain('**Prompt 1**')
+  expect(brief).not.toContain('**Reply 1**')
+  db.close()
+})
+
+test('the budget holds exactly for labelled messages, at every size', () => {
+  // The labels and the blank line between messages are real characters, so the
+  // budget has to price them like anything else. A bound that is only usually
+  // right is not a bound.
+  const db = IndexDb.open(':memory:')
+  seedWithTurns(
+    db,
+    ['the one thing I asked'],
+    Array.from({ length: 12 }, (_, index) => `reply ${index} across\ntwo lines of text`),
+  )
+  const whole = buildBrief(db, 'claude:a')!
+
+  for (let maxChars = 0; maxChars <= whole.length + 40; maxChars += 7) {
+    const brief = buildBrief(db, 'claude:a', { maxChars })!
+    // Prompts are never dropped, so a budget below the mandatory body is
+    // exceeded on purpose and says so. Every other budget is a real bound.
+    if (brief.includes('could not be met without dropping user prompts')) continue
+    expect(brief.length).toBeLessThanOrEqual(maxChars)
+  }
+  db.close()
+})
+
+test('a trimmed tail keeps whole messages and never a fragment of the one before', () => {
+  const db = IndexDb.open(':memory:')
+  seedWithTurns(db, ['ask'], ['alpha line one\nalpha line two', 'bravo', 'charlie'])
+  const whole = buildBrief(db, 'claude:a')!
+
+  for (let maxChars = 0; maxChars <= whole.length; maxChars += 3) {
+    const brief = buildBrief(db, 'claude:a', { maxChars })!
+    // Either a message is present with its label and all of its lines, or it
+    // is absent entirely. A half-message is what trimming by line produced.
+    if (brief.includes('alpha line two')) {
+      expect(brief).toContain('**Reply 1**\nalpha line one\nalpha line two')
+    }
+  }
+  db.close()
+})
