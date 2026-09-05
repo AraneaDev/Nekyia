@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.0.16](https://github.com/AraneaDev/Nekyia/compare/v0.0.15...v0.0.16) (2026-09-05)
+
+
+### Features
+
+* **picker:** color the index's age and offer to fix it ([b6967d0](https://github.com/AraneaDev/Nekyia/commit/b6967d0b9e5fc66ad6e1929f44579f5f56348776))
+* **search:** attribute a collapsed score, and print ids for the commands that need them ([c43e6b7](https://github.com/AraneaDev/Nekyia/commit/c43e6b70b94e71ff763124c7ad756a14dee0b4cb))
+
+
+### Fixes
+
+* **brief:** carry and trim a handover by whole messages, and say where each ends ([971adef](https://github.com/AraneaDev/Nekyia/commit/971adef2b33f8880c0c3a1fa8e274210a533336e))
+* **config:** stop a config nobody can read from widening what is indexed ([3eafceb](https://github.com/AraneaDev/Nekyia/commit/3eafcebe15b1f2ba08b412479bc6141bf4e9a8aa))
+* copy a whole first prompt, and record ordered turns in every reader ([239b1dc](https://github.com/AraneaDev/Nekyia/commit/239b1dc3bafe87522b644bf861bf8f8a92d32861))
+* **picker:** stop a late clipboard fallback writing into the client's terminal ([c6ca018](https://github.com/AraneaDev/Nekyia/commit/c6ca018ca03b6e2dc18ee2e5a42454e5a67ba3e6))
+* re-read a session when what would be extracted from it has changed ([c536c4f](https://github.com/AraneaDev/Nekyia/commit/c536c4f1fa83ef6e08d06dec931f736b01622494))
+* resolve relative exclusions, count what indexing committed, read a sidecar once ([954b99a](https://github.com/AraneaDev/Nekyia/commit/954b99ab6619e7bed6c19e00cb047ac7d859ff4f))
+* **sqlite:** notice a write-ahead commit, and fingerprint a session on its own row ([591978e](https://github.com/AraneaDev/Nekyia/commit/591978ef35cfd2cdac2f497e3a8dac097c45bc9d))
+* stop losing indexed data to a read failure and to a late exclusion ([58b810c](https://github.com/AraneaDev/Nekyia/commit/58b810cdfa45a543ecd9ce755431cbfca454e69a))
+* stop search and show migrating the index they are only reading ([28a7384](https://github.com/AraneaDev/Nekyia/commit/28a7384d7eec64ba5c2e4895bef11b47da34abec))
+
+
+### Documentation
+
+* correct what a plain index already does about exclusions ([bea2c60](https://github.com/AraneaDev/Nekyia/commit/bea2c602aae5c1b747b5f96186c6b2c1cf7540e1))
+* regenerate the README screenshots for the new status line ([e528f23](https://github.com/AraneaDev/Nekyia/commit/e528f23e2178a839216112dfbdbff7b0247c6d12))
+
+
+### Tests
+
+* **cli:** pin the exit code of every rejected invocation, not just its message ([8bbc9de](https://github.com/AraneaDev/Nekyia/commit/8bbc9de1dbc4313a8801ca77c9ba87365a040235))
+* **cli:** state the argument contract that --ids added to it ([ea3b995](https://github.com/AraneaDev/Nekyia/commit/ea3b9951f75f7879f718b2cdd374f079eb1fe319))
+* **config:** time the lock wait, not the interpreter that starts around it ([a2100ff](https://github.com/AraneaDev/Nekyia/commit/a2100ffe5a182bf5cfff7d9d8bfd82ef1436dc8b))
+
+
+### Refactoring
+
+* **cli:** decide the argument contract apart from running it ([ac9de20](https://github.com/AraneaDev/Nekyia/commit/ac9de20809e2e8f478556e2283cc9fa8a6564d35))
+
 ## [0.0.15](https://github.com/AraneaDev/Nekyia/compare/v0.0.14...v0.0.15) (2026-08-31)
 
 
