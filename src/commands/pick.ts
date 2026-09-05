@@ -140,14 +140,32 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
   let requiresSetup: boolean
   try {
     requiresSetup = deps.needsConsent() || !deps.indexExists(path)
+    // Opt-in only: an unset threshold changes nothing, and an unreadable age is
+    // left alone rather than guessed at, the same restraint the picker's own
+    // status line uses for the same value.
+    if (!requiresSetup) {
+      const threshold = deps.loadConfig().autoReindexAfterHours
+      const indexedAt = threshold === undefined ? undefined : deps.indexedAt(path)
+      if (threshold !== undefined && indexedAt !== undefined
+        && deps.now() - indexedAt >= threshold * 3_600_000) {
+        requiresSetup = true
+      }
+    }
   } catch (error) {
     deps.error(`could not inspect first-run state: ${message(error)}`)
     return 1
   }
+  // A run that leaves every session already up to date never rewrites the
+  // index file, so its mtime can survive a reindex untouched. The moment a
+  // requested refresh actually completes is what "how old is this" means from
+  // here on, not whatever `indexedAt` still reads off a file that had nothing
+  // new to write.
+  let refreshedAt: number | undefined
   if (requiresSetup) {
     let code: number
     try {
       code = await deps.ensureIndex()
+      refreshedAt = deps.now()
     } catch (error) {
       deps.error(`could not build the session index: ${message(error)}`)
       return 1
@@ -192,36 +210,62 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
   let pending: ExecPlan | null = null
   let pendingCopy: Promise<void> | null = null
   let lifecycleError: unknown
-  try {
-    const cfg = deps.loadConfig()
-    const { adapters } = deps.buildAdapters()
-    picker = deps.mount({
-      db,
-      cfg,
-      adapters,
-      cwd: deps.cwd(),
-      now: deps.now(),
-      indexedAt: deps.indexedAt(path),
-      /** Captures the chosen execution plan and optional copy task when the user selects a session. */
-      onExec: (plan, copy) => {
-        if (pending) return
-        pending = plan
-        pendingCopy = copy ?? null
-      },
-    })
-    await picker.waitUntilExit()
-  } catch (error) {
-    lifecycleError = error
-  } finally {
+  // A manual reindex exits the picker rather than refreshing in place: Ink owns
+  // the alternate screen, and `ensureIndex`'s progress output is written for a
+  // plain terminal, so the two cannot share a frame. Closing and reopening the
+  // index around it is what lets the same `mount` be asked for again with a
+  // fresh `indexedAt`, instead of duplicating the picker's own lifecycle here.
+  for (;;) {
+    let reindexRequested = false
     try {
-      picker?.unmount()
+      const cfg = deps.loadConfig()
+      const { adapters } = deps.buildAdapters()
+      picker = deps.mount({
+        db,
+        cfg,
+        adapters,
+        cwd: deps.cwd(),
+        now: deps.now(),
+        indexedAt: refreshedAt ?? deps.indexedAt(path),
+        /** Captures the chosen execution plan and optional copy task when the user selects a session. */
+        onExec: (plan, copy) => {
+          if (pending) return
+          pending = plan
+          pendingCopy = copy ?? null
+        },
+        /** Marks a manual reindex requested, so the loop refreshes the index instead of exiting. */
+        onReindex: () => { reindexRequested = true },
+      })
+      await picker.waitUntilExit()
     } catch (error) {
-      lifecycleError ??= error
+      lifecycleError = error
+    } finally {
+      try {
+        picker?.unmount()
+      } catch (error) {
+        lifecycleError ??= error
+      }
+      try {
+        db.close()
+      } catch (error) {
+        lifecycleError ??= error
+      }
+    }
+
+    if (lifecycleError || pending || !reindexRequested) break
+
+    try {
+      await deps.ensureIndex()
+      refreshedAt = deps.now()
+    } catch (error) {
+      deps.error(`could not refresh the session index: ${message(error)}`)
+      return 1
     }
     try {
-      db.close()
+      db = deps.openDb(path)
     } catch (error) {
-      lifecycleError ??= error
+      deps.error(`could not reopen the session index: ${message(error)}`)
+      return 1
     }
   }
 

@@ -192,7 +192,15 @@ deterministic handover, and starts a new client session with that context.
 | `tab` | Widen to everywhere, or narrow to the project under the cursor |
 | `ctrl+f` | Cycle the clients your index actually holds |
 | `ctrl+p` / `ctrl+y` | Copy the opening prompt, or the command that would run |
+| `ctrl+r` | Reindex now; offered once the index has gone stale |
 | `esc` | Back out of a confirmation, or close the history, or quit |
+
+The status line always names the index's age, colored green, yellow, or red as it
+goes from fresh to stale to very stale. `ctrl+r` appears in the key hints, and works,
+only once it has gone stale: it exits the picker, reindexes on the normal screen where
+its progress can print, and reopens the picker on the result. Set `autoReindexAfterHours`
+in the config file to have this happen on its own once the index crosses that age;
+`0` reindexes on every open.
 
 The picker lays itself out against the terminal it is drawn in, so a narrow window
 gets the same interface rather than a broken one:

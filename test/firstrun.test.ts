@@ -21,6 +21,7 @@ import {
 } from '../src/commands/firstrun'
 import { runReindex } from '../src/commands/reindex'
 import { runPick } from '../src/commands/pick'
+import { DEFAULT_CONFIG } from '../src/config'
 import { runSearch } from '../src/commands/search'
 import { runShow } from '../src/commands/show'
 import type { Adapter } from '../src/core/adapter'
@@ -532,4 +533,136 @@ test('picker gates on consent even when an index file already exists', async () 
     error: (message) => { throw new Error(message) },
   })).toBe(0)
   expect(ensured).toBe(1)
+})
+
+test('auto-reindex on open refreshes an already-consented index once it crosses the configured age', async () => {
+  const NOW = 1_800_000_000_000
+  const events: string[] = []
+  const db = { close: () => { events.push('close') } } as unknown as IndexDb
+  const code = await runPick({
+    isTTY: () => true,
+    needsConsent: () => false,
+    indexPath: () => '/index.db',
+    indexExists: () => true,
+    loadConfig: () => ({ ...DEFAULT_CONFIG, autoReindexAfterHours: 1 }),
+    now: () => NOW,
+    indexedAt: () => NOW - 2 * 3_600_000,
+    ensureIndex: async () => { events.push('reindex'); return 0 },
+    openDb: () => db,
+    mount: () => ({
+      waitUntilExit: async () => { events.push('pick') },
+      unmount: () => { events.push('unmount') },
+    }),
+    error: (message) => { throw new Error(message) },
+  })
+  expect(code).toBe(0)
+  expect(events).toEqual(['reindex', 'pick', 'unmount', 'close'])
+})
+
+test('a startup auto-reindex that changes nothing on disk still opens the picker on a fresh reading', async () => {
+  const NOW = 1_800_000_000_000
+  let seenIndexedAt: number | undefined
+  const db = { close: () => {} } as unknown as IndexDb
+  const code = await runPick({
+    isTTY: () => true,
+    needsConsent: () => false,
+    indexPath: () => '/index.db',
+    indexExists: () => true,
+    loadConfig: () => ({ ...DEFAULT_CONFIG, autoReindexAfterHours: 1 }),
+    now: () => NOW,
+    indexedAt: () => NOW - 999 * 3_600_000,
+    ensureIndex: async () => 0,
+    openDb: () => db,
+    mount: (props) => {
+      seenIndexedAt = props.indexedAt
+      return { waitUntilExit: async () => {}, unmount: () => {} }
+    },
+    error: (message) => { throw new Error(message) },
+  })
+  expect(code).toBe(0)
+  expect(seenIndexedAt).toBe(NOW)
+})
+
+test('auto-reindex on open leaves a younger-than-configured index alone', async () => {
+  const NOW = 1_800_000_000_000
+  let ensured = 0
+  const db = { close: () => {} } as unknown as IndexDb
+  const code = await runPick({
+    isTTY: () => true,
+    needsConsent: () => false,
+    indexPath: () => '/index.db',
+    indexExists: () => true,
+    loadConfig: () => ({ ...DEFAULT_CONFIG, autoReindexAfterHours: 24 }),
+    now: () => NOW,
+    indexedAt: () => NOW - 3_600_000,
+    ensureIndex: async () => { ensured += 1; return 0 },
+    openDb: () => db,
+    mount: () => ({ waitUntilExit: async () => {}, unmount: () => {} }),
+    error: (message) => { throw new Error(message) },
+  })
+  expect(code).toBe(0)
+  expect(ensured).toBe(0)
+})
+
+test('auto-reindex stays off when unconfigured, no matter how old the index is', async () => {
+  const NOW = 1_800_000_000_000
+  let ensured = 0
+  const db = { close: () => {} } as unknown as IndexDb
+  const code = await runPick({
+    isTTY: () => true,
+    needsConsent: () => false,
+    indexPath: () => '/index.db',
+    indexExists: () => true,
+    loadConfig: () => DEFAULT_CONFIG,
+    now: () => NOW,
+    indexedAt: () => NOW - 999 * 3_600_000,
+    ensureIndex: async () => { ensured += 1; return 0 },
+    openDb: () => db,
+    mount: () => ({ waitUntilExit: async () => {}, unmount: () => {} }),
+    error: (message) => { throw new Error(message) },
+  })
+  expect(code).toBe(0)
+  expect(ensured).toBe(0)
+})
+
+test('autoReindexAfterHours of zero reindexes on every open', async () => {
+  const NOW = 1_800_000_000_000
+  let ensured = 0
+  const db = { close: () => {} } as unknown as IndexDb
+  const code = await runPick({
+    isTTY: () => true,
+    needsConsent: () => false,
+    indexPath: () => '/index.db',
+    indexExists: () => true,
+    loadConfig: () => ({ ...DEFAULT_CONFIG, autoReindexAfterHours: 0 }),
+    now: () => NOW,
+    indexedAt: () => NOW - 1_000,
+    ensureIndex: async () => { ensured += 1; return 0 },
+    openDb: () => db,
+    mount: () => ({ waitUntilExit: async () => {}, unmount: () => {} }),
+    error: (message) => { throw new Error(message) },
+  })
+  expect(code).toBe(0)
+  expect(ensured).toBe(1)
+})
+
+test('auto-reindex is not guessed when the index age itself cannot be read', async () => {
+  const NOW = 1_800_000_000_000
+  let ensured = 0
+  const db = { close: () => {} } as unknown as IndexDb
+  const code = await runPick({
+    isTTY: () => true,
+    needsConsent: () => false,
+    indexPath: () => '/index.db',
+    indexExists: () => true,
+    loadConfig: () => ({ ...DEFAULT_CONFIG, autoReindexAfterHours: 1 }),
+    now: () => NOW,
+    indexedAt: () => undefined,
+    ensureIndex: async () => { ensured += 1; return 0 },
+    openDb: () => db,
+    mount: () => ({ waitUntilExit: async () => {}, unmount: () => {} }),
+    error: (message) => { throw new Error(message) },
+  })
+  expect(code).toBe(0)
+  expect(ensured).toBe(0)
 })
