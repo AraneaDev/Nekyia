@@ -764,3 +764,91 @@ test('a tool input that survives the size cap but will not parse degrades the do
   expect(doc.truncated).toBe(false)
   expect(doc.degraded).toBe(true)
 })
+/**
+ * Builds a two-session store in WAL mode, checkpointed so the main file has
+ * settled the way an idle client's store looks.
+ */
+function walStore(): { root: string; path: string; write: (sql: string, ...args: string[]) => void } {
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-wal-'))
+  tempDirs.push(root)
+  const path = join(root, 'store.db')
+  const db = new Database(path, { readwrite: true, create: true })
+  db.exec('PRAGMA journal_mode=WAL')
+  db.exec('CREATE TABLE session (id TEXT PRIMARY KEY, title TEXT, time_updated INTEGER)')
+  db.query('INSERT INTO session VALUES (?, ?, ?)').run('one', 'first', 1_000)
+  db.query('INSERT INTO session VALUES (?, ?, ?)').run('two', 'second', 1_000)
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  return {
+    root,
+    path,
+    write: (sql, ...args) => { db.query(sql).run(...args) },
+  }
+}
+
+function walManifest(root: string, revision?: string) {
+  return validateManifest({
+    schema: 1, id: 'walclient', name: 'WAL client', roots: [root],
+    format: 'sqlite-store', tier: 'search',
+    sqlite: {
+      file: 'store.db',
+      sessions: 'SELECT id AS id, title AS title, time_updated AS ended_at FROM session',
+      timeUnit: 'ms',
+      ...(revision === undefined ? {} : { revision }),
+    },
+  })
+}
+
+async function fingerprints(manifest: ReturnType<typeof walManifest>, root: string) {
+  const { refs } = await sqliteStore.discover(manifest, root)
+  return new Map(refs.map((ref) => [ref.nativeId, ref.fingerprint]))
+}
+
+test('a commit that lives only in the write-ahead log still changes the fingerprint', async () => {
+  // SQLite can commit into the -wal file without touching the main database,
+  // so a fingerprint taken from the main file alone reads identically before
+  // and after a real edit. The session is then never re-hydrated and the index
+  // keeps serving text the source no longer has.
+  const store = walStore()
+  const manifest = walManifest(store.root)
+  const before = await fingerprints(manifest, store.root)
+
+  store.write('UPDATE session SET title = ?, time_updated = ? WHERE id = ?', 'edited', '2000', 'one')
+
+  const after = await fingerprints(manifest, store.root)
+  expect(after.get('one')).not.toBe(before.get('one'))
+})
+
+test('without a declared revision every session in a store shares one fingerprint', async () => {
+  // The safe default. A store that cannot promise its session rows move when a
+  // session changes is fingerprinted as a whole, so a change anywhere re-reads
+  // everything rather than risking a change nobody noticed.
+  const store = walStore()
+  const prints = await fingerprints(walManifest(store.root), store.root)
+  expect(prints.get('one')).toBe(prints.get('two'))
+})
+
+test('a declared revision fingerprints each session on its own row', async () => {
+  const store = walStore()
+  const manifest = walManifest(store.root, 'ended_at')
+  const before = await fingerprints(manifest, store.root)
+  expect(before.get('one')).not.toBe(before.get('two'))
+
+  store.write('UPDATE session SET title = ?, time_updated = ? WHERE id = ?', 'edited', '2000', 'one')
+
+  const after = await fingerprints(manifest, store.root)
+  // The edited session is re-read, and the untouched one is left alone, which
+  // is the whole point of asking a store for a per-session revision.
+  expect(after.get('one')).not.toBe(before.get('one'))
+  expect(after.get('two')).toBe(before.get('two'))
+})
+
+test('a revision naming a column the projection does not return falls back and says so', async () => {
+  // A typo in a manifest must not quietly turn change detection off. Falling
+  // back to the store-wide fingerprint costs re-reads; trusting a column that
+  // is not there would cost updates nobody sees.
+  const store = walStore()
+  const manifest = walManifest(store.root, 'no_such_column')
+  const { refs, diagnostics } = await sqliteStore.discover(manifest, store.root)
+  expect(refs[0]!.fingerprint).toBe(refs[1]!.fingerprint)
+  expect(diagnostics.some((item) => item.message.includes('revision'))).toBe(true)
+})
