@@ -6,6 +6,7 @@ import { IndexDb } from '../core/db'
 import { checkPlan, runPlan, type RunResult } from '../core/resume'
 import { indexPath, loadConfigChecked, type Config } from '../config'
 import { App, type AppProps } from '../tui/App'
+import { releaseTerminal } from '../tui/clipboard'
 import { boundedDisplayText } from '../tui/text'
 import type { ExecPlan } from '../types'
 import { runReindex } from './reindex'
@@ -235,6 +236,10 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
   // escape sequence to stdout, which the launched client would otherwise receive,
   // and the helper process dies with this one when the launch replaces it.
   if (pendingCopy) await settleWithin(pendingCopy, CLIPBOARD_DRAIN_MS)
+  // The wait above is bounded, so a copy can still be in flight here. Past this
+  // line the terminal belongs to the client, and a helper that fails later must
+  // not fall back to writing an escape sequence into it.
+  releaseTerminal()
 
   let checked: RunResult
   try {

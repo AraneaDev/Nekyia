@@ -74,6 +74,46 @@ async function sendOsc52(runtime: ClipboardRuntime, bytes: Uint8Array): Promise<
   return 'sent'
 }
 
+/** Whether the terminal an escape sequence would go to is still this process's to write on. */
+export interface TerminalOwnership {
+  owned: boolean
+}
+
+/**
+ * This process's own terminal, owned until a client is launched onto it.
+ *
+ * The picker waits briefly for a copy to finish before launching, and then
+ * launches anyway. Waiting is not ownership: a helper that hangs past the drain
+ * and only then fails would fall back to OSC 52 and write into a terminal the
+ * client is already drawing on. So the handover is stated rather than timed.
+ *
+ * One-way, because nothing hands the terminal back inside a run. It is a value
+ * rather than a module flag so a test can own one of its own and not leave the
+ * process latched for everything that runs after it.
+ */
+const hostTerminal: TerminalOwnership = { owned: true }
+
+/** Marks a terminal as handed over, after which no escape sequence is written to it. */
+export function releaseTerminal(terminal: TerminalOwnership = hostTerminal): void {
+  terminal.owned = false
+}
+
+/**
+ * Writes a sequence to the terminal, unless it has been handed to a client.
+ *
+ * A dropped sequence costs the copy. Writing it into another program's screen
+ * costs that program's rendering, and the user has already moved on to it.
+ */
+export function writeTtySequence(
+  sequence: string,
+  terminal: TerminalOwnership = hostTerminal,
+): Promise<void> {
+  if (!terminal.owned) return Promise.resolve()
+  return new Promise<void>((resolve, reject) => {
+    process.stdout.write(sequence, (error) => error ? reject(error) : resolve())
+  })
+}
+
 const defaultRuntime: ClipboardRuntime = {
   platform: process.platform,
   env: process.env,
@@ -95,12 +135,7 @@ const defaultRuntime: ClipboardRuntime = {
     return await proc.exited
   },
   isTTY: process.stdout.isTTY === true,
-  /**
-   * Writes a sequence directly to the standard output terminal.
-   */
-  writeTty: (sequence) => new Promise<void>((resolve, reject) => {
-    process.stdout.write(sequence, (error) => error ? reject(error) : resolve())
-  }),
+  writeTty: writeTtySequence,
 }
 
 /** Build a clipboard backend without ever passing copied text through a shell. */
