@@ -1616,7 +1616,7 @@ test('a short terminal spends its rows on the list rather than on decoration', a
     expect(frame.split('\n').length).toBeLessThanOrEqual(rows)
     // Whatever else is dropped, the preview stays: this line is drawn nowhere
     // but the pane under the list.
-    expect(frame).toContain('/root/proj · main · now ago')
+    expect(frame).toContain('/root/proj · main · just now')
     // The rule is decoration, so it is the first thing a short terminal loses.
     const hasRule = frame.split('\n').some((line) => /^─+$/u.test(line.trim()))
     expect(hasRule).toBe(rows >= 16)
@@ -1901,6 +1901,39 @@ test('the first prompt is the first user turn, not the first turn', async () => 
   await tick()
 
   expect(copied).toEqual(['what I actually asked'])
+  view.unmount()
+  db.close()
+})
+
+test('a fresh index does not describe itself as old', async () => {
+  // `relTime` answers "now" for anything under a minute, so the age line read
+  // "index now old": a contradiction in itself, and the opposite of what the
+  // green it is drawn in means. The line only ever appeared once an index was
+  // an hour stale, so the phrasing had never met its own fresh case.
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:justnow', nativeId: 'justnow' })
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    indexedAt={NOW - 5_000} {...opts}
+  />)
+  await tick()
+  expect(view.lastFrame()).not.toContain('now old')
+  expect(view.lastFrame()).toContain('index just refreshed')
+  view.unmount()
+  db.close()
+})
+
+test('a session that just ended is not described as "now ago"', async () => {
+  // The same gluing mistake, one line further down and older than the age
+  // indicator: `relTime` names a point in time and the suffix wants a span.
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:fresh', nativeId: 'fresh', endedAt: NOW - 5_000 })
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts}
+  />)
+  await tick()
+  expect(view.lastFrame()).not.toContain('now ago')
+  expect(view.lastFrame()).toContain('just now')
   view.unmount()
   db.close()
 })
