@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from 'bun:test'
 import Database from 'bun:sqlite'
-import { versionText } from '../src/cli'
+import { main, planCli, versionText } from '../src/cli'
 import { parseSince } from '../src/commands/timeline'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -517,4 +517,170 @@ test('a client whose hydration failed does not get its extraction policy recorde
   expect(await reindexWith(db, large, set, { quiet: true })).toBe(0)
   expect(db.getExtraction('claude')).not.toBe(recorded)
   db.close()
+  db.close()
+})
+
+// The argument contract, as a decision rather than a process.
+//
+// Everything above drives the CLI through `Bun.spawnSync`, which proves the
+// binary works but can only see an exit code and whatever reached stderr. A
+// rejection asserted as "exit 2" passes even when the wrong rule fired with
+// the wrong message, and an accepted invocation says nothing at all about the
+// options it built. `planCli` is the same decision without the process, so
+// these tests can name the rule and read the options.
+
+test('planCli reads the invocations that never reach a command', () => {
+  expect(planCli(['--help'])).toEqual({ kind: 'usage' })
+  expect(planCli(['-h'])).toEqual({ kind: 'usage' })
+  expect(planCli(['--version'])).toEqual({ kind: 'version' })
+  expect(planCli(['-v'])).toEqual({ kind: 'version' })
+  expect(planCli(['version'])).toEqual({ kind: 'version' })
+  expect(planCli([])).toEqual({ kind: 'pick' })
+  expect(planCli(['frobnicate'])).toEqual({ kind: 'unknown', command: 'frobnicate' })
+})
+
+test('planCli scopes a bare search to the working directory and --all clears it', () => {
+  expect(planCli(['search', 'sse', 'reconnect'], '/work')).toEqual({
+    kind: 'search',
+    options: {
+      text: 'sse reconnect',
+      cwd: '/work',
+      client: undefined,
+      file: undefined,
+      sort: undefined,
+      limit: undefined,
+      json: false,
+    },
+  })
+  const everywhere = planCli(['search', 'sse', '--all'], '/work')
+  expect(everywhere.kind).toBe('search')
+  expect(everywhere.kind === 'search' && everywhere.options.cwd).toBeUndefined()
+})
+
+test('planCli turns blame into a global newest-first search for one resolved file', () => {
+  expect(planCli(['blame', 'src/sse.ts', '--limit', '5'], '/work')).toEqual({
+    kind: 'search',
+    options: {
+      exactFile: '/work/src/sse.ts',
+      client: undefined,
+      limit: 5,
+      json: false,
+      // blame answers a per-file question, so it fixes the sort and never
+      // narrows to a directory: the file is the whole scope.
+      sort: 'recent',
+    },
+  })
+})
+
+test('planCli resolves a timeline directory against the working directory', () => {
+  const now = Date.parse('2026-08-30T12:00:00Z')
+  expect(planCli(['timeline', '--dir', 'src', '--since', '2d'], '/work', now)).toEqual({
+    kind: 'timeline',
+    options: {
+      dir: '/work/src',
+      since: now - 2 * 86_400_000,
+      client: undefined,
+      limit: undefined,
+      json: false,
+    },
+  })
+  const here = planCli(['timeline'], '/work', now)
+  expect(here.kind === 'timeline' && here.options.dir).toBe('/work')
+})
+
+test('planCli passes show a uid and a character budget, including zero', () => {
+  expect(planCli(['show', 'claude:abc', '--max-chars', '0'])).toEqual({
+    kind: 'show',
+    options: { uid: 'claude:abc', maxChars: 0 },
+  })
+  // A bare `show` is not a rejection here: the command prints its own usage.
+  expect(planCli(['show'])).toEqual({ kind: 'show', options: {} })
+})
+
+test('planCli reads the flags of the commands that take no query', () => {
+  expect(planCli(['index', '--rebuild', '--yes', '--quiet'])).toEqual({
+    kind: 'index',
+    options: { rebuild: true, quiet: true, yes: true },
+  })
+  expect(planCli(['doctor', '--sniff', '--emit-manifest', '/tmp/draft.json'])).toEqual({
+    kind: 'doctor',
+    options: { emitManifest: '/tmp/draft.json', json: false, sniff: true },
+  })
+  expect(planCli(['last'])).toEqual({ kind: 'last' })
+  expect(planCli(['forget', 'claude:abc'])).toEqual({ kind: 'forget', uid: 'claude:abc' })
+  expect(planCli(['prune', '--missing', '--client', 'claude'])).toEqual({
+    kind: 'prune',
+    options: { missing: true, client: 'claude' },
+  })
+  expect(planCli(['exclude', '/private/**'])).toEqual({ kind: 'exclude', glob: '/private/**' })
+})
+
+// One row per rule in `planCli`, asserted on the message rather than on the
+// exit code. The subprocess tests above can only see "exit 2", so they stay
+// green when two rules swap messages; these do not.
+const REJECTED: [string[], string][] = [
+  [['search', '--unknown'], "Unknown option '--unknown'"],
+  [['search', '--client'], "Option '--client <value>' argument missing"],
+  [['search', '--sort', 'random'], '--sort must be auto, recent, or relevance'],
+  [['search', '--limit', 'wat'], '--limit must be a positive integer'],
+  [['search', '--limit', '0'], '--limit must be a positive integer'],
+  [['search', '--limit', '1.5'], '--limit must be a positive integer'],
+  [['search', '--rebuild'], 'index options cannot be used with search'],
+  [['search', '--dir', '/x'], 'index options cannot be used with search'],
+  [['index', 'extra'], 'index does not accept positional arguments'],
+  [['index', '--json'], 'search options cannot be used with index'],
+  [['index', '--client', 'claude'], 'search options cannot be used with index'],
+  [['last', 'extra'], 'last does not accept positional arguments'],
+  [['last', '--all'], 'last does not accept options'],
+  [['forget', 'claude:a', 'extra'], 'forget accepts exactly one uid'],
+  [['forget', 'claude:a', '--missing'], 'forget does not accept options'],
+  [['prune', 'extra'], 'prune does not accept positional arguments'],
+  [['prune', '--missing', '--all'], 'only --missing and --client can be used with prune'],
+  [['exclude', '/a/**', '/b/**'], 'exclude accepts exactly one glob'],
+  [['exclude', '/a/**', '--json'], 'exclude does not accept options'],
+  [['doctor', 'extra'], 'doctor does not accept positional arguments'],
+  [['doctor', '--client', 'claude'], 'only --json, --sniff, and --emit-manifest can be used with doctor'],
+  [['doctor', '--emit-manifest', '/tmp/d.json'], '--emit-manifest requires --sniff'],
+  [['doctor', '--sniff', '--emit-manifest', '/tmp/d.json', '--json'], '--json cannot be combined with --emit-manifest'],
+  [['show', 'claude:a', 'extra'], 'show accepts exactly one uid'],
+  [['show', 'claude:bad\u001b[2J'], 'uid must not contain control characters'],
+  [['show', 'malformed'], 'malformed uid: malformed'],
+  [['show', ':empty-client'], 'malformed uid: :empty-client'],
+  [['show', 'empty-native:'], 'malformed uid: empty-native:'],
+  [['show', 'claude:a', '--json'], 'only --max-chars can be used with show'],
+  // A bare negative is intercepted by parseArgs before the rule can fire, so
+  // the reachable form of the rule is the joined one.
+  [['show', 'claude:a', '--max-chars', '-1'], "Option '--max-chars' argument is ambiguous"],
+  [['show', 'claude:a', '--max-chars=-1'], '--max-chars must be a non-negative integer'],
+  [['show', 'claude:a', '--max-chars', '1.5'], '--max-chars must be a non-negative integer'],
+  [['show', 'claude:a', '--max-chars', 'NaN'], '--max-chars must be a non-negative integer'],
+  [['timeline', 'src/sse.ts'], 'timeline takes no positional arguments'],
+  [['timeline', '--sort', 'recent'], 'only --dir, --since, --client, --limit, and --json can be used with timeline'],
+  [['timeline', '--since', 'yesterday'], '--since takes a span such as 30m, 12h, 2d, 3w, or a date such as 2026-08-01'],
+  [['blame'], 'blame accepts exactly one path'],
+  [['blame', 'one.ts', 'two.ts'], 'blame accepts exactly one path'],
+  [['blame', 'one.ts', '--sort', 'recent'], 'only --client, --limit, and --json can be used with blame'],
+  [['blame', 'one.ts', '--all'], 'only --client, --limit, and --json can be used with blame'],
+  [['blame', 'one\u0001.ts'], 'blame path is too long or contains control characters'],
+  [['blame', 'x'.repeat(16_385)], 'blame path is too long or contains control characters'],
+]
+
+test('planCli names the rule an invocation broke', () => {
+  for (const [args, message] of REJECTED) {
+    expect(() => planCli(args, '/work')).toThrow(message)
+  }
+})
+
+// Exit codes read in-process. The spawned runs above prove the binary exits
+// correctly; these pin the same contract where the coverage instrument can see
+// it, and they guard the rewiring of `dispatch` onto `planCli`. None of them
+// reaches a command: every one is answered or rejected by the plan alone.
+test('main answers the argument-only invocations with their exit codes', async () => {
+  expect(await main(['--help'])).toBe(0)
+  expect(await main(['-h'])).toBe(0)
+  expect(await main(['--version'])).toBe(0)
+  expect(await main(['frobnicate'])).toBe(2)
+  expect(await main(['search', '--sort', 'random'])).toBe(2)
+  expect(await main(['blame'])).toBe(2)
+  expect(await main(['doctor', '--emit-manifest', '/tmp/nope.json'])).toBe(2)
 })
