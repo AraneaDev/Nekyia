@@ -882,3 +882,47 @@ test('show answers on an unmigrated index and leaves it unmigrated', () => {
   expect(result.stdout.toString()).toContain('sse reconnect')
   expect(schemaVersion(env)).toBe('2')
 })
+
+test('--ids prints one addressable uid per line, ready to pass to show or forget', () => {
+  // Finding a session by eye and then acting on it meant re-running the whole
+  // query as JSON purely to recover an identifier, because the human table has
+  // no addressable field in it.
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+
+  const ids = run(['search', 'reconnect', '--all', '--ids'], env)
+  expect(ids.exitCode).toBe(0)
+  const lines = ids.stdout.toString().trim().split('\n')
+  expect(lines.length).toBeGreaterThan(0)
+  for (const line of lines) expect(line).toMatch(/^[a-z0-9-]+:\S+$/)
+
+  // The uid it printed is one show actually accepts.
+  const shown = run(['show', lines[0]!], env)
+  expect(shown.exitCode).toBe(0)
+})
+
+test('--ids and --json are different answers to the same question, not both at once', () => {
+  const result = run(['search', 'x', '--ids', '--json'])
+  expect(result.exitCode).toBe(2)
+  expect(result.stderr.toString()).toContain('error:')
+})
+
+test('the default table is left exactly as it was', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const table = run(['search', 'reconnect', '--all'], env).stdout.toString()
+  expect(table).toContain('sse reconnect')
+  expect(table).not.toMatch(/^claude:/m)
+})
+
+test('the collapsed score names the session that earned it in JSON too', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const rows = JSON.parse(
+    run(['search', 'reconnect', '--all', '--json'], env).stdout.toString(),
+  ) as Array<Record<string, unknown>>
+  expect(rows.length).toBeGreaterThan(0)
+  // Nothing in the fixtures collapses to a different scorer, so the field is
+  // absent rather than echoing the row's own uid back at the caller.
+  for (const row of rows) expect(row.matchedUid).toBeUndefined()
+})

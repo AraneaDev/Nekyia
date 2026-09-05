@@ -33,13 +33,14 @@ options:
   --all             ignore the current directory scope
   --limit <n>       maximum rows (default 40)
   --json            machine-readable output
+  --ids             print only session ids, one per line, for show and forget
   --max-chars <n>   character budget for show (default 40000)
   --sniff           inspect likely unsupported stores (doctor only)
   --emit-manifest <path>  write a draft for the first sniffed store (doctor only)
   --dir <path>      directory a timeline covers (default: the current one)
   --since <when>    30m, 12h, 2d, 3w, or a date such as 2026-08-01
 
-blame takes only --client, --limit, and --json: it always searches every
+blame takes only --client, --limit, --ids, and --json: it always searches every
 directory, newest first, for the one file the path resolves to.
 
 timeline groups events by session because ordering inside a session is exact
@@ -57,6 +58,7 @@ const OPTIONS = {
   limit: { type: 'string' },
   all: { type: 'boolean' },
   json: { type: 'boolean' },
+  ids: { type: 'boolean' },
   rebuild: { type: 'boolean' },
   yes: { type: 'boolean' },
   quiet: { type: 'boolean' },
@@ -161,7 +163,7 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
   }
   if (subcommand === 'doctor') {
     if (positionals.length > 0) throw new CliError('doctor does not accept positional arguments')
-    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'rebuild', 'yes', 'quiet', 'max-chars', 'missing', 'dir', 'since'])) {
+    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'ids', 'rebuild', 'yes', 'quiet', 'max-chars', 'missing', 'dir', 'since'])) {
       throw new CliError('only --json, --sniff, and --emit-manifest can be used with doctor')
     }
     if (values['emit-manifest'] !== undefined && values.sniff !== true) {
@@ -181,7 +183,7 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
   }
   if (subcommand === 'index') {
     if (positionals.length > 0) throw new CliError('index does not accept positional arguments')
-    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'max-chars', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
+    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'ids', 'max-chars', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
       throw new CliError('search options cannot be used with index')
     }
     return {
@@ -206,7 +208,7 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
     } catch {
       throw new CliError(`malformed uid: ${positionals[0]}`)
     }
-    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'rebuild', 'yes', 'quiet', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
+    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'ids', 'rebuild', 'yes', 'quiet', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
       throw new CliError('only --max-chars can be used with show')
     }
     return {
@@ -217,7 +219,7 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
   if (subcommand === 'timeline') {
     if (positionals.length > 0) throw new CliError('timeline takes no positional arguments')
     if (present(values, [
-      'file', 'sort', 'all', 'rebuild', 'yes', 'quiet', 'max-chars',
+      'file', 'sort', 'all', 'ids', 'rebuild', 'yes', 'quiet', 'max-chars',
       'sniff', 'emit-manifest', 'missing',
     ])) {
       throw new CliError('only --dir, --since, --client, --limit, and --json can be used with timeline')
@@ -249,11 +251,14 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
       'file', 'sort', 'all', 'rebuild', 'yes', 'quiet', 'max-chars',
       'sniff', 'emit-manifest', 'missing', 'dir', 'since',
     ])) {
-      throw new CliError('only --client, --limit, and --json can be used with blame')
+      throw new CliError('only --client, --limit, --ids, and --json can be used with blame')
     }
     const file = positionals[0]
     if (file.length > 16_384 || /[\u0000-\u001f\u007f-\u009f]/u.test(file)) {
       throw new CliError('blame path is too long or contains control characters')
+    }
+    if (values.ids === true && values.json === true) {
+      throw new CliError('--ids cannot be combined with --json')
     }
     return {
       kind: 'search',
@@ -262,6 +267,7 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
         client: values.client,
         limit: positiveLimit(values.limit),
         json: values.json === true,
+        ids: values.ids === true,
         sort: 'recent',
       },
     }
@@ -269,6 +275,11 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
 
   if (present(values, ['rebuild', 'yes', 'quiet', 'max-chars', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
     throw new CliError('index options cannot be used with search')
+  }
+  // Two answers to the same question. Printing both would leave a caller
+  // parsing a stream that is sometimes JSON and sometimes not.
+  if (values.ids === true && values.json === true) {
+    throw new CliError('--ids cannot be combined with --json')
   }
   const sort = values.sort
   if (sort !== undefined && sort !== 'auto' && sort !== 'recent' && sort !== 'relevance') {
@@ -284,6 +295,7 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
       sort,
       limit: positiveLimit(values.limit),
       json: values.json === true,
+      ids: values.ids === true,
     },
   }
 }

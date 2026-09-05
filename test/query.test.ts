@@ -347,3 +347,42 @@ test('invalid runtime option and config values degrade safely', () => {
   expect(query(db, badCfg, badOpts).map((r) => r.uid)).toEqual(['claude:a'])
   db.close()
 })
+
+test('a collapsed chain names the session that actually earned its score', () => {
+  // The row is the newest session in the chain, but the score is the best any
+  // member scored, which is right for ranking a chain and wrong to read as one
+  // session's own relevance. A caller sorting or displaying `score` was told a
+  // number the named session did not earn, with nothing on the row admitting it.
+  const db = IndexDb.open(':memory:')
+  const parent = seed(
+    db,
+    { uid: 'claude:parent', nativeId: 'parent', endedAt: NOW - DAY, title: 'reconnect' },
+    { prompts: ['reconnect reconnect reconnect the socket reconnect'] },
+  )
+  seed(
+    db,
+    {
+      uid: 'claude:child', nativeId: 'child', endedAt: NOW, title: 'follow up',
+      parentNativeId: 'parent',
+    },
+    { prompts: ['one passing mention of reconnect'] },
+  )
+
+  const rows = query(db, DEFAULT_CONFIG, { text: 'reconnect', sort: 'relevance' })
+  expect(rows).toHaveLength(1)
+  // The newest session stays the row, because it is the one worth resuming.
+  expect(rows[0]!.uid).toBe('claude:child')
+  expect(rows[0]!.collapsed).toBe(1)
+  // And the score is now attributed to the member that earned it.
+  expect(rows[0]!.matchedUid).toBe(parent.uid)
+  db.close()
+})
+
+test('a row that earned its own score claims no other session', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:solo', nativeId: 'solo', title: 'reconnect the socket' })
+  const rows = query(db, DEFAULT_CONFIG, { text: 'reconnect' })
+  expect(rows).toHaveLength(1)
+  expect(rows[0]!.matchedUid).toBeUndefined()
+  db.close()
+})

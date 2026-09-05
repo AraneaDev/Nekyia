@@ -27,6 +27,16 @@ export interface Row extends SearchRef {
   score: number
   /** How many older sessions in this fork chain were folded into this row. */
   collapsed: number
+  /**
+   * The session in this chain that earned the score, when it is not this row.
+   *
+   * A collapsed row is the chain's newest session, because that is the one
+   * worth resuming, but it is ranked by the best score any member reached. The
+   * two are usually the same session and sometimes are not, and a caller
+   * reading `score` as this session's own relevance would be wrong about it
+   * without being told. Absent when the row earned its own score.
+   */
+  matchedUid?: string
 }
 
 const DAY = 86_400_000
@@ -279,10 +289,19 @@ function collapseChains(
         ? candidate
         : best
     })
+    // The chain is ranked by its best member, and represented by its newest.
+    // Naming the first when it is not the second is what keeps `score` from
+    // reading as a number the row itself earned.
+    const scorer = group.reduce((best, candidate) =>
+      finite(candidate.score) > finite(best.score)
+      || (finite(candidate.score) === finite(best.score) && compareUid(candidate.uid, best.uid) < 0)
+        ? candidate
+        : best)
     return {
       ...winner,
-      score: Math.max(...group.map((row) => finite(row.score))),
+      score: finite(scorer.score),
       collapsed: group.length - 1,
+      ...(scorer.uid === winner.uid ? {} : { matchedUid: scorer.uid }),
     }
   })
 }
