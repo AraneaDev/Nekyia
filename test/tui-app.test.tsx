@@ -8,7 +8,8 @@ import { IndexDb } from '../src/core/db'
 import { query } from '../src/core/query'
 import { validateManifest } from '../src/manifests/load'
 import {
-  App, fitKeys, previewLines, safeCommandForClipboard, type CommandCopyWork,
+  App, fitKeys, indexAgeSeverity, previewLines, safeCommandForClipboard,
+  SEVERITY_COLOR, type CommandCopyWork,
 } from '../src/tui/App'
 import { buildPreviewLines, shareLines } from '../src/tui/Preview'
 import {
@@ -583,6 +584,106 @@ test('runPick tears Ink and the database down before checking and running the pl
   }
   expect(await runPick(deps)).toBe(17)
   expect(events).toEqual(['wait', 'unmount', 'close', 'check', 'run'])
+})
+
+test('runPick reindexes and reopens the index when the picker asks for it, then continues', async () => {
+  const events: string[] = []
+  let mounts = 0
+  const db = { close: () => { events.push('close') } } as unknown as IndexDb
+  const deps: PickDependencies = {
+    isTTY: () => true,
+    needsConsent: () => false,
+    indexExists: () => true,
+    indexPath: () => '/index.db',
+    indexedAt: () => undefined,
+    loadConfig: () => DEFAULT_CONFIG,
+    buildAdapters: () => ({ adapters, diagnostics: [] }),
+    openDb: () => { events.push('open'); return db },
+    cwd: () => '/root/proj',
+    now: () => NOW,
+    mount: (props) => {
+      mounts += 1
+      const thisMount = mounts
+      return {
+        waitUntilExit: async () => {
+          events.push(`wait${thisMount}`)
+          if (thisMount === 1) props.onReindex?.()
+        },
+        unmount: () => { events.push(`unmount${thisMount}`) },
+      }
+    },
+    checkPlan: () => { throw new Error('nothing was ever selected') },
+    runPlan: async () => { throw new Error('nothing was ever selected') },
+    ensureIndex: async () => { events.push('reindex'); return 0 },
+    error: () => { throw new Error('unexpected error output') },
+  }
+  expect(await runPick(deps)).toBe(0)
+  expect(mounts).toBe(2)
+  expect(events).toEqual(['open', 'wait1', 'unmount1', 'close', 'reindex', 'open', 'wait2', 'unmount2', 'close'])
+})
+
+test('a manual reindex that changes nothing on disk still reads as fresh on the remount', async () => {
+  // A real reindex that finds nothing new never touches the index file's mtime,
+  // so trusting that mtime after a reindex the user just asked for would leave
+  // the status line calling a just-refreshed index stale forever. The moment
+  // the refresh completed has to stand in for it instead.
+  let mounts = 0
+  const indexedAtSeen: (number | undefined)[] = []
+  const db = { close: () => {} } as unknown as IndexDb
+  const deps: PickDependencies = {
+    isTTY: () => true,
+    needsConsent: () => false,
+    indexExists: () => true,
+    indexPath: () => '/index.db',
+    indexedAt: () => NOW - 999 * 3_600_000,
+    loadConfig: () => DEFAULT_CONFIG,
+    buildAdapters: () => ({ adapters, diagnostics: [] }),
+    openDb: () => db,
+    cwd: () => '/root/proj',
+    now: () => NOW,
+    mount: (props) => {
+      mounts += 1
+      const thisMount = mounts
+      indexedAtSeen.push(props.indexedAt)
+      return {
+        waitUntilExit: async () => { if (thisMount === 1) props.onReindex?.() },
+        unmount: () => {},
+      }
+    },
+    checkPlan: () => { throw new Error('nothing was ever selected') },
+    runPlan: async () => { throw new Error('nothing was ever selected') },
+    ensureIndex: async () => 0,
+    error: () => { throw new Error('unexpected error output') },
+  }
+  expect(await runPick(deps)).toBe(0)
+  expect(indexedAtSeen).toEqual([NOW - 999 * 3_600_000, NOW])
+})
+
+test('a failed manual reindex is reported and stops the picker rather than looping silently', async () => {
+  const messages: string[] = []
+  const db = { close: () => {} } as unknown as IndexDb
+  const deps: PickDependencies = {
+    isTTY: () => true,
+    needsConsent: () => false,
+    indexExists: () => true,
+    indexPath: () => '/index.db',
+    indexedAt: () => undefined,
+    loadConfig: () => DEFAULT_CONFIG,
+    buildAdapters: () => ({ adapters, diagnostics: [] }),
+    openDb: () => db,
+    cwd: () => '/root/proj',
+    now: () => NOW,
+    mount: (props) => ({
+      waitUntilExit: async () => { props.onReindex?.() },
+      unmount: () => {},
+    }),
+    checkPlan: () => { throw new Error('nothing was ever selected') },
+    runPlan: async () => { throw new Error('nothing was ever selected') },
+    ensureIndex: async () => { throw new Error('disk full') },
+    error: (value) => { messages.push(value) },
+  }
+  expect(await runPick(deps)).toBe(1)
+  expect(messages).toEqual(['could not refresh the session index: disk full'])
 })
 
 test('runPick handles non-TTY, missing index, mount failures and exits without a selection', async () => {
@@ -1199,6 +1300,23 @@ test('scrolling stops at the end of the history instead of running past it', asy
   view.unmount()
 })
 
+test('indexAgeSeverity classifies age into the tiers the status line colors', () => {
+  const HOUR = 3_600_000
+  const DAY = 86_400_000
+  expect(indexAgeSeverity(0)).toBe('fresh')
+  expect(indexAgeSeverity(HOUR - 1)).toBe('fresh')
+  expect(indexAgeSeverity(HOUR)).toBe('stale')
+  expect(indexAgeSeverity(DAY - 1)).toBe('stale')
+  expect(indexAgeSeverity(DAY)).toBe('very-stale')
+  expect(indexAgeSeverity(DAY * 30)).toBe('very-stale')
+})
+
+test('each severity has its own status-line color, escalating with age', () => {
+  expect(SEVERITY_COLOR.fresh).toBe('green')
+  expect(SEVERITY_COLOR.stale).toBe('yellow')
+  expect(SEVERITY_COLOR['very-stale']).toBe('red')
+})
+
 test('the picker says how old the index is when it has gone stale', async () => {
   const db = IndexDb.open(':memory:')
   seed(db, { uid: 'claude:stale', nativeId: 'stale' })
@@ -1214,7 +1332,7 @@ test('the picker says how old the index is when it has gone stale', async () => 
   db.close()
 })
 
-test('a fresh index is not mentioned at all', async () => {
+test('a fresh index is shown too, so the status line confirms things are fine', async () => {
   const db = IndexDb.open(':memory:')
   seed(db, { uid: 'claude:fresh', nativeId: 'fresh' })
   const view = render(<App
@@ -1222,7 +1340,20 @@ test('a fresh index is not mentioned at all', async () => {
     indexedAt={NOW - 60_000} {...opts}
   />)
   await tick()
-  expect(view.lastFrame()).not.toMatch(/index \S+ old/)
+  expect(view.lastFrame()).toContain('index 1m old')
+  view.unmount()
+  db.close()
+})
+
+test('a very stale index reads the same way a stale one does, one tier further', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:very-stale', nativeId: 'very-stale' })
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    indexedAt={NOW - 2 * 86_400_000} {...opts}
+  />)
+  await tick()
+  expect(view.lastFrame()).toContain('index 2d old')
   view.unmount()
   db.close()
 })
@@ -1235,6 +1366,67 @@ test('an unknown index age is left unstated rather than guessed at', async () =>
   />)
   await tick()
   expect(view.lastFrame()).not.toMatch(/index \S+ old/)
+  view.unmount()
+  db.close()
+})
+
+test('reindex is only offered once the index has actually gone stale', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a' })
+  const fresh = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    indexedAt={NOW - 60_000} {...opts}
+  />)
+  await tick()
+  expect(fresh.lastFrame()).not.toContain('reindex')
+  fresh.unmount()
+
+  const unknown = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} />)
+  await tick()
+  expect(unknown.lastFrame()).not.toContain('reindex')
+  unknown.unmount()
+
+  const stale = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    indexedAt={NOW - 7 * 3_600_000} {...opts} columns={100}
+  />)
+  await tick()
+  expect(stale.lastFrame()).toContain('ctrl+r')
+  expect(stale.lastFrame()).toContain('reindex')
+  stale.unmount()
+  db.close()
+})
+
+test('ctrl+r asks the host to reindex, once the index is stale enough to offer it', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a' })
+  let requested = 0
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    onReindex={() => { requested += 1 }}
+    indexedAt={NOW - 7 * 3_600_000} {...opts}
+  />)
+  await tick()
+  view.stdin.write('')
+  await tick()
+  expect(requested).toBe(1)
+  view.unmount()
+  db.close()
+})
+
+test('ctrl+r does nothing when the index is fresh and no offer is shown', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a' })
+  let requested = 0
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    onReindex={() => { requested += 1 }}
+    indexedAt={NOW - 60_000} {...opts}
+  />)
+  await tick()
+  view.stdin.write('')
+  await tick()
+  expect(requested).toBe(0)
   view.unmount()
   db.close()
 })

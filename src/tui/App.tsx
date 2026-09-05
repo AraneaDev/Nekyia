@@ -79,8 +79,27 @@ export function fitKeys(keys: [string, string][], columns: number): [string, str
   return out
 }
 
-/** Below this, the index is recent enough that naming its age is only noise. */
+/** Below this, the index is fresh; at or past it, a reindex is worth considering. */
 const STALE_INDEX_MS = 3_600_000
+/** At or past this, the index is old enough that search results are likely wrong. */
+const VERY_STALE_INDEX_MS = 86_400_000
+
+/** How urgently the index's age should be shown, in the same tiers the status line colors. */
+export type IndexAgeSeverity = 'fresh' | 'stale' | 'very-stale'
+
+/** Classifies an index age into the severity the status line colors it by. */
+export function indexAgeSeverity(ageMs: number): IndexAgeSeverity {
+  if (ageMs >= VERY_STALE_INDEX_MS) return 'very-stale'
+  if (ageMs >= STALE_INDEX_MS) return 'stale'
+  return 'fresh'
+}
+
+/** The status-line color for each age severity, escalating from confirmation to warning. */
+export const SEVERITY_COLOR: Record<IndexAgeSeverity, string> = {
+  fresh: 'green',
+  stale: 'yellow',
+  'very-stale': 'red',
+}
 
 /** Rows the list keeps while the detail view is being read, for context only. */
 export const INSPECT_LIST_ROWS = 4
@@ -278,6 +297,8 @@ export interface AppProps {
    * with the picker.
    */
   onExec: (plan: ExecPlan, pendingCopy?: Promise<void>) => void
+  /** Requests a reindex. Offered, and ctrl+r wired to it, only once the index has gone stale. */
+  onReindex?: () => void
   /** null explicitly disables copying; undefined uses the host clipboard when present. */
   clipboard?: ClipboardLike | null
   /** Injectable factory keeps host clipboard selection testable without side effects. */
@@ -297,7 +318,7 @@ export interface AppProps {
 
 /** The picker: search, scoping, client filtering, history inspection, and launch. */
 export function App({
-  db, cfg, adapters, cwd, now, onExec, clipboard,
+  db, cfg, adapters, cwd, now, onExec, onReindex, clipboard,
   clipboardFactory = createHostClipboard, rows, columns, indexedAt,
 }: AppProps) {
   const { exit } = useApp()
@@ -543,6 +564,12 @@ export function App({
     if (key.ctrl && input === 'p') { copyPrompt(); return }
     if (key.ctrl && input === 'y') { copyCommand(); return }
     if (key.ctrl && input === 'f') { sessions.cycleClient(); return }
+    if (key.ctrl && input === 'r' && reindexOffered && !executing.current) {
+      executing.current = true
+      onReindex?.()
+      exit()
+      return
+    }
     if (input && !key.ctrl && !key.meta) {
       sessions.setText(boundedDisplayText(`${sessions.text}${input}`, SEARCH_COLUMNS))
     }
@@ -586,18 +613,22 @@ export function App({
   // A stale index is the difference between "that session does not exist" and
   // "it is not indexed yet", and only one of those is the user's problem. The
   // age is stated, never the conclusion: discovering whether anything actually
-  // changed costs a full scan, which the picker must not pay on startup.
+  // changed costs a full scan, which the picker must not pay on startup. Shown
+  // at every tier, not just once stale, so the color also confirms things are
+  // fine rather than only ever warning.
   const indexAge = indexedAt !== undefined && Number.isFinite(indexedAt)
-    && now - indexedAt >= STALE_INDEX_MS
-    ? `index ${relTime(indexedAt, now)} old`
-    : ''
+    ? { text: `index ${relTime(indexedAt, now)} old`, color: SEVERITY_COLOR[indexAgeSeverity(now - indexedAt)] }
+    : undefined
+  // Offered once the index is at least stale, not at every tier: a fresh index
+  // has nothing to fix, and offering the key anyway would make it look like it does.
+  const reindexOffered = indexedAt !== undefined && Number.isFinite(indexedAt)
+    && indexAgeSeverity(now - indexedAt) !== 'fresh'
   // A count that stops at the query's own limit reads as the size of the index,
   // which for a large one is simply untrue. Say that it runs past instead.
   const found = sessions.overflowed
     ? `${SESSION_DISPLAY_LIMIT}+ sessions`
     : `${sessions.rows.length} session${sessions.rows.length === 1 ? '' : 's'}`
-  const context = [found, scope, shownClient, shownNote, indexAge]
-    .filter(Boolean).join(' · ')
+  const context = [found, scope, shownClient, shownNote].filter(Boolean).join(' · ')
   // The first key names what enter does to the row under the cursor, so the
   // hint matches the outcome instead of always promising a resume.
   const enterLabel = selectedRow && selectedRow.tier !== 'resume' ? 'brief' : 'resume'
@@ -626,6 +657,7 @@ export function App({
       // the unfiltered list it is already on. Same rule as above: a hint that
       // does nothing is worse than one that is missing.
       ...(sessions.clientCycle.length > 1 ? [['ctrl+f', 'client']] as [string, string][] : []),
+      ...(reindexOffered ? [['ctrl+r', 'reindex']] as [string, string][] : []),
       ['tab', 'scope'], ['esc', 'quit'],
     ]
 
@@ -636,7 +668,10 @@ export function App({
     <Box flexDirection="column" height={terminalHeight} overflow="hidden">
       <Box flexShrink={0}>
         <Box flexGrow={1}><Text dimColor wrap="truncate-end">nekyia</Text></Box>
-        <Text dimColor wrap="truncate-end">{context}</Text>
+        <Text dimColor wrap="truncate-end">
+          {context}
+          {indexAge && <Text color={indexAge.color}>{context ? ' · ' : ''}{indexAge.text}</Text>}
+        </Text>
       </Box>
       <Box flexShrink={0}>
         <Text color="cyan">{'▸ '}</Text>

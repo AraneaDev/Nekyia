@@ -30,6 +30,14 @@ export interface Config {
   maxFileBytes: number
   /** Client names hidden from normal results. */
   hiddenClients: string[]
+  /**
+   * Reindexes on picker startup once the index is at least this many hours old.
+   *
+   * Unset by default: the picker states the index's age but never acts on it
+   * on its own unless a user opts in. `0` means every open reindexes, since an
+   * age is always at least zero.
+   */
+  autoReindexAfterHours?: number
 }
 
 /** The settings used when no config file exists, or when the one on disk cannot be trusted. */
@@ -45,7 +53,7 @@ const MAX_CONFIG_BYTES = 1024 * 1024
 export const MAX_CONFIG_ITEMS = 256
 const MAX_CONFIG_STRING = 4096
 const CONFIG_FIELDS = new Set([
-  'exclude', 'halfLifeDays', 'maxFileBytes', 'hiddenClients',
+  'exclude', 'halfLifeDays', 'maxFileBytes', 'hiddenClients', 'autoReindexAfterHours',
 ])
 /**
  * Fields Nekyia no longer honours but still accepts on disk.
@@ -208,6 +216,7 @@ function parseConfig(raw: string, strict: boolean, dropped?: string[]): Config {
   assign('halfLifeDays', isFiniteNumber, (value) => value)
   assign('maxFileBytes', isFiniteNumber, (value) => value)
   assign('hiddenClients', isStringArray, (value) => [...value])
+  assign('autoReindexAfterHours', isFiniteNumber, (value) => value)
   return config
 }
 
@@ -218,7 +227,8 @@ function configBytes(config: Config): Buffer {
   if (!isStringArray(config.exclude)
     || !isFiniteNumber(config.halfLifeDays)
     || !isFiniteNumber(config.maxFileBytes)
-    || !isStringArray(config.hiddenClients)) {
+    || !isStringArray(config.hiddenClients)
+    || (config.autoReindexAfterHours !== undefined && !isFiniteNumber(config.autoReindexAfterHours))) {
     throw new Error('config exceeds limits or contains invalid values')
   }
   const bytes = Buffer.from(`${JSON.stringify(config, null, 2)}\n`)
