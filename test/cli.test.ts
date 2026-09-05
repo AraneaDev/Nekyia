@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from 'bun:test'
+import { afterAll, expect, spyOn, test } from 'bun:test'
 import Database from 'bun:sqlite'
 import { main, planCli, versionText } from '../src/cli'
 import { parseSince } from '../src/commands/timeline'
@@ -668,6 +668,21 @@ const REJECTED: [string[], string][] = [
 test('planCli names the rule an invocation broke', () => {
   for (const [args, message] of REJECTED) {
     expect(() => planCli(args, '/work')).toThrow(message)
+  }
+})
+
+test('every rejected invocation exits 2, the code that means the arguments were wrong', async () => {
+  // The message assertions above say which rule fired, but not what the process
+  // does about it: `main` returns 2 only for a CliError and 1 for anything else,
+  // so a rule that threw a plain Error with the right message would pass there
+  // and still report the wrong exit code. Both halves are pinned, or neither is.
+  const spy = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    for (const [args] of REJECTED) {
+      expect(await main(args)).toBe(2)
+    }
+  } finally {
+    spy.mockRestore()
   }
 })
 
