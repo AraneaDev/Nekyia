@@ -550,6 +550,7 @@ test('planCli scopes a bare search to the working directory and --all clears it'
       sort: undefined,
       limit: undefined,
       json: false,
+      ids: false,
     },
   })
   const everywhere = planCli(['search', 'sse', '--all'], '/work')
@@ -565,6 +566,7 @@ test('planCli turns blame into a global newest-first search for one resolved fil
       client: undefined,
       limit: 5,
       json: false,
+      ids: false,
       // blame answers a per-file question, so it fixes the sort and never
       // narrows to a directory: the file is the whole scope.
       sort: 'recent',
@@ -659,10 +661,16 @@ const REJECTED: [string[], string][] = [
   [['timeline', '--since', 'yesterday'], '--since takes a span such as 30m, 12h, 2d, 3w, or a date such as 2026-08-01'],
   [['blame'], 'blame accepts exactly one path'],
   [['blame', 'one.ts', 'two.ts'], 'blame accepts exactly one path'],
-  [['blame', 'one.ts', '--sort', 'recent'], 'only --client, --limit, and --json can be used with blame'],
-  [['blame', 'one.ts', '--all'], 'only --client, --limit, and --json can be used with blame'],
+  [['blame', 'one.ts', '--sort', 'recent'], 'only --client, --limit, --ids, and --json can be used with blame'],
+  [['blame', 'one.ts', '--all'], 'only --client, --limit, --ids, and --json can be used with blame'],
   [['blame', 'one\u0001.ts'], 'blame path is too long or contains control characters'],
   [['blame', 'x'.repeat(16_385)], 'blame path is too long or contains control characters'],
+  [['search', 'x', '--ids', '--json'], '--ids cannot be combined with --json'],
+  [['blame', 'one.ts', '--ids', '--json'], '--ids cannot be combined with --json'],
+  [['doctor', '--ids'], 'only --json, --sniff, and --emit-manifest can be used with doctor'],
+  [['show', 'claude:a', '--ids'], 'only --max-chars can be used with show'],
+  [['index', '--ids'], 'search options cannot be used with index'],
+  [['timeline', '--ids'], 'only --dir, --since, --client, --limit, and --json can be used with timeline'],
 ]
 
 test('planCli names the rule an invocation broke', () => {
