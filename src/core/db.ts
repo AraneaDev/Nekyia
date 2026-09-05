@@ -762,6 +762,21 @@ export class IndexDb {
   }
 
   /**
+   * The directory every indexed session recorded, whatever became of its source.
+   *
+   * Retention has to be decided on what the index holds, not only on what a
+   * scan could still find: a session whose transcript has been deleted is never
+   * rediscovered, so an exclusion added afterwards would never be tested
+   * against it. Two columns, over a table the scan already reads in full.
+   */
+  storedDirectories(): Array<{ uid: string; cwd: string | null }> {
+    return this.db.query('SELECT uid, cwd FROM session').all() as Array<{
+      uid: string
+      cwd: string | null
+    }>
+  }
+
+  /**
    * Returns a set of all session UIDs currently marked as missing.
    */
   getMissingUids(): Set<string> {

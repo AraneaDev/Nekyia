@@ -1,5 +1,5 @@
 import type { Config } from '../config'
-import type { Diagnostic, SessionRef } from '../types'
+import type { Diagnostic, SessionDoc, SessionRef } from '../types'
 import type { Adapter } from './adapter'
 import type { IndexDb } from './db'
 
@@ -42,6 +42,25 @@ function errorMessage(error: unknown): string {
   } catch {
     return 'unknown error'
   }
+}
+
+/**
+ * A document that carries nothing and blames a failed read rather than a cap.
+ *
+ * Readers are not uniform about how they report an unreadable source: some
+ * throw, and some catch their own I/O failure and return an empty document
+ * marked degraded. Committing the second kind deletes a good indexed copy and
+ * stamps the new fingerprint over it, so the next scan sees nothing to retry
+ * and the loss is permanent. The two are the same event, so they get the same
+ * treatment. A degraded document that still recovered something is a partial
+ * read, not a failed one, and is worth more than the copy it replaces.
+ */
+function readNothing(doc: SessionDoc): boolean {
+  return doc.degraded === true
+    && doc.prompts.length === 0
+    && doc.prose.length === 0
+    && doc.files.length === 0
+    && (doc.dialogue?.length ?? 0) === 0
 }
 
 /**
@@ -116,7 +135,19 @@ export async function hydrateAll(
         try {
           const safeRef: SessionRef = { ...ref, sourcePaths: [...ref.sourcePaths] }
           const doc = await adapter.hydrate(safeRef, cfg)
-          db.upsertHydrated(doc)
+          if (readNothing(doc)) {
+            // Reported under the same prefix a thrown reader gets, so the run's
+            // exit code and the doctor's reading of it do not depend on which
+            // way a reader chose to report the same unreadable source.
+            diagnostics[index]!.push({
+              client: ref.client,
+              level: 'warn',
+              path: ref.sourcePaths[0] ?? null,
+              message: 'hydrate failed: nothing could be read, so the previous entry was kept',
+            })
+          } else {
+            db.upsertHydrated(doc)
+          }
         } catch (error) {
           diagnostics[index]!.push({
             client: ref.client,

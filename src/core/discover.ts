@@ -114,6 +114,22 @@ export async function scan(db: IndexDb, cfg: Config, adapters: Adapter[]): Promi
     }
   }
 
+  // An exclusion is an instruction about retained data, so it is answered from
+  // the index as well as from this scan. A session whose source has since been
+  // deleted is never rediscovered, and so was never tested against a later
+  // exclusion: it fell to `missing`, which keeps its text searchable.
+  //
+  // A rediscovered session is judged on the directory it reports now, above,
+  // because the live location is the truth and the stored one may be stale.
+  // Both lists below already narrow to uids this scan did not see, so that
+  // check is restated here rather than relied upon from a distance: this is
+  // the statement that decides a deletion.
+  for (const stored of db.storedDirectories()) {
+    if (!refsByUid.has(stored.uid) && isExcluded(stored.cwd, cfg)) {
+      excludedUids.add(stored.uid)
+    }
+  }
+
   const refs = [...refsByUid.values()]
   const missingBeforeScan = db.getMissingUids()
   const changed = refs.filter((ref) =>

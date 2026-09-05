@@ -240,3 +240,66 @@ test('codebuff hydration starts only after all other clients settle', async () =
   expect(codebuffStarted).toBeTrue()
   db.close()
 })
+
+test('a reader that returns nothing rather than throwing keeps the old copy and stays retryable', async () => {
+  // The retry invariant only held for readers that throw. A reader that
+  // catches its own I/O failure and returns an empty degraded document was
+  // committed like a success: the good copy was deleted and the new
+  // fingerprint stamped over it, so the next scan saw nothing to retry.
+  const db = IndexDb.open(':memory:')
+  const oldRef = { ...r('alpha'), fingerprint: 'old-fingerprint', title: 'Old title' }
+  db.upsertRef(oldRef)
+  db.upsertDoc(doc(oldRef, 'oldsearchableprompt'))
+  const changedRef = { ...oldRef, fingerprint: 'new-fingerprint', title: 'New title' }
+  const adapter = fakeAdapter('alpha', (ref) => ({
+    ref, prompts: [], prose: [], files: [], truncated: false, degraded: true,
+  }))
+  adapter.discover = async () => ({
+    refs: [changedRef], diagnostics: [], authoritative: true,
+  })
+
+  const diagnostics = await hydrateAll(db, DEFAULT_CONFIG, [adapter], [changedRef])
+
+  expect(diagnostics.map((diagnostic) => diagnostic.level)).toEqual(['warn'])
+  expect(diagnostics[0]!.message).toStartWith('hydrate failed:')
+  expect(db.getRef(changedRef.uid)?.fingerprint).toBe('old-fingerprint')
+  expect(db.getRef(changedRef.uid)?.title).toBe('Old title')
+  expect(db.ftsSearch('oldsearchableprompt').map((hit) => hit.uid)).toEqual([oldRef.uid])
+  expect((await scan(db, DEFAULT_CONFIG, [adapter])).changed).toEqual([changedRef])
+  db.close()
+})
+
+test('a degraded document that still read something is committed rather than discarded', async () => {
+  // Only a total read failure is treated as a failure. A partial parse that
+  // recovered real prompts is worth more than the previous copy, and the
+  // degraded flag on the row is what says the rest was lost.
+  const db = IndexDb.open(':memory:')
+  const ref = { ...r('alpha'), fingerprint: 'new-fingerprint' }
+  const adapter = fakeAdapter('alpha', (value) => ({
+    ref: value, prompts: ['partialsurvivingprompt'], prose: [], files: [],
+    truncated: false, degraded: true,
+  }))
+
+  const diagnostics = await hydrateAll(db, DEFAULT_CONFIG, [adapter], [ref])
+
+  expect(diagnostics).toEqual([])
+  expect(db.ftsSearch('partialsurvivingprompt').map((hit) => hit.uid)).toEqual([ref.uid])
+  expect(db.getRef(ref.uid)?.fingerprint).toBe('new-fingerprint')
+  db.close()
+})
+
+test('an empty session that read cleanly is still committed', async () => {
+  // Nothing was lost: a session really can hold no prompts. Refusing this one
+  // would leave it unindexed and rediscovered on every scan forever.
+  const db = IndexDb.open(':memory:')
+  const ref = { ...r('alpha'), fingerprint: 'new-fingerprint' }
+  const adapter = fakeAdapter('alpha', (value) => ({
+    ref: value, prompts: [], prose: [], files: [], truncated: false,
+  }))
+
+  const diagnostics = await hydrateAll(db, DEFAULT_CONFIG, [adapter], [ref])
+
+  expect(diagnostics).toEqual([])
+  expect(db.getRef(ref.uid)?.fingerprint).toBe('new-fingerprint')
+  db.close()
+})
