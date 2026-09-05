@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { Database } from 'bun:sqlite'
 import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
@@ -384,6 +385,42 @@ function collectRecordedFiles(
 }
 
 /** Reads SQLite-backed stores, projecting them onto Nekyia's model through the manifest's own SQL. */
+/**
+ * A fingerprint for the store as a whole, covering the write-ahead log.
+ *
+ * SQLite in WAL mode commits into a sidecar file and leaves the main database
+ * untouched until a checkpoint, so a fingerprint taken from the main file alone
+ * reads identically across a real edit and the session is never re-read. The
+ * log is part of the database's current contents, so it is part of the answer
+ * to "has any of this changed".
+ *
+ * A log that is absent, or cannot be stat'd, contributes a constant: journal
+ * modes other than WAL keep everything in the main file, which is already here.
+ */
+function storeFingerprint(dbPath: string): string {
+  const main = statSync(dbPath)
+  let log = 'none'
+  try {
+    const wal = statSync(`${dbPath}-wal`)
+    log = `${Math.floor(wal.mtimeMs)}:${wal.size}`
+  } catch {
+    // No log beside it, which is the whole story for a non-WAL database.
+  }
+  return `${Math.floor(main.mtimeMs)}:${main.size}:${log}`
+}
+
+/**
+ * A fingerprint for one session, taken from the row the store reported for it.
+ *
+ * Every projected column counts, not only the declared revision: a title or a
+ * turn count that moved is a session that moved, and the row is already in hand.
+ * The declaration is what says the row can be trusted to move at all.
+ */
+function rowFingerprint(row: SqlRow): string {
+  const stable = Object.keys(row).sort().map((key) => [key, row[key]])
+  return createHash('sha256').update(JSON.stringify(stable)).digest('hex')
+}
+
 export const sqliteStore: FormatModule = {
   /**
    * Discovers sessions in a SQLite database, resolving references and checking integrity.
@@ -425,10 +462,25 @@ export const sqliteStore: FormatModule = {
     }
 
     try {
-      const stat = statSync(dbPath)
-      const fingerprint = `${Math.floor(stat.mtimeMs)}:${stat.size}`
+      const storePrint = storeFingerprint(dbPath)
       const rows = db.query(spec.sessions).all() as SqlRow[]
+      // A revision the projection does not actually return is a manifest
+      // mistake, and the costly way to be wrong about it is to trust it: an
+      // edit the row cannot express is an edit nothing notices. Say so and fall
+      // back to the store-wide fingerprint, which only costs re-reads.
+      const declared = spec.revision
+      const perSession = declared !== undefined
+        && (rows.length === 0 || Object.hasOwn(rows[0]!, declared))
+      if (declared !== undefined && !perSession) {
+        diagnostics.push(diagnostic(
+          manifest.id,
+          'warn',
+          dbPath,
+          `sqlite.revision names a column the session query does not return: ${declared}`,
+        ))
+      }
       for (const row of rows) {
+        const fingerprint = perSession ? rowFingerprint(row) : storePrint
         const nativeId = sensibleString(row.id)
         if (nativeId === null) continue
         // The id is transcript content, so it can carry anything. One that

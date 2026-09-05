@@ -307,6 +307,13 @@ JSONL manifest looks like this:
 }
 ```
 
+A SQLite manifest can add `"revision"` to its `sqlite` block, naming a projected column
+that moves whenever its session does, usually the one already aliased to `ended_at`. With
+it each session is fingerprinted from its own row, so editing one session re-reads only
+that session. Without it the whole database shares one fingerprint and any change re-reads
+every session in it, which is slower and is the right default: declaring a revision the
+store does not honour means edits nobody notices.
+
 `nekyia doctor --sniff` looks for session-shaped stores without declaring them supported.
 `nekyia doctor --sniff --emit-manifest ./my-client.json` writes a non-overwriting draft
 for the first store it can describe. Inspect and test that draft before moving it into the

@@ -64,6 +64,19 @@ export interface SqliteSpec {
    * carries no tool calls at all.
    */
   files?: string
+  /**
+   * A projected column that changes whenever its session changes.
+   *
+   * Declaring one is a promise about the store: that a session's row moves when
+   * that session does. Given it, each session is fingerprinted from its own row,
+   * so a change to one does not re-read the rest. Without it the whole database
+   * shares a fingerprint taken from the file, which re-reads everything on any
+   * change and is the safe answer for a store nobody has established this about.
+   *
+   * Declaring it wrongly is the expensive mistake: an edit the row does not
+   * reflect is an edit nothing notices.
+   */
+  revision?: string
   textShape?: 'plain' | 'opencode-message-json' | 'opencode-part'
   cwdShape?: 'plain' | 'file-uri-array'
   timeUnit?: 'ms' | 's' | 'iso'
@@ -291,6 +304,7 @@ function validateSqlite(value: unknown): SqliteSpec {
   const sessions = expectString(sqlite.sessions, 'sqlite.sessions')
   const text = expectOptionalString(sqlite.text, 'sqlite.text')
   const files = expectOptionalString(sqlite.files, 'sqlite.files')
+  const revision = expectOptionalString(sqlite.revision, 'sqlite.revision')
   let legacy: SqliteSpec['legacy']
   if (sqlite.legacy !== undefined) {
     const supplied = expectRecord(sqlite.legacy, 'sqlite.legacy')
@@ -324,6 +338,7 @@ function validateSqlite(value: unknown): SqliteSpec {
     sessions,
     ...(text === undefined ? {} : { text }),
     ...(files === undefined ? {} : { files }),
+    ...(revision === undefined ? {} : { revision }),
     ...(sqlite.textShape === undefined ? {} : { textShape: sqlite.textShape }),
     ...(sqlite.cwdShape === undefined ? {} : { cwdShape: sqlite.cwdShape }),
     ...(sqlite.timeUnit === undefined ? {} : { timeUnit: sqlite.timeUnit }),

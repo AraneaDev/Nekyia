@@ -8,6 +8,7 @@
   "sqlite": {
     "file": "conversation_summaries.db",
     "sessions": "SELECT conversation_id AS id, title AS title, preview AS preview, step_count AS turns, last_modified_time AS ended_at, workspace_uris AS cwd_uris FROM conversation_summaries",
+    "revision": "ended_at",
     "cwdShape": "file-uri-array",
     "timeUnit": "iso"
   },
