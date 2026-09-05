@@ -371,3 +371,11 @@ test('legacy hydration stops recovering paths at the per-session ceiling', async
   expect(doc.files).toHaveLength(1024)
   expect(doc.truncated).toBe(true)
 })
+
+test('the legacy reader records the conversation in order too', async () => {
+  const { refs } = await discoverLegacy(m, join(FIX, 'opencode'))
+  const doc = await hydrateLegacy(m, join(FIX, 'opencode'), refs[0]!)
+  expect(doc.dialogue).toEqual([
+    { role: 'user', text: 'why did the legacy importer break' },
+  ])
+})

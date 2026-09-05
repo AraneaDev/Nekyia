@@ -460,3 +460,17 @@ test('a messages file reached through a symlink is still refused, and says so', 
   expect(diagnostics[0]!.level).toBe('warn')
   expect(diagnostics[0]!.message).toContain('unsafe')
 })
+
+test('json-dir records the conversation in order, not only grouped by speaker', async () => {
+  // The grouped facets cannot say who spoke when, which is what the history
+  // view and the first-prompt copy both need. Every reader that has the role in
+  // hand while it walks the messages can say so, and this one does.
+  const root = join(FIX, 'codebuff')
+  const { refs } = await jsonDir.discover(manifest(root), root)
+  const doc = await jsonDir.hydrate(manifest(root), root, refs[0]!, DEFAULT_CONFIG)
+  expect(doc.dialogue).toEqual([
+    { role: 'user', text: 'install this MCP globally' },
+    { role: 'assistant', text: 'Checking package.json first.' },
+    { role: 'assistant', text: 'Installed globally.' },
+  ])
+})

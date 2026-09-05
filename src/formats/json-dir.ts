@@ -10,7 +10,7 @@ import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
 import { Glob } from 'bun'
 import type { Config } from '../config'
 import { isSafeNativeId, makeUid } from '../types'
-import type { Diagnostic, SessionDoc, SessionRef } from '../types'
+import type { DialogueTurn, Diagnostic, SessionDoc, SessionRef } from '../types'
 import type { FormatModule } from './jsonl-transcript'
 
 const RUN_STATE_HEAD_BYTES = 4 * 1024
@@ -773,6 +773,10 @@ export const jsonDir: FormatModule = {
 
     const prompts: string[] = []
     const prose: string[] = []
+    // Recorded beside the grouped facets, never instead of them: the facets are
+    // what full-text search ranks, and this is the order they were said in.
+    // A turn is kept exactly when its text is, so the two never disagree.
+    const dialogue: DialogueTurn[] = []
     let scan: ArrayScanResult
     try {
       // Prompt output is intentionally not globally capped: preserving every user
@@ -780,8 +784,13 @@ export const jsonDir: FormatModule = {
       scan = await scanMessageArray(messages, config.maxFileBytes, (value, proseAllowed) => {
         if (!isObject(value) || (value.variant !== 'user' && value.variant !== 'ai')) return
         const parts = messageParts(value)
-        if (value.variant === 'user') prompts.push(...parts)
-        else if (proseAllowed) prose.push(...parts)
+        if (value.variant === 'user') {
+          prompts.push(...parts)
+          for (const part of parts) dialogue.push({ role: 'user', text: part })
+        } else if (proseAllowed) {
+          prose.push(...parts)
+          for (const part of parts) dialogue.push({ role: 'assistant', text: part })
+        }
       })
     } catch {
       return unread()
@@ -791,6 +800,7 @@ export const jsonDir: FormatModule = {
       ref: { ...ref, turns: scan.turns },
       prompts,
       prose,
+      dialogue,
       files: [],
       truncated: scan.truncated,
       degraded: scan.degraded,

@@ -3,7 +3,7 @@ import { Database } from 'bun:sqlite'
 import { realpathSync, statSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Config } from '../config'
-import type { Diagnostic, SessionDoc, SessionRef } from '../types'
+import type { DialogueTurn, Diagnostic, SessionDoc, SessionRef } from '../types'
 import { MAX_SESSION_FILES, isSafeNativeId, makeUid } from '../types'
 import type { FormatModule } from './jsonl-transcript'
 import { collectPaths } from './paths'
@@ -549,6 +549,10 @@ export const sqliteStore: FormatModule = {
 
     const prompts: string[] = []
     const prose: string[] = []
+    // The rows already arrive in message order with a role on each, so the
+    // conversation is there to record rather than reconstruct. Kept in step
+    // with the facets: a turn appears exactly when its text was kept.
+    const dialogue: DialogueTurn[] = []
     const files = new Set<string>()
     const maxBytes = Number.isFinite(config.maxFileBytes)
       ? Math.max(0, Math.floor(config.maxFileBytes))
@@ -560,7 +564,7 @@ export const sqliteStore: FormatModule = {
 
     try {
       if (spec.files) collectRecordedFiles(db, spec.files, ref.nativeId, files, () => { truncated = true })
-      if (!spec.text) return { ref, prompts, prose, files: [...files], truncated, degraded }
+      if (!spec.text) return { ref, prompts, prose, dialogue, files: [...files], truncated, degraded }
       const isStructured = spec.textShape === 'opencode-part'
         || spec.textShape === 'opencode-message-json'
       const query = isStructured
@@ -585,8 +589,13 @@ export const sqliteStore: FormatModule = {
 
         const role = row.projected_role
         const text = sensibleString(row.projected_text)
-        if (text && role === 'user') prompts.push(text)
-        else if (text && withinBudget) prose.push(text)
+        if (text && role === 'user') {
+          prompts.push(text)
+          dialogue.push({ role: 'user', text })
+        } else if (text && withinBudget) {
+          prose.push(text)
+          dialogue.push({ role: 'assistant', text })
+        }
 
         if (row.projected_part_type === 'tool') {
           if (row.projected_input_oversized === 1) truncated = true
@@ -612,6 +621,6 @@ export const sqliteStore: FormatModule = {
       db.close()
     }
 
-    return { ref, prompts, prose, files: [...files], truncated, degraded }
+    return { ref, prompts, prose, dialogue, files: [...files], truncated, degraded }
   },
 }

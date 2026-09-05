@@ -1623,3 +1623,92 @@ test('a terminal that has been handed to a client takes no further escape sequen
     spy.mockRestore()
   }
 })
+
+test('copying the first prompt takes the whole prompt, not its first line', async () => {
+  // The stored `prompts` facet is every prompt joined by newlines, so its first
+  // line is the first line of the first prompt and not the prompt. A prompt
+  // written across several lines was copied with everything after the first
+  // line silently dropped. The ordered turns already hold the real boundary.
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:multi', nativeId: 'multi' })
+  db.upsertDoc({
+    ref,
+    prompts: ['refactor the parser\nkeep the error messages\nand add a test', 'then ship it'],
+    prose: ['on it'],
+    files: [],
+    truncated: false,
+    dialogue: [
+      { role: 'user', text: 'refactor the parser\nkeep the error messages\nand add a test' },
+      { role: 'assistant', text: 'on it' },
+      { role: 'user', text: 'then ship it' },
+    ],
+  })
+
+  const copied: string[] = []
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    clipboard={{ writeText: async (text: string) => { copied.push(text) } }} {...opts}
+  />)
+  await tick()
+  view.stdin.write('\u0010')
+  await tick()
+
+  expect(copied).toEqual(['refactor the parser\nkeep the error messages\nand add a test'])
+  view.unmount()
+  db.close()
+})
+
+test('a session indexed before ordered turns still copies the line it has', async () => {
+  // Nothing rewrites an old session until it is hydrated again, so the flat
+  // facet stays the only thing there is for it. Falling back to the old
+  // behaviour beats announcing that there is no prompt.
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:old', nativeId: 'old' })
+  db.upsertDoc({
+    ref, prompts: ['an older prompt'], prose: [], files: [], truncated: false,
+  })
+
+  const copied: string[] = []
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    clipboard={{ writeText: async (text: string) => { copied.push(text) } }} {...opts}
+  />)
+  await tick()
+  view.stdin.write('\u0010')
+  await tick()
+
+  expect(copied).toEqual(['an older prompt'])
+  view.unmount()
+  db.close()
+})
+
+test('the first prompt is the first user turn, not the first turn', async () => {
+  // A transcript can open with an assistant turn, and the key is called
+  // "prompt" for a reason.
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:assistant-first', nativeId: 'assistant-first' })
+  db.upsertDoc({
+    ref,
+    prompts: ['what I actually asked'],
+    prose: ['a greeting nobody asked for'],
+    files: [],
+    truncated: false,
+    dialogue: [
+      { role: 'assistant', text: 'a greeting nobody asked for' },
+      { role: 'user', text: 'what I actually asked' },
+    ],
+  })
+
+  const copied: string[] = []
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    clipboard={{ writeText: async (text: string) => { copied.push(text) } }} {...opts}
+  />)
+  await tick()
+  view.stdin.write('\u0010')
+  await tick()
+
+  expect(copied).toEqual(['what I actually asked'])
+  view.unmount()
+  db.close()
+})
