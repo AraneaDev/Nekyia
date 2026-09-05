@@ -9,7 +9,13 @@ import type { DialogueTurn, SessionDoc, SessionRef } from '../types'
  */
 export interface StoredRef extends SessionRef {
   missing: boolean
-  /** A size cap stopped indexing short of the whole session. Raising `maxFileBytes` can recover it. */
+  /**
+   * A size cap stopped indexing short of the whole session.
+   *
+   * Raising `maxFileBytes` recovers it on the next `nekyia index`: the cap is
+   * part of what a client's sessions were extracted with, so moving it makes
+   * them due a re-read even though their sources have not changed.
+   */
   truncated: boolean
   /** Content was lost to a parse or read failure rather than to a cap, so no setting recovers it. */
   degraded: boolean
@@ -106,7 +112,11 @@ const SCHEMA_V1 = `
  * a migrated one.
  *
  * Adding version 5 means adding a `5:` step here, a `5:` entry to
- * SESSION_COLUMNS, and raising SCHEMA_VERSION. A step that adds a table rather
+ * SESSION_COLUMNS, and raising SCHEMA_VERSION. A step that needs the readers to
+ * fill something in, rather than only reshaping what is stored, also means
+ * raising `EXTRACTION_VERSION` in `core/discover`: the ladder here changes what
+ * the index can hold, and that constant is what makes a plain `nekyia index`
+ * go and get it. A step that adds a table rather
  * than a column repeats the previous SESSION_COLUMNS entry and adds the table
  * to `validateExistingSchema` behind the version that introduced it.
  */
@@ -748,6 +758,31 @@ export class IndexDb {
   getRef(uid: string): StoredRef | null {
     const row = this.db.query('SELECT * FROM session WHERE uid = ?').get(uid) as SessionRow | null
     return row ? rowToRef(row) : null
+  }
+
+  /**
+   * What this build extracted a client's sessions with, as it last recorded it.
+   *
+   * Kept per client rather than per session because that is the granularity the
+   * inputs actually have: every session of one client is read under the same
+   * manifest and the same size cap, so a column on `session` would hold the
+   * same value in every row. `meta` already stores exactly this shape.
+   */
+  getExtraction(client: string): string | null {
+    const row = this.db.query('SELECT value FROM meta WHERE key = ?')
+      .get(`extraction:${client}`) as { value: string } | null
+    return row?.value ?? null
+  }
+
+  /**
+   * Records what a client's sessions have now been extracted with.
+   *
+   * Written only once the sessions it covers are actually stored, since the
+   * value is a claim that the index matches it.
+   */
+  setExtraction(client: string, fingerprint: string): void {
+    this.db.query('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)')
+      .run(`extraction:${client}`, fingerprint)
   }
 
   /**

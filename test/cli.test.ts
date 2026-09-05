@@ -476,3 +476,45 @@ test('version names the release and where it came from', () => {
   // The myth is one sentence, not a paragraph competing with the version.
   expect(plain.split('\n').length).toBeLessThanOrEqual(10)
 })
+
+test('a client whose hydration failed does not get its extraction policy recorded', async () => {
+  // The recorded value is a claim that the stored documents were produced by
+  // that policy. Writing it after a failed read would make the claim false and,
+  // worse, permanent: the source has not changed either, so nothing would ever
+  // ask again. The client keeps its old value and is retried instead.
+  const db = IndexDb.open(':memory:')
+  const ref: SessionRef = {
+    uid: 'claude:one', client: 'claude', nativeId: 'one', cwd: '/root/proj',
+    gitBranch: null, title: 'one', startedAt: 1, endedAt: 2, turns: 1,
+    parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/one'],
+    fingerprint: 'one:1',
+  }
+  let fail = false
+  const adapter: Adapter = {
+    id: 'claude', manifest: {} as Adapter['manifest'], detect: () => true,
+    discover: async () => ({ refs: [ref], diagnostics: [], authoritative: true }),
+    hydrate: async (seen) => {
+      if (fail) throw new Error('unreadable')
+      return { ref: seen, prompts: ['kept'], prose: [], files: [], truncated: false }
+    },
+    plan: () => null,
+  }
+  const set = { adapters: [adapter], diagnostics: [] }
+
+  const small = { ...DEFAULT_CONFIG, maxFileBytes: 1_024 }
+  expect(await reindexWith(db, small, set, { quiet: true })).toBe(0)
+  const recorded = db.getExtraction('claude')
+  expect(recorded).not.toBeNull()
+
+  // The cap moves, so every session is due a re-read, and the re-read fails.
+  fail = true
+  const large = { ...DEFAULT_CONFIG, maxFileBytes: 64 * 1_024 * 1_024 }
+  expect(await reindexWith(db, large, set, { quiet: true })).toBe(1)
+  expect(db.getExtraction('claude')).toBe(recorded)
+
+  // Which means the next run still knows there is work to do.
+  fail = false
+  expect(await reindexWith(db, large, set, { quiet: true })).toBe(0)
+  expect(db.getExtraction('claude')).not.toBe(recorded)
+  db.close()
+})
