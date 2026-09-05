@@ -58,9 +58,12 @@ export async function runSearch(opts: SearchOptions = {}): Promise<number> {
     else console.error('index not found; run "nekyia index" first')
     return 0
   }
-  // Keep search read-existing: a deletion race after existsSync must not silently
-  // recreate an empty index and suppress the later first-run consent flow.
-  const db = IndexDb.open(path, false)
+  // Reading never writes: a readonly handle cannot migrate, so searching an
+  // index that has not been reindexed since an upgrade answers from it as it
+  // is rather than quietly moving it up the ladder. It also still refuses to
+  // create one, so a deleted index cannot be replaced by an empty stand-in
+  // that suppresses the first-run consent flow.
+  const db = IndexDb.openReadonly(path)
   try {
     const rows = query(db, cfg, {
       text: opts.text,
