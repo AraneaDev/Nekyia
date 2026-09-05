@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
 import React from 'react'
 import { render } from 'ink-testing-library'
 import { DEFAULT_CONFIG } from '../src/config'
@@ -11,7 +11,9 @@ import {
   App, fitKeys, previewLines, safeCommandForClipboard, type CommandCopyWork,
 } from '../src/tui/App'
 import { buildPreviewLines, shareLines } from '../src/tui/Preview'
-import { createHostClipboard, type ClipboardRuntime } from '../src/tui/clipboard'
+import {
+  createHostClipboard, releaseTerminal, writeTtySequence, type ClipboardRuntime,
+} from '../src/tui/clipboard'
 import type { Row } from '../src/core/query'
 import type { ExecPlan, SessionRef } from '../src/types'
 
@@ -1593,4 +1595,31 @@ test('a clipboard helper that never returns delays the launch rather than blocki
   expect(events).toEqual(['unmount', 'run'])
   // Bounded: a stuck helper is a delay before the client starts, never a hang.
   expect(Date.now() - started).toBeLessThan(3_000)
+})
+
+test('a terminal that has been handed to a client takes no further escape sequence', async () => {
+  // The drain before a launch waits half a second for a copy to finish, and
+  // then gives up and launches anyway. A helper that hangs past that and only
+  // then fails would fall back to OSC 52, writing its escape sequence into a
+  // terminal the client now owns. Waiting was never ownership, so the handover
+  // is stated instead: past it, the sequence is dropped rather than misdelivered.
+  const written: string[] = []
+  const spy = spyOn(process.stdout, 'write').mockImplementation(((
+    chunk: unknown, callback?: (error?: Error | null) => void,
+  ) => {
+    written.push(String(chunk))
+    callback?.(null)
+    return true
+  }) as typeof process.stdout.write)
+  try {
+    const mine = { owned: true }
+    await writeTtySequence('before', mine)
+    expect(written).toEqual(['before'])
+
+    releaseTerminal(mine)
+    await writeTtySequence('after', mine)
+    expect(written).toEqual(['before'])
+  } finally {
+    spy.mockRestore()
+  }
 })
