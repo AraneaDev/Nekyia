@@ -142,7 +142,34 @@ test('a bare directory excludes the directory and its subtree, a glob is stored 
 test('a leading tilde is expanded before the pattern is stored', () => {
   expect(excludePatterns('~/secret/**')).toEqual([join(homedir(), 'secret/**')])
   expect(excludePatterns('~')).toEqual([homedir(), join(homedir(), '**')])
-  expect(excludePatterns('~notatilde')).toEqual(['~notatilde', '~notatilde/**'])
+  // `~notatilde` is a directory name, not a home reference, so it is resolved
+  // like any other relative directory rather than stored as typed.
+  expect(excludePatterns('~notatilde', '/work')).toEqual(['/work/~notatilde', '/work/~notatilde/**'])
+})
+
+test('a relative directory is resolved against the directory it was typed in', () => {
+  // Exclusions are matched against the absolute working directory a session
+  // recorded, so a pattern stored as `secret` could never match anything. The
+  // command reported success and excluded nothing.
+  expect(excludePatterns('secret', '/work/proj'))
+    .toEqual(['/work/proj/secret', '/work/proj/secret/**'])
+  expect(excludePatterns('./secret', '/work/proj'))
+    .toEqual(['/work/proj/secret', '/work/proj/secret/**'])
+  expect(excludePatterns('../secret', '/work/proj'))
+    .toEqual(['/work/secret', '/work/secret/**'])
+})
+
+test('an absolute directory is untouched by where it was typed', () => {
+  expect(excludePatterns('/home/u/secret', '/somewhere/else'))
+    .toEqual(['/home/u/secret', '/home/u/secret/**'])
+})
+
+test('a glob is still stored exactly as written, wherever it was typed', () => {
+  // `**/node_modules` means "anywhere", and anchoring it to one directory
+  // would quietly narrow what the user asked for. A pattern is the explicit
+  // form, so it is left alone.
+  expect(excludePatterns('**/node_modules', '/work/proj')).toEqual(['**/node_modules'])
+  expect(excludePatterns('secret/*', '/work/proj')).toEqual(['secret/*'])
 })
 
 test('addExclude refuses to cross the config item cap, even one entry at a time', () => {

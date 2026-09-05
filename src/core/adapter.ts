@@ -174,10 +174,41 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
   const clientId = manifest.id
 
   /**
-   * Reads sidecar entries for a specific root, returning an empty map if no sidecar is defined.
+   * What the last discovery read out of each root's shared prompt log.
+   *
+   * The log is one file covering every session under a root, so hydrating from
+   * it per session reparsed the whole thing once per session, on top of the
+   * read discovery had already done.
+   *
+   * The lifetime is one discovery pass, not the adapter: an adapter can be
+   * scanned repeatedly, and a scan exists precisely to notice that the file
+   * changed. So `discover` always re-reads and replaces what is held, and only
+   * `hydrate` reuses it. That also settles which bytes a pass works from, since
+   * the content a ref was fingerprinted against is then the content stored.
+   */
+  const sidecars = new Map<string, Map<string, SidecarEntry>>()
+
+  /** Reads a root's sidecar afresh, replacing whatever the previous pass held. */
+  function refreshSidecar(root: string): Map<string, SidecarEntry> {
+    const spec = manifest.sidecar
+    if (!spec) return new Map()
+    const loaded = readSidecar(root, spec)
+    sidecars.set(root, loaded)
+    return loaded
+  }
+
+  /**
+   * The sidecar entries for a root, reusing the discovery pass's read.
+   *
+   * Falls back to reading when hydration is reached without a discovery, which
+   * keeps the adapter usable on its own rather than quietly returning nothing.
    */
   function sidecarFor(root: string): Map<string, SidecarEntry> {
-    return manifest.sidecar ? readSidecar(root, manifest.sidecar) : new Map()
+    // Read the spec before the cache, so a manifest whose sidecar cannot even
+    // be reached still fails here rather than only on the first call.
+    const spec = manifest.sidecar
+    if (!spec) return new Map()
+    return sidecars.get(root) ?? refreshSidecar(root)
   }
 
   return {
@@ -255,7 +286,7 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
         }
 
         try {
-          const sidecar = sidecarFor(root)
+          const sidecar = refreshSidecar(root)
           const path = sidecarPath(root, manifest)
           for (const item of local) {
             const entry = sidecar.get(item.ref.nativeId)

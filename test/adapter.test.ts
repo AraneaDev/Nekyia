@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, expect, spyOn, test } from 'bun:test'
+import * as fs from 'node:fs'
 import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -266,4 +267,28 @@ test('buildAdapters composes every valid built-in manifest', () => {
     'agy', 'claude', 'codebuff', 'codex', 'copilot', 'kilo', 'opencode',
   ])
   expect(built.diagnostics.every((item) => item.level !== 'error')).toBe(true)
+})
+
+test('the shared prompt log is read once a run, not once per session', async () => {
+  // Discovery reads the sidecar to enrich every ref, and hydration then read it
+  // again for each session, reparsing the whole shared log every time. It also
+  // meant the content a session was fingerprinted against and the content
+  // eventually stored could come from two different reads of a moving file.
+  const adapter = buildAdapter(agyManifest())
+  const opened: string[] = []
+  const realOpenSync = fs.openSync
+  const spy = spyOn(fs, 'openSync').mockImplementation(((
+    path: fs.PathLike, flags: number, mode: number,
+  ) => {
+    if (String(path).endsWith('history.jsonl')) opened.push(String(path))
+    return realOpenSync(path, flags, mode)
+  }) as typeof fs.openSync)
+  try {
+    const { refs } = await adapter.discover()
+    expect(refs.length).toBeGreaterThan(0)
+    for (const ref of refs) await adapter.hydrate(ref, DEFAULT_CONFIG)
+  } finally {
+    spy.mockRestore()
+  }
+  expect(opened).toHaveLength(1)
 })

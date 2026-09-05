@@ -699,3 +699,71 @@ test('main answers the argument-only invocations with their exit codes', async (
   expect(await main(['blame'])).toBe(2)
   expect(await main(['doctor', '--emit-manifest', '/tmp/nope.json'])).toBe(2)
 })
+
+test('the index summary counts what was committed, not what was attempted', async () => {
+  // `updated` was the length of the changed list, which is the number of
+  // sessions tried. A hydration that failed leaves the previous document in
+  // place, so counting it as updated reports work that did not happen.
+  const db = IndexDb.open(':memory:')
+  const ref: SessionRef = {
+    uid: 'claude:one', client: 'claude', nativeId: 'one', cwd: '/root/proj',
+    gitBranch: null, title: 'one', startedAt: 1, endedAt: 2, turns: 1,
+    parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/one'],
+    fingerprint: 'one:1',
+  }
+  const broken: SessionRef = { ...ref, uid: 'claude:two', nativeId: 'two', sourcePaths: ['/two'] }
+  const adapter: Adapter = {
+    id: 'claude', manifest: {} as Adapter['manifest'], detect: () => true,
+    discover: async () => ({ refs: [ref, broken], diagnostics: [], authoritative: true }),
+    hydrate: async (value) => {
+      if (value.uid === broken.uid) throw new Error('unreadable')
+      return { ref: value, prompts: ['kept'], prose: [], files: [], truncated: false }
+    },
+    plan: () => null,
+  }
+
+  const lines: string[] = []
+  const spy = spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    lines.push(args.map(String).join(' '))
+  })
+  try {
+    await reindexWith(db, DEFAULT_CONFIG, { adapters: [adapter], diagnostics: [] })
+  } finally {
+    spy.mockRestore()
+  }
+
+  const summary = lines.find((line) => line.includes('sessions,'))
+  expect(summary).toBe('2 sessions, 1 updated, 1 failed, 0 missing')
+  db.close()
+})
+
+test('a run with nothing to report says so without inventing a failure count', async () => {
+  const db = IndexDb.open(':memory:')
+  const ref: SessionRef = {
+    uid: 'claude:one', client: 'claude', nativeId: 'one', cwd: '/root/proj',
+    gitBranch: null, title: 'one', startedAt: 1, endedAt: 2, turns: 1,
+    parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/one'],
+    fingerprint: 'one:1',
+  }
+  const adapter: Adapter = {
+    id: 'claude', manifest: {} as Adapter['manifest'], detect: () => true,
+    discover: async () => ({ refs: [ref], diagnostics: [], authoritative: true }),
+    hydrate: async (value) => ({
+      ref: value, prompts: ['kept'], prose: [], files: [], truncated: false,
+    }),
+    plan: () => null,
+  }
+
+  const lines: string[] = []
+  const spy = spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+    lines.push(args.map(String).join(' '))
+  })
+  try {
+    await reindexWith(db, DEFAULT_CONFIG, { adapters: [adapter], diagnostics: [] })
+  } finally {
+    spy.mockRestore()
+  }
+
+  expect(lines.find((line) => line.includes('sessions,'))).toBe('1 sessions, 1 updated, 0 missing')
+  db.close()
+})
