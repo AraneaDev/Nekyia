@@ -494,20 +494,42 @@ test('a stale-looking recovery guard whose owner is alive is never broken', () =
   expect(existsSync(join(configDir(), 'config.json'))).toBe(false)
 })
 
-test('exclude fails boundedly on a live lock without mutating config', () => {
+/** A lock directory owned by a process that is alive, so nothing reclaims it as stale. */
+function holdConfigLock(): string {
   mkdirSync(configDir(), { recursive: true })
   const lock = join(configDir(), '.config.lock')
   mkdirSync(lock, { mode: 0o700 })
   writeFileSync(join(lock, 'owner'), JSON.stringify({
     token: '00000000-0000-0000-0000-000000000000', pid: process.pid,
   }), { mode: 0o600 })
-  const started = Date.now()
+  return lock
+}
+
+test('exclude refuses a live lock without mutating config', () => {
+  const lock = holdConfigLock()
   const result = run(['exclude', '/while-busy/**'])
   expect(result.exitCode).toBe(1)
   expect(result.stderr.toString()).toContain('config is busy')
-  expect(Date.now() - started).toBeLessThan(2_000)
   expect(existsSync(join(configDir(), 'config.json'))).toBe(false)
   expect(lstatSync(lock).isDirectory()).toBe(true)
+})
+
+test('a live lock is waited on for a bounded time and then given up on', async () => {
+  // Measured in this process rather than through `run`, which spawns a whole
+  // Bun. The wait itself is around 0.8s; a cold interpreter start is most of a
+  // second more and varies with whatever else the machine is doing, so a bound
+  // drawn around both was really a bound on process startup and failed on a
+  // loaded runner. It is the wait that is supposed to be bounded, so it is the
+  // wait that is timed.
+  //
+  // Returning at all is most of the proof: a lock that was waited on forever
+  // would hang here instead. The bound guards the other direction, that the
+  // retry budget cannot quietly grow into something indistinguishable from
+  // hanging, and is loose enough to survive a busy machine.
+  holdConfigLock()
+  const started = Date.now()
+  await expect(updateConfig((config) => config)).rejects.toThrow('config is busy')
+  expect(Date.now() - started).toBeLessThan(5_000)
 })
 
 test('exclude never follows an unsafe lock symlink', () => {
