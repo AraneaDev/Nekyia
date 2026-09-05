@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.17](https://github.com/AraneaDev/Nekyia/compare/v0.0.16...v0.0.17) (2026-09-05)
+
+
+### Fixes
+
+* **picker:** stop a fresh index calling itself old ([10e58f8](https://github.com/AraneaDev/Nekyia/commit/10e58f82e94e98f1771f38267b98d474d794234e))
+
 ## [0.0.16](https://github.com/AraneaDev/Nekyia/compare/v0.0.15...v0.0.16) (2026-09-05)
 
 

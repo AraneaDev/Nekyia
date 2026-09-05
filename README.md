@@ -57,7 +57,7 @@ Nekyia requires [Bun](https://bun.sh/) 1.1 or newer.
 
 <!-- x-release-please-start-version -->
 ```bash
-bun install -g github:AraneaDev/Nekyia#v0.0.16
+bun install -g github:AraneaDev/Nekyia#v0.0.17
 ```
 <!-- x-release-please-end -->
 
