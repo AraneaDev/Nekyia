@@ -15,9 +15,18 @@ on:
 
 permissions: {}
 
+# One run per branch. A second push cancels the first, because whoever pushed
+# again has already answered the question the running job was asked. The runs
+# long enough to be overtaken are the expensive ones, so this is worth more
+# than the share of runs it cancels suggests.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   conventional-title:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # A squash merge of a multi-commit branch takes the PR title as the commit
       # subject, so the title -- not the branch's own commits -- is what

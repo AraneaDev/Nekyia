@@ -9,10 +9,19 @@ permissions:
   contents: write
   pull-requests: write
 
+# One run per branch. A second push cancels the first, because whoever pushed
+# again has already answered the question the running job was asked. The runs
+# long enough to be overtaken are the expensive ones, so this is worth more
+# than the share of runs it cancels suggests.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release-please:
     name: Release PR and GitHub release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Run Release Please
         id: release
