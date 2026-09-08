@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.19](https://github.com/AraneaDev/Nekyia/compare/v0.0.18...v0.0.19) (2026-09-08)
+
+
+### Continuous integration
+
+* stop cancelling runs outside pull requests ([#55](https://github.com/AraneaDev/Nekyia/issues/55)) ([406997e](https://github.com/AraneaDev/Nekyia/commit/406997e94e07495955b29883d30d129fef836071))
+
 ## [0.0.18](https://github.com/AraneaDev/Nekyia/compare/v0.0.17...v0.0.18) (2026-09-08)
 
 
