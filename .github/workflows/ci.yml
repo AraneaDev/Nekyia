@@ -9,9 +9,14 @@ on:
 permissions:
   contents: read
 
+# Cancelling is right for a pull request, where a second push means the running
+# job is answering a question about a commit nobody is waiting on. It is wrong
+# everywhere else: an unconditional `true` also cancels the run on a release
+# branch when release-please force-pushes it, which leaves the release pull
+# request red with no failure behind it.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
   test:
