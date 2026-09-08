@@ -20,8 +20,8 @@ permissions: {}
 # long enough to be overtaken are the expensive ones, so this is worth more
 # than the share of runs it cancels suggests.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
   conventional-title:
