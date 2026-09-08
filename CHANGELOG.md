@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.18](https://github.com/AraneaDev/Nekyia/compare/v0.0.17...v0.0.18) (2026-09-08)
+
+
+### Continuous integration
+
+* cancel superseded runs and give every job a timeout ([#53](https://github.com/AraneaDev/Nekyia/issues/53)) ([7eab039](https://github.com/AraneaDev/Nekyia/commit/7eab03921fb4e0ccfced267bf035e9f81431a68a))
+
 ## [0.0.17](https://github.com/AraneaDev/Nekyia/compare/v0.0.16...v0.0.17) (2026-09-05)
 
 
