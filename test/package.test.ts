@@ -14,6 +14,29 @@ test('the licence is MIT and the file exists', () => {
   expect(existsSync(join(root, 'LICENSE'))).toBe(true)
 })
 
+test('the package carries the metadata npm and trusted publishing need', () => {
+  // Trusted publishing verifies repository.url against the GitHub repo and
+  // refuses the publish when they differ, so this string is load-bearing.
+  expect(pkg.repository).toEqual({
+    type: 'git',
+    url: 'git+https://github.com/AraneaDev/Nekyia.git',
+  })
+  expect(pkg.homepage).toBe('https://aranea-development.nl/en/tools/nekyia')
+  expect(pkg.bugs?.url).toBe('https://github.com/AraneaDev/Nekyia/issues')
+  expect(pkg.author).toBe('AraneaDev')
+  expect(pkg.publishConfig?.access).toBe('public')
+  expect(pkg.keywords).toContain('cli')
+  expect(pkg.keywords).toContain('bun')
+  expect(pkg.keywords.length).toBeGreaterThanOrEqual(5)
+})
+
+test('the prepare script cannot touch a consumer git config', () => {
+  // npm runs prepare before packing, and some install paths run it on the
+  // consumer's machine. .githooks is not in the tarball, so the guard makes
+  // it a no-op everywhere except a source checkout.
+  expect(pkg.scripts.prepare).toStartWith('[ -d .githooks ]')
+})
+
 test('no runtime dependency pulls in a native module', () => {
   const deps = Object.keys(pkg.dependencies ?? {})
   expect(deps).not.toContain('better-sqlite3')
