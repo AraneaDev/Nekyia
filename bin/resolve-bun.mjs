@@ -1,4 +1,4 @@
-import { accessSync, constants } from 'node:fs'
+import { accessSync, constants, statSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 
 /**
@@ -20,7 +20,11 @@ export function resolveBun(env = process.env, platform = process.platform) {
     const candidate = join(dir, name)
     try {
       accessSync(candidate, mode)
-      return candidate
+      // X_OK succeeds for a searchable directory too, so a PATH entry holding
+      // a directory named bun would otherwise be returned and then fail to
+      // spawn, with a real Bun further along PATH never reached. statSync
+      // rather than lstatSync: a symlinked bun is the normal install shape.
+      if (statSync(candidate).isFile()) return candidate
     } catch {
       // Not here, or not runnable. Keep looking.
     }

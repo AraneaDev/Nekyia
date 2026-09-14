@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { resolveBun } from '../bin/resolve-bun.mjs'
@@ -62,6 +62,30 @@ test('resolveBun searches PATH entries in order and ignores empty segments', () 
   writeFileSync(loser, '#!/bin/sh\nexit 0\n')
   chmodSync(loser, 0o755)
   expect(resolveBun({ PATH: ['', first, second].join(delimiter) }, 'linux')).toBe(winner)
+})
+
+test('resolveBun steps over a directory named bun and keeps searching', () => {
+  // X_OK succeeds for a searchable directory on POSIX, so a bare access check
+  // hands back the directory and the spawn then fails EACCES, with a real Bun
+  // sitting further along PATH unused.
+  const first = makeTemp('nekyia-bun-dir-')
+  const second = makeTemp('nekyia-bun-real-')
+  mkdirSync(join(first, 'bun'))
+  const real = join(second, 'bun')
+  writeFileSync(real, '#!/bin/sh\nexit 0\n')
+  chmodSync(real, 0o755)
+  expect(resolveBun({ PATH: [first, second].join(delimiter) }, 'linux')).toBe(real)
+})
+
+test('resolveBun follows a symlinked bun, which is how most installs look', () => {
+  const dir = makeTemp('nekyia-bun-target-')
+  const linkDir = makeTemp('nekyia-bun-link-')
+  const target = join(dir, 'bun-1.4.0')
+  writeFileSync(target, '#!/bin/sh\nexit 0\n')
+  chmodSync(target, 0o755)
+  const link = join(linkDir, 'bun')
+  symlinkSync(target, link)
+  expect(resolveBun({ PATH: linkDir }, 'linux')).toBe(link)
 })
 
 test('resolveBun looks for bun.exe on Windows', () => {
