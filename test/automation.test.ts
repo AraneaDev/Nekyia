@@ -77,3 +77,31 @@ test('every interface shot the README points at exists and is generated', () => 
     expect(referenced).toContain(`docs/media/${name}.svg`)
   }
 })
+
+test('the release config states the post-1.0 bump policy by omission', () => {
+  const config = JSON.parse(read('release-please-config.json')) as {
+    packages: Record<string, Record<string, unknown>>
+  }
+  // Both flags only apply below 1.0.0. Leaving them in after the bump
+  // misdescribes the policy to the next reader.
+  expect(config.packages['.']).not.toHaveProperty('bump-minor-pre-major')
+  expect(config.packages['.']).not.toHaveProperty('bump-patch-for-minor-pre-major')
+})
+
+test('the release workflow publishes to npm over OIDC with no stored token', () => {
+  const workflow = read('.github/workflows/release-please.yml')
+  expect(workflow).toContain('id-token: write')
+  expect(workflow).toContain('registry-url: https://registry.npmjs.org')
+  expect(workflow).toContain('npm publish --ignore-scripts')
+  // Trusted publishing attests provenance on its own, and a stored token is
+  // the thing it exists to remove. Either appearing here is a regression.
+  // Read the commands rather than the whole file: the workflow comments name
+  // both, explaining why they are absent, and that must not trip the guard.
+  const commands = workflow
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('#'))
+    .join('\n')
+  expect(commands).not.toContain('NODE_AUTH_TOKEN')
+  expect(commands).not.toContain('NPM_TOKEN')
+  expect(commands).not.toContain('--provenance')
+})
