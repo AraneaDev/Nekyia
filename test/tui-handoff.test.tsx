@@ -112,6 +112,31 @@ test('pressing n opens a note input; the typed text becomes the framing for the 
   expect(plans[0]!.prompt).toStartWith('focus on the retry logic')
 })
 
+test('a paste into an empty note is capped at the note length limit rather than passed through whole', async () => {
+  const db = seed()
+  const plans: ExecPlan[] = []
+  const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[adapter('claude'), adapter('codex')]}
+    checkHandoffPlan={available} onExec={(plan) => plans.push(plan)} {...opts} />)
+  view.stdin.write('')
+  await tick()
+  view.stdin.write('n')
+  await tick()
+  // Ink delivers a paste as one multi-character `input` string, not one call
+  // per character, so a length check made before appending has to account for
+  // the whole paste, not just the note's length so far.
+  view.stdin.write('x'.repeat(5000))
+  await tick()
+  view.stdin.write('\r')
+  await tick()
+  view.stdin.write('\r')
+  await tick()
+  expect(plans).toHaveLength(1)
+  expect(plans[0]!.prompt!.length).toBeLessThanOrEqual(5000)
+  const framingLength = plans[0]!.prompt!.indexOf('\n\n')
+  expect(framingLength).toBeGreaterThan(0)
+  expect(framingLength).toBeLessThanOrEqual(2000)
+})
+
 test('escape from the note input returns to the target picker rather than cancelling the whole handoff', async () => {
   const db = seed()
   const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[adapter('claude'), adapter('codex')]}

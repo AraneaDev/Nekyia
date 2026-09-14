@@ -37,7 +37,7 @@ export function scanLimit(columns: number): number {
 /**
  * Takes the first `limit` code units without cutting a surrogate pair open, returning the valid text sample.
  */
-function prefixByCodeUnits(value: string, limit: number): { sample: string; truncated: boolean } {
+export function prefixByCodeUnits(value: string, limit: number): { sample: string; truncated: boolean } {
   const truncated = value.length > limit
   let sample = value.slice(0, limit)
   const last = sample.charCodeAt(sample.length - 1)

@@ -8,7 +8,7 @@ import type { IndexDb } from '../core/db'
 import { checkPlan, shellQuote } from '../core/resume'
 import type { ExecPlan } from '../types'
 import { List } from './List'
-import { boundedDisplayText, boundedPathTail, MAX_DISPLAY_COLUMNS, wrappedDisplayLines } from './text'
+import { boundedDisplayText, boundedPathTail, MAX_DISPLAY_COLUMNS, prefixByCodeUnits, wrappedDisplayLines } from './text'
 import { projectName, relTime } from '../render'
 import { buildPreviewLines, Preview } from './Preview'
 import { SESSION_DISPLAY_LIMIT, useSessions } from './useSessions'
@@ -662,7 +662,9 @@ export function App({
       else if (key.return) { chooseHandoffTarget(handoffNote.trim() || undefined); setHandoffNote(null) }
       else if (key.backspace || key.delete) setHandoffNote(deleteLastGrapheme(handoffNote))
       else if (input && !key.ctrl && !key.meta) {
-        setHandoffNote(handoffNote.length < MAX_HANDOFF_NOTE_LENGTH ? handoffNote + input : handoffNote)
+        // `input` can be a whole pasted string in one call, so the cap has to
+        // apply to the combined result, not gate on the note's length so far.
+        setHandoffNote(prefixByCodeUnits(handoffNote + input, MAX_HANDOFF_NOTE_LENGTH).sample)
       }
       return
     }
