@@ -59,6 +59,15 @@ bun install -g github:AraneaDev/Nekyia#v1.0.1
 Every published version is listed on the
 [releases page](https://github.com/AraneaDev/Nekyia/releases).
 
+### From npm
+
+The registry package is not live yet. Install from the release above until it
+lands, and this command starts working on its own once it does.
+
+```bash
+bun install -g nekyia
+```
+
 ### From source
 
 ```bash
@@ -68,7 +77,7 @@ bun install --frozen-lockfile
 bun link
 ```
 
-Both install paths expose `nekyia` and the shorter `nek` command.
+All three install paths expose `nekyia` and the shorter `nek` command.
 
 ## Quick start
 

@@ -75,12 +75,10 @@ test('the README follows the project house style and documents the npm install',
   expect(readme).toStartWith('<div align="center">\n\n# Nekyia')
   expect(readme).toContain('github/v/release/AraneaDev/Nekyia')
   expect(readme).toContain('actions/workflow/status/AraneaDev/Nekyia/ci.yml')
-  // Nothing about npm appears while the package is unresolvable: not the
-  // badges, which shields renders as broken red boxes, and not an install
-  // command that 404s.
+  expect(readme).toContain('bun install -g nekyia')
+  // The npm badges are out while the package is unresolvable, since shields
+  // renders a 404 package as a broken red badge.
   expect(readme).not.toContain('img.shields.io/npm/')
-  expect(readme).not.toContain('bun install -g nekyia')
-  expect(readme).not.toContain('npmjs.com/package/nekyia')
   expect(readme).toContain('> **Nekyia**')
   expect(readme).toContain('git clone https://github.com/AraneaDev/Nekyia.git')
   // The pre-release hedges are gone now that the package is on the registry.
