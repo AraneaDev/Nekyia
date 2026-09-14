@@ -27,7 +27,7 @@
   },
   "brief": {
     "cmd": "agy",
-    "args": ["{prompt}"],
+    "args": ["--prompt-interactive", "{prompt}"],
     "cwd": "{cwd}"
   }
 }

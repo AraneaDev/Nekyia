@@ -34,6 +34,35 @@ export interface RunIo {
 }
 
 /**
+ * Longest single argv string Linux allows (fs/exec.c's `MAX_ARG_STRLEN`, 32 pages);
+ * exec() rejects any one string past this regardless of how much headroom the
+ * total argv+envp budget has left. Checked per-string rather than summed with
+ * the ambient environment, so an unrelated large shell environment cannot fail
+ * a brief that would have launched fine on its own; prompts are refused whole,
+ * never cut for transport.
+ */
+const MAX_ARG_STRING_BYTES = 128 * 1024
+/** Actionable fallback when argv cannot carry a prompt, including OS-level E2BIG failures. */
+const BRIEF_TOO_LARGE = 'brief is too large to launch as command arguments; export it with "nekyia show <uid>" and transfer the context manually'
+
+/** True unless a brief plan's command or one of its arguments alone would exceed the OS's longest-argv-string limit. */
+function briefFitsArguments(plan: ExecPlan): boolean {
+  if (plan.kind !== 'brief') return true
+  if (Buffer.byteLength(plan.cmd) >= MAX_ARG_STRING_BYTES) return false
+  return plan.args.every((arg) => Buffer.byteLength(arg) < MAX_ARG_STRING_BYTES)
+}
+
+/**
+ * Rewrites an E2BIG failure into the actionable brief-too-large error, whether it
+ * surfaced as a synchronous throw from spawning or as a rejection of the child's
+ * exit promise; anything else passes through unchanged.
+ */
+function asBriefTooLarge(error: unknown): Error {
+  if ((error as NodeJS.ErrnoException)?.code === 'E2BIG') return new Error(BRIEF_TOO_LARGE, { cause: error })
+  return error instanceof Error ? error : new Error(String(error))
+}
+
+/**
  * Checks whether a given file path exists and is an executable file.
  */
 function executableAt(path: string): boolean {
@@ -64,6 +93,7 @@ function resolveCommand(command: string, cwd: string): string | undefined {
 
 /** Checks a plan is launchable before any teardown happens, so a failure is reported into a live terminal rather than a torn-down one. */
 export function checkPlan(plan: ExecPlan): RunResult {
+  if (!briefFitsArguments(plan)) return { ok: false, reason: BRIEF_TOO_LARGE }
   if (!plan.cwd) {
     return { ok: false, reason: 'the directory no longer exists' }
   }
@@ -156,18 +186,24 @@ function holdSignals(proc: SpawnedProcess): () => void {
  * The caller must tear down any TUI first: the child owns the terminal.
  */
 export async function runPlan(plan: ExecPlan, io: RunIo = defaultIo): Promise<number> {
+  if (!briefFitsArguments(plan)) throw new Error(BRIEF_TOO_LARGE)
   const command = resolveCommand(plan.cmd, plan.cwd)
   if (!command) throw new Error(`${plan.cmd} was not found or is not executable`)
   releaseStdin()
-  const proc = io.spawn([command, ...plan.args], {
-    cwd: plan.cwd,
-    stdin: 'inherit',
-    stdout: 'inherit',
-    stderr: 'inherit',
-  })
+  let proc: SpawnedProcess
+  try {
+    proc = io.spawn([command, ...plan.args], {
+      cwd: plan.cwd,
+      stdin: 'inherit',
+      stdout: 'inherit',
+      stderr: 'inherit',
+    })
+  } catch (error) {
+    throw asBriefTooLarge(error)
+  }
   const releaseSignals = holdSignals(proc)
   try {
-    return await proc.exited
+    return await proc.exited.catch((error: unknown) => { throw asBriefTooLarge(error) })
   } finally {
     releaseSignals()
   }

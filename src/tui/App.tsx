@@ -3,11 +3,12 @@ import { Box, measureElement, Text, useApp, useInput, type DOMElement } from 'in
 import type { Config } from '../config'
 import type { Adapter } from '../core/adapter'
 import { buildBrief } from '../core/brief'
+import { buildHandoffPlan, MAX_HANDOFF_NOTE_LENGTH, preambleForIntent } from '../core/handoff'
 import type { IndexDb } from '../core/db'
-import { shellQuote } from '../core/resume'
+import { checkPlan, shellQuote } from '../core/resume'
 import type { ExecPlan } from '../types'
 import { List } from './List'
-import { boundedDisplayText, boundedPathTail, MAX_DISPLAY_COLUMNS } from './text'
+import { boundedDisplayText, boundedPathTail, MAX_DISPLAY_COLUMNS, prefixByCodeUnits, wrappedDisplayLines } from './text'
 import { projectName, relTime } from '../render'
 import { buildPreviewLines, Preview } from './Preview'
 import { SESSION_DISPLAY_LIMIT, useSessions } from './useSessions'
@@ -148,6 +149,77 @@ interface Confirmation {
   plan: ExecPlan
   chars: number
   client: string
+  source?: string
+  /** The framing shown to the target, bounded for display; absent for the default continue intent. */
+  framing?: string
+}
+
+/** A wrapped, scrollable confirmation whose action hints never compete with its body for rows. */
+function BriefConfirmation({ details, rows, columns }: {
+  details: Confirmation
+  rows: number
+  columns: number
+}) {
+  const [scroll, setScroll] = useState(0)
+  const width = Math.max(1, columns - 2)
+  const lines = useMemo(() => {
+    const cmd = boundedDisplayText(details.plan.cmd, 80) || '(unknown command)'
+    const directory = boundedDisplayText(details.plan.cwd, 120) || '(unknown directory)'
+    return [
+      'Start a new briefed session',
+      `${cmd} in ${directory}`,
+      `Start a new session in ${details.client} with a ${details.chars} character brief.`,
+      ...(details.source ? [`Context from the selected ${details.source} session.`] : []),
+      ...(details.framing ? [`Framing: ${details.framing}`] : []),
+      'It carries no tool state or file snapshots, and it costs tokens.',
+      'The target client may send this context to its configured model provider.',
+    ].flatMap((text) => wrappedDisplayLines(text, width))
+  }, [details, width])
+  const actions = wrappedDisplayLines('enter continue, esc back', width)
+  const overflowing = lines.length + actions.length > rows
+  const footerRows = Math.max(0, rows - 1)
+  const footerLines = [
+    ...(overflowing ? wrappedDisplayLines('up/down scroll', width) : []),
+    ...actions,
+  ]
+  const footer = footerRows === 0 ? [] : footerLines.slice(-footerRows)
+  const visible = Math.min(lines.length, Math.max(1, rows - footer.length))
+  const maxScroll = Math.max(0, lines.length - visible)
+  const offset = Math.min(scroll, maxScroll)
+
+  // A resize can expose the whole body; do not revive a stale offset when it shrinks again.
+  useEffect(() => { setScroll((previous) => Math.min(previous, maxScroll)) }, [maxScroll])
+  useInput((_input, key) => {
+    if (key.upArrow) setScroll(Math.max(0, offset - 1))
+    else if (key.downArrow) setScroll(Math.min(maxScroll, offset + 1))
+    else if (key.pageUp) setScroll(Math.max(0, offset - visible))
+    else if (key.pageDown) setScroll(Math.min(maxScroll, offset + visible))
+  })
+
+  return (
+    <Box flexDirection="column" paddingX={1} width={columns} height={visible + footer.length} overflow="hidden">
+      {lines.slice(offset, offset + visible).map((line, index) => (
+        <Box key={offset + index} height={1} flexShrink={0}>
+          <Text bold={offset + index === 0} color={offset + index === 0 ? 'yellow' : undefined} wrap="truncate-end">
+            {line}
+          </Text>
+        </Box>
+      ))}
+      {footer.map((line, index) => (
+        <Box key={`footer-${index}`} height={1} flexShrink={0}>
+          <Text dimColor wrap="truncate-end">{line}</Text>
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+/** Holds the source fixed while the user navigates handoff targets. */
+interface HandoffPicker {
+  uid: string
+  source: string
+  adapters: Adapter[]
+  index: number
 }
 
 /**
@@ -311,6 +383,8 @@ export interface AppProps {
    * with the picker.
    */
   onExec: (plan: ExecPlan, pendingCopy?: Promise<void>) => void
+  /** Preflight for handoffs while the target picker can still report failures. */
+  checkHandoffPlan?: typeof checkPlan
   /** Requests a reindex. Offered, and ctrl+r wired to it, only once the index has gone stale. */
   onReindex?: () => void
   /** null explicitly disables copying; undefined uses the host clipboard when present. */
@@ -334,6 +408,7 @@ export interface AppProps {
 export function App({
   db, cfg, adapters, cwd, now, onExec, onReindex, clipboard,
   clipboardFactory = createHostClipboard, rows, columns, indexedAt,
+  checkHandoffPlan = checkPlan,
 }: AppProps) {
   const { exit } = useApp()
   const { rows: terminalHeight, columns: terminalWidth } = useTerminalSize(rows, columns)
@@ -343,6 +418,10 @@ export function App({
   const [scroll, setScroll] = useState(0)
   const sessions = useSessions(db, cfg, cwd)
   const selectedRow = sessions.rows[sessions.selected]
+  const handoffTargets = useMemo(
+    () => adapters.filter((adapter) => adapter.id !== selectedRow?.client && adapter.manifest.brief),
+    [adapters, selectedRow?.client],
+  )
   // Inspecting with nothing selected is a mode with nothing in it, whose footer
   // promises keys that do nothing and whose escape closes something invisible
   // instead of quitting. Every branch reads this instead of the raw flag, so the
@@ -361,6 +440,9 @@ export function App({
     Math.max(1, reading ? terminalHeight - INSPECT_LIST_ROWS - 7 : previewLines(terminalHeight)),
   )
   const [confirm, setConfirm] = useState<Confirmation | null>(null)
+  const [handoff, setHandoff] = useState<HandoffPicker | null>(null)
+  /** null outside note-entry; a string, possibly empty, while typing a custom framing for the highlighted target. */
+  const [handoffNote, setHandoffNote] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const executing = useRef(false)
   const mounted = useRef(true)
@@ -459,6 +541,40 @@ export function App({
     setConfirm({ plan, chars: brief.length, client: boundedDisplayText(row.client, 32) })
   }
 
+  /** Offers clients with brief templates, including those with no history yet. */
+  function openHandoff(): void {
+    if (!selectedRow) return
+    const targets = handoffTargets
+    if (!targets.length) { announce('no other client available'); return }
+    setNote('')
+    setHandoff({ uid: selectedRow.uid, source: selectedRow.client, adapters: targets, index: 0 })
+  }
+
+  /** Keeps planning and availability failures in the picker so another target can be chosen. */
+  function chooseHandoffTarget(preamble?: string): void {
+    if (!handoff) return
+    const target = handoff.adapters[handoff.index]
+    if (!target) return
+    try {
+      const result = buildHandoffPlan(db, handoff.uid, target.id, adapters, { preamble })
+      if (!result.ok) { announce(boundedDisplayText(result.reason, 120)); return }
+      const checked = checkHandoffPlan(result.plan)
+      if (!checked.ok) {
+        announce(boundedDisplayText(checked.reason ?? 'this session cannot be launched', 120))
+        return
+      }
+      setNote('')
+      setConfirm({
+        plan: result.plan, chars: result.briefChars,
+        client: boundedDisplayText(target.manifest.name, 64),
+        source: boundedDisplayText(handoff.source, 32),
+        framing: preamble ? boundedDisplayText(preamble, 96) : undefined,
+      })
+    } catch {
+      announce('could not plan this handoff')
+    }
+  }
+
   /**
    * Writes text to the host clipboard, notifying the user on success or failure.
    */
@@ -540,6 +656,30 @@ export function App({
       else if (key.escape) setConfirm(null)
       return
     }
+    if (handoff && handoffNote !== null) {
+      if (key.escape) { setHandoffNote(null) }
+      else if (key.ctrl && input === 'c') exit()
+      else if (key.return) { chooseHandoffTarget(handoffNote.trim() || undefined); setHandoffNote(null) }
+      else if (key.backspace || key.delete) setHandoffNote(deleteLastGrapheme(handoffNote))
+      else if (input && !key.ctrl && !key.meta) {
+        // `input` can be a whole pasted string in one call, so the cap has to
+        // apply to the combined result, not gate on the note's length so far.
+        setHandoffNote(prefixByCodeUnits(handoffNote + input, MAX_HANDOFF_NOTE_LENGTH).sample)
+      }
+      return
+    }
+    if (handoff) {
+      if (key.escape) { setHandoff(null); setNote('') }
+      else if (key.ctrl && input === 'c') exit()
+      else if (key.upArrow || key.downArrow) {
+        const delta = key.upArrow ? -1 : 1
+        setHandoff({ ...handoff, index: (handoff.index + delta + handoff.adapters.length) % handoff.adapters.length })
+        setNote('')
+      } else if (key.return) chooseHandoffTarget()
+      else if (input === 'r') chooseHandoffTarget(preambleForIntent('review'))
+      else if (input === 'n') { setHandoffNote(''); setNote('') }
+      return
+    }
     if (key.ctrl && input === 'c') { exit(); return }
     if (key.ctrl && input === 'o') {
       setInspecting((previous) => !previous)
@@ -577,6 +717,7 @@ export function App({
 
     if (key.ctrl && input === 'p') { copyPrompt(); return }
     if (key.ctrl && input === 'y') { copyCommand(); return }
+    if (key.ctrl && input === 't') { openHandoff(); return }
     if (key.ctrl && input === 'f') { sessions.cycleClient(); return }
     if (key.ctrl && input === 'r' && reindexOffered && !executing.current) {
       executing.current = true
@@ -590,17 +731,36 @@ export function App({
   })
 
   if (confirm) {
-    const cmd = boundedDisplayText(confirm.plan.cmd, 80) || '(unknown command)'
-    const directory = boundedDisplayText(confirm.plan.cwd, 120) || '(unknown directory)'
+    return <BriefConfirmation details={confirm} rows={terminalHeight} columns={terminalWidth} />
+  }
+
+  if (handoff && handoffNote !== null) {
+    const target = handoff.adapters[handoff.index]
     return (
-      <Box flexDirection="column" paddingX={1}>
-        <Text bold color="yellow">Start a new briefed session</Text>
-        <Text>{cmd} in {directory}</Text>
-        <Text dimColor>
-          {confirm.client} cannot resume by id. This starts a NEW session seeded with a {confirm.chars} character brief.
+      <Box flexDirection="column" paddingX={1} width={terminalWidth} height={terminalHeight} overflow="hidden">
+        <Text bold color="yellow" wrap="truncate-end">
+          Custom note for {boundedDisplayText(target?.manifest.name ?? '', 64)}
         </Text>
-        <Text dimColor>It carries no tool state or file snapshots, and it costs tokens.</Text>
-        <Box marginTop={1}><Text>enter to continue, esc to go back</Text></Box>
+        <Text dimColor wrap="truncate-end">Replaces the default framing. Enter to launch, esc to go back.</Text>
+        <Text wrap="truncate-end">{boundedPathTail(handoffNote, Math.max(1, terminalWidth - 2))}</Text>
+      </Box>
+    )
+  }
+
+  if (handoff) {
+    const visible = Math.max(1, terminalHeight - 5)
+    const start = Math.max(0, Math.min(handoff.index - Math.floor(visible / 2), handoff.adapters.length - visible))
+    return (
+      <Box flexDirection="column" paddingX={1} width={terminalWidth} height={terminalHeight} overflow="hidden">
+        <Text bold color="yellow" wrap="truncate-end">Hand off to another client</Text>
+        <Text dimColor wrap="truncate-end">Start fresh with the last indexed context.</Text>
+        {handoff.adapters.slice(start, start + visible).map((adapter, offset) => (
+          <Text key={adapter.id} color={start + offset === handoff.index ? 'cyan' : undefined} wrap="truncate-end">
+            {start + offset === handoff.index ? '▸ ' : '  '}{boundedDisplayText(adapter.manifest.name, Math.max(1, terminalWidth - 6))}
+          </Text>
+        ))}
+        <Text dimColor wrap="truncate-end">{handoff.index + 1}/{handoff.adapters.length} · up/down choose, enter continue, r review, n note, esc cancel</Text>
+        <Text color="yellow" wrap="truncate-end">{boundedDisplayText(note, 120)}</Text>
       </Box>
     )
   }
@@ -664,6 +824,7 @@ export function App({
       ...(selectedRow
         ? [
           ['enter', enterLabel], ['ctrl+o', 'history'],
+          ...(handoffTargets.length ? [['ctrl+t', 'handoff']] : []),
           ['ctrl+p', 'prompt'], ['ctrl+y', 'command'],
         ] as [string, string][]
         : []),

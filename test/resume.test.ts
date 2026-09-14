@@ -16,6 +16,69 @@ test('checkPlan accepts a plan whose cwd exists and command is executable', () =
   expect(checkPlan(ok).ok).toBe(true)
 })
 
+test('brief launches reject oversized UTF-8 arguments without truncating or spawning', async () => {
+  const prompt = '🧪'.repeat(40_000)
+  const plan: ExecPlan = { ...ok, kind: 'brief', prompt, args: [prompt] }
+  expect(prompt.length).toBeLessThan(128 * 1024)
+  expect(checkPlan(plan)).toMatchObject({ ok: false, reason: expect.stringContaining('too large') })
+  let spawned = false
+  await expect(runPlan(plan, {
+    spawn: () => { spawned = true; return { exited: Promise.resolve(0) } },
+  })).rejects.toThrow('transfer the context manually')
+  expect(spawned).toBe(false)
+  expect(plan.args).toEqual([prompt])
+})
+
+test('an OS argument-size failure gives an actionable error and installs no signal handlers', async () => {
+  const before = process.listenerCount('SIGTERM')
+  await expect(runPlan({ ...ok, kind: 'brief' }, {
+    spawn: () => { throw Object.assign(new Error('argument list too long'), { code: 'E2BIG' }) },
+  })).rejects.toThrow('transfer the context manually')
+  expect(process.listenerCount('SIGTERM')).toBe(before)
+})
+
+test('an E2BIG that surfaces as an exit-promise rejection is still translated into the actionable error', async () => {
+  await expect(runPlan({ ...ok, kind: 'brief' }, {
+    spawn: () => ({ exited: Promise.reject(Object.assign(new Error('argument list too long'), { code: 'E2BIG' })) }),
+  })).rejects.toThrow('transfer the context manually')
+})
+
+test('an unrelated exit-promise rejection passes through unchanged', async () => {
+  await expect(runPlan({ ...ok, kind: 'brief' }, {
+    spawn: () => ({ exited: Promise.reject(new Error('child crashed')) }),
+  })).rejects.toThrow('child crashed')
+})
+
+test('a large ambient environment does not fail a brief whose own argv is modest', () => {
+  const previous = process.env.NEKYIA_TEST_LARGE_ENV
+  try {
+    // Past the old summed argv+env threshold (128 KiB) on its own, so this would
+    // have failed checkPlan before the fix even though no single argv string,
+    // the one thing exec() actually bounds per-string, is anywhere near it.
+    process.env.NEKYIA_TEST_LARGE_ENV = 'x'.repeat(200 * 1024)
+    const plan: ExecPlan = { ...ok, kind: 'brief', prompt: 'a modest brief', args: ['a modest brief'] }
+    expect(checkPlan(plan)).toMatchObject({ ok: true })
+  } finally {
+    if (previous === undefined) delete process.env.NEKYIA_TEST_LARGE_ENV
+    else process.env.NEKYIA_TEST_LARGE_ENV = previous
+  }
+})
+
+test('a controlled child receives the exact multiline Unicode prompt and source cwd', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-handoff-child-')))
+  temporary.push(root)
+  const prompt = "historical context 🧪\nquotes: ' \" $HOME $(do-not-run) {cwd}\nsecond line"
+  const output = join(root, 'received.json')
+  const program = 'await Bun.write(process.argv[1], JSON.stringify({ cwd: process.cwd(), prompt: process.argv[2] })); process.exit(17)'
+  const plan: ExecPlan = {
+    kind: 'brief', cmd: process.execPath, cwd: root, prompt,
+    args: ['-e', program, output, prompt],
+  }
+  expect(checkPlan(plan).ok).toBe(true)
+  expect(await runPlan(plan)).toBe(17)
+  expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual({ cwd: root, prompt })
+})
+
 test('checkPlan refuses a vanished cwd rather than guessing', () => {
   const result = checkPlan({ ...ok, cwd: '/definitely/not/here' })
   expect(result.ok).toBe(false)

@@ -60,7 +60,7 @@ bun install -g nekyia
 
 <!-- x-release-please-start-version -->
 ```bash
-bun install -g github:AraneaDev/Nekyia#v0.0.19
+bun install -g github:AraneaDev/Nekyia#v0.0.20
 ```
 <!-- x-release-please-end -->
 
@@ -192,6 +192,7 @@ deterministic handover, and starts a new client session with that context.
 | `up` / `down` | Move the cursor, or scroll the history while it is open |
 | `enter` | Resume the session, or start a briefed one once you confirm it |
 | `ctrl+o` | Open the session's history, and close it again |
+| `ctrl+t` | Choose another client and confirm a fresh session with this session's context (`r` for a review framing, `n` for a custom note) |
 | `tab` | Widen to everywhere, or narrow to the project under the cursor |
 | `ctrl+f` | Cycle the clients your index actually holds |
 | `ctrl+p` / `ctrl+y` | Copy the opening prompt, or the command that would run |
@@ -221,6 +222,7 @@ gets the same interface rather than a broken one:
 | `nekyia last` | Launch the newest visible session in this directory |
 | `nekyia index [--rebuild]` | Refresh fingerprints and changed session content |
 | `nekyia show <uid>` | Print a deterministic handover as Markdown |
+| `nekyia handoff <uid> --to <client>` | Start a fresh target client with the source session's indexed context |
 | `nekyia doctor [--sniff]` | Report clients, paths, size caps, unreadable transcripts, and unsupported stores |
 | `nekyia forget <uid>` | Remove one session and every searchable facet from the index |
 | `nekyia prune --missing` | Remove indexed sessions whose sources disappeared |
@@ -235,6 +237,46 @@ nekyia search "sse reconnect" --ids | head -1 | xargs nekyia show
 
 Run `nekyia --help` for search filters, sort modes, limits, and command-specific options.
 
+To continue work in another client:
+
+```bash
+nekyia handoff claude:<session-id> --to codex
+nekyia handoff claude:<session-id> --to codex --dry-run
+nekyia handoff claude:<session-id> --to codex --dry-run --json
+nekyia handoff claude:<session-id> --to codex --intent review
+nekyia handoff claude:<session-id> --to codex --note "focus on the retry logic"
+```
+
+Handoff starts a fresh session using the target's brief command and the source's
+recorded directory (unless a custom manifest overrides it). It uses the last indexed
+context; run `nekyia index` first if the source conversation has changed. It transfers
+no native conversation state, tool state, or file snapshots, and does not restore a
+historical branch. Treat the brief as historical context: current instructions and
+the current repository take precedence. Same-client handoff is also allowed.
+
+`--max-chars <n>` follows `show`'s character budget (default 40,000). User prompts are
+preserved even when the budget is zero or too small. Launching refuses a brief whose
+command or argument text alone would exceed a conservative 128 KiB allowance,
+measured in UTF-8 bytes; it never truncates prompts to make them fit. If this happens,
+export with `nekyia show <uid>` and transfer the relevant context manually.
+
+By default the target is told this is a handover to continue, the same framing
+`show` produces on its own. `--intent review` asks the target to critique the
+session's changes instead of extending them: look for bugs, missed edge cases, and
+better approaches. `--note <text>` replaces that framing with your own instruction
+(up to 2,000 characters) and cannot be combined with `--intent`. Either framing is
+prepended to the brief and, like the rest of the mandatory header, is never dropped
+to fit the character budget. The `ctrl+t` picker offers the same choice interactively:
+`r` for review, `n` to type a note, plain `enter` to continue as before.
+
+`--dry-run` prints the planned shell command without checking whether the target is
+installed. `--dry-run --json` prints `{ cmd, args, cwd, briefChars }`; `--json` requires
+`--dry-run`. Both outputs include the brief in the arguments and are content exports,
+which may contain private information or secrets retained in user prompts. Execution
+also passes the brief through process arguments, visible where OS permissions permit.
+The target client may send this context to its configured model provider and incur
+token costs. Repeated handoffs can retain earlier briefs inside later prompts.
+
 ## Supported clients
 
 Support means the store format was exercised against real or fidelity-matched local
@@ -248,15 +290,19 @@ exact attachment was not confirmed.
 | Codex | Resume | `codex resume <id>` |
 | Antigravity CLI, agy | Resume | `agy --conversation <id>` |
 | GitHub Copilot CLI | Resume | `copilot --resume=<id>` |
-| opencode | Search | `opencode <brief>` |
-| Kilo Code | Search | `kilo <brief>` |
-| Codebuff / freebuff | Search | `codebuff --cwd <cwd> <brief>` |
+| opencode | Search | `opencode --prompt <brief>` |
+| Kilo Code | Search | `kilo --prompt <brief>` |
+| Codebuff | Search | `codebuff --cwd <cwd> <brief>` |
 
 Kilo shares opencode's tested store format, but its executable was not installed during
 command verification. opencode and Codebuff were exercised against real local IDs, but
 the result did not prove attachment to the requested context. I do not call any of those
 three resumable. Search-tier clients always start fresh briefed sessions. They never claim
 to recover tool state or file snapshots, and sending a handover can cost tokens.
+
+Fresh handoff commands and the scope of their verification are documented in
+[cross-client handoff notes](docs/cross-client-handoff.md). The Codebuff handoff
+template invokes `codebuff`; current Freebuff does not accept an initial prompt.
 
 ## How it works
 

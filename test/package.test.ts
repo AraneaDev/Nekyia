@@ -57,7 +57,7 @@ test('the README names the exact roadmap and truthful launch tiers', () => {
     'Amp', 'Warp Agent', 'Grok CLI', 'Rovo Dev', 'Auggie', 'Trae', 'Cline CLI',
     'Zed',
   ]) expect(readme).toContain(client)
-  expect(readme).toContain('opencode <brief>')
+  expect(readme).toContain('opencode --prompt <brief>')
   expect(readme).toContain('codebuff --cwd <cwd> <brief>')
   expect(readme).toContain('Search-tier clients always start fresh briefed sessions')
   expect(readme).toContain('bun build --compile')

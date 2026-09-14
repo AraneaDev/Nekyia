@@ -2,7 +2,7 @@ import { afterAll, expect, spyOn, test } from 'bun:test'
 import Database from 'bun:sqlite'
 import { main, planCli, versionText } from '../src/cli'
 import { parseSince } from '../src/commands/timeline'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
@@ -14,6 +14,137 @@ import type { SessionRef } from '../src/types'
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts')
 const FIX = join(import.meta.dir, 'fixtures')
 const temporaries: string[] = []
+
+test('planCli parses handoff options including a zero budget', () => {
+  expect(planCli(['handoff', 'claude:a', '--to', 'codex'])).toEqual({
+    kind: 'handoff', options: { uid: 'claude:a', to: 'codex', maxChars: undefined, dryRun: false, json: false },
+  })
+  expect(planCli(['handoff', 'claude:a', '--to', 'codex', '--max-chars', '0', '--dry-run', '--json'])).toEqual({
+    kind: 'handoff', options: { uid: 'claude:a', to: 'codex', maxChars: 0, dryRun: true, json: true },
+  })
+})
+
+test('planCli parses an intent preset and a custom note for handoff', () => {
+  expect(planCli(['handoff', 'claude:a', '--to', 'codex', '--intent', 'review'])).toMatchObject({
+    kind: 'handoff', options: { intent: 'review', note: undefined },
+  })
+  expect(planCli(['handoff', 'claude:a', '--to', 'codex', '--note', 'focus on the retry logic'])).toMatchObject({
+    kind: 'handoff', options: { intent: undefined, note: 'focus on the retry logic' },
+  })
+  expect(planCli(['handoff', 'claude:a', '--to', 'codex'])).toMatchObject({
+    kind: 'handoff', options: { intent: undefined, note: undefined },
+  })
+})
+
+test('handoff rejects an unknown intent, combining --intent with --note, and an oversized note', () => {
+  const cases: [string[], string][] = [
+    [['--intent', 'rewrite'], 'continue or review'],
+    [['--intent', 'review', '--note', 'x'], 'cannot be combined'],
+    [['--note', 'x'.repeat(2001)], '2000 characters or fewer'],
+  ]
+  for (const [flags, reason] of cases) {
+    expect(() => planCli(['handoff', 'claude:a', '--to', 'codex', ...flags])).toThrow(reason)
+  }
+  expect(planCli(['handoff', 'claude:a', '--to', 'codex', '--note', 'x'.repeat(2000)]))
+    .toMatchObject({ options: { note: 'x'.repeat(2000) } })
+})
+
+test('handoff flags are rejected by every other command before any mutations', () => {
+  for (const command of ['index', 'search', 'blame', 'timeline', 'last', 'show', 'doctor', 'forget', 'prune', 'exclude']) {
+    for (const flags of [['--to', 'codex'], ['--dry-run'], ['--intent', 'review'], ['--note', 'x']]) {
+      expect(() => planCli([command, ...flags])).toThrow('can only be used with handoff')
+    }
+  }
+  const env = environment()
+  expect(run(['index', '--yes', '--dry-run'], env).exitCode).toBe(2)
+  expect(existsSync(env.XDG_DATA_HOME)).toBe(false)
+})
+
+test('handoff rejects malformed identifiers, missing targets, incompatible flags, and bad budgets', () => {
+  const cases: [string[], string][] = [
+    [[], 'exactly one uid'], [['claude:a', 'extra'], 'exactly one uid'],
+    [['bad', '--to', 'codex'], 'malformed uid'],
+    [['claude:a\u001b', '--to', 'codex'], 'control characters'],
+    [['claude:a'], 'requires --to'],
+    [['claude:a', '--to', 'codex', '--json'], '--json requires --dry-run'],
+    [['claude:a', '--to', 'bad\u001b'], 'invalid target'],
+    [['claude:a', '--to', 'bad:client'], 'invalid target'],
+    [['claude:a', '--to', 'codex', '--max-chars=-1'], 'non-negative integer'],
+  ]
+  for (const [args, reason] of cases) expect(() => planCli(['handoff', ...args])).toThrow(reason)
+  for (const flags of [
+    ['--client', 'claude'], ['--file', 'x'], ['--sort', 'recent'], ['--limit', '1'],
+    ['--all'], ['--ids'], ['--rebuild'], ['--yes'], ['--quiet'], ['--sniff'],
+    ['--emit-manifest', 'x'], ['--missing'], ['--dir', 'x'], ['--since', '1d'],
+  ]) {
+    expect(() => planCli(['handoff', 'claude:a', '--to', 'codex', ...flags])).toThrow('only --to')
+  }
+})
+
+test('handoff dry-run exports indexed context for another client without changing the index', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const uid = 'claude:11111111-2222-3333-4444-555555555555'
+  const shown = run(['show', uid, '--max-chars', '0'], env).stdout.toString().trimEnd()
+  const index = join(env.XDG_DATA_HOME, 'nekyia', 'index.db')
+  const before = readFileSync(index)
+  const json = run(['handoff', uid, '--to', 'codex', '--dry-run', '--json', '--max-chars', '0'], env)
+  expect(json.exitCode).toBe(0)
+  expect(JSON.parse(json.stdout.toString())).toEqual({
+    cmd: 'codex', args: [shown], cwd: '/root/proj', briefChars: shown.length,
+  })
+  const dry = run(['handoff', uid, '--to', 'codex', '--dry-run'], env)
+  expect(dry.exitCode).toBe(0)
+  expect(dry.stdout.toString()).toContain('cd /root/proj && codex')
+  for (const [source, target, error] of [
+    [uid, 'unknown-target', 'no adapter for unknown-target'],
+    ['claude:missing', 'codex', 'no session with uid claude:missing'],
+  ]) {
+    const result = run(['handoff', source!, '--to', target!, '--dry-run'], env)
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr.toString()).toContain(error!)
+  }
+  expect(readFileSync(index)).toEqual(before)
+})
+
+test('handoff --intent review and --note each prepend their framing to the exported brief', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const uid = 'claude:11111111-2222-3333-4444-555555555555'
+  const shown = run(['show', uid, '--max-chars', '0'], env).stdout.toString().trimEnd()
+
+  const review = run(['handoff', uid, '--to', 'codex', '--dry-run', '--json', '--max-chars', '0', '--intent', 'review'], env)
+  expect(review.exitCode).toBe(0)
+  const reviewBrief = JSON.parse(review.stdout.toString()).args[0] as string
+  expect(reviewBrief.toLowerCase()).toStartWith('review this session')
+  expect(reviewBrief).toContain(shown)
+
+  const noted = run(['handoff', uid, '--to', 'codex', '--dry-run', '--json', '--max-chars', '0', '--note', 'focus on the retry logic'], env)
+  expect(noted.exitCode).toBe(0)
+  const notedBrief = JSON.parse(noted.stdout.toString()).args[0] as string
+  expect(notedBrief).toStartWith('focus on the retry logic')
+  expect(notedBrief).toContain(shown)
+
+  const plain = run(['handoff', uid, '--to', 'codex', '--dry-run', '--json', '--max-chars', '0', '--intent', 'continue'], env)
+  expect(JSON.parse(plain.stdout.toString()).args[0]).toBe(shown)
+})
+
+test('handoff exports an indexed Codex conversation into a fresh Claude session', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const uid = 'codex:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+  const shown = run(['show', uid], env)
+  expect(shown.exitCode).toBe(0)
+  const brief = shown.stdout.toString().trimEnd()
+  expect(brief).toContain('earlier codex session')
+  expect(brief).toContain('rewrite the transport layer')
+  expect(brief).toContain('Rewriting transport now.')
+  const result = run(['handoff', uid, '--to', 'claude', '--dry-run', '--json'], env)
+  expect(result.exitCode).toBe(0)
+  expect(JSON.parse(result.stdout.toString())).toEqual({
+    cmd: 'claude', args: [brief], cwd: '/root/other', briefChars: brief.length,
+  })
+})
 
 function environment() {
   const tmp = mkdtempSync(join(tmpdir(), 'nekyia-cli-'))
