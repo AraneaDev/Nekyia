@@ -11,8 +11,6 @@
 [![Language](https://img.shields.io/github/languages/top/AraneaDev/Nekyia)](https://github.com/AraneaDev/Nekyia)
 [![Last commit](https://img.shields.io/github/last-commit/AraneaDev/Nekyia?label=last%20commit)](https://github.com/AraneaDev/Nekyia/commits/main)
 [![Conventional Commits](https://img.shields.io/badge/commits-conventional-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org/)
-[![npm](https://img.shields.io/npm/v/nekyia?label=npm&color=cb3837)](https://www.npmjs.com/package/nekyia)
-[![Downloads](https://img.shields.io/npm/dm/nekyia?label=downloads)](https://www.npmjs.com/package/nekyia)
 
 </div>
 
@@ -50,12 +48,6 @@ files they touched, in what order, and whether git is currently tracking them.
 Nekyia requires [Bun](https://bun.sh/) 1.1 or newer. It runs on Bun, not on Node, and the
 `nekyia` command says so plainly if Bun is missing rather than failing on an import.
 
-### From npm
-
-```bash
-bun install -g nekyia
-```
-
 ### From a release
 
 <!-- x-release-please-start-version -->
@@ -66,6 +58,15 @@ bun install -g github:AraneaDev/Nekyia#v1.0.1
 
 Every published version is listed on the
 [releases page](https://github.com/AraneaDev/Nekyia/releases).
+
+### From npm
+
+The registry package is not live yet. Install from the release above until it
+lands, and this command starts working on its own once it does.
+
+```bash
+bun install -g nekyia
+```
 
 ### From source
 
