@@ -93,6 +93,12 @@ export function boundedDisplayText(
   return result
 }
 
+/** Extracts and bounds a caught value's message, so a diagnostic can never grow unbounded or carry raw escapes. */
+export function boundedErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error)
+  return boundedDisplayText(raw, 512) || 'unknown error'
+}
+
 /**
  * Sanitizes a line and folds it onto as many terminal rows as it needs, keeping
  * every character instead of cutting the tail off at the right edge.

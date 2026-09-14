@@ -8,7 +8,7 @@ import { runHandoff, type HandoffOptions } from './commands/handoff'
 import { parseSince, runTimeline, type TimelineCommandOptions } from './commands/timeline'
 import type { DoctorOptions } from './commands/doctor'
 import type { PruneOptions } from './commands/privacy'
-import { isSafeClientId, parseUid } from './types'
+import { isSafeClientId, parseUid, UNSAFE_UID_TEXT } from './types'
 import { boundedDisplayText } from './tui/text'
 
 /** The help text, and the single source of truth for the command surface. */
@@ -159,7 +159,7 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
       throw new CliError('handoff accepts exactly one uid')
     }
     const uid = positionals[0]
-    if (/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(uid)) {
+    if (UNSAFE_UID_TEXT.test(uid)) {
       throw new CliError('uid must not contain control characters')
     }
     try {

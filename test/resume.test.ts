@@ -37,6 +37,33 @@ test('an OS argument-size failure gives an actionable error and installs no sign
   expect(process.listenerCount('SIGTERM')).toBe(before)
 })
 
+test('an E2BIG that surfaces as an exit-promise rejection is still translated into the actionable error', async () => {
+  await expect(runPlan({ ...ok, kind: 'brief' }, {
+    spawn: () => ({ exited: Promise.reject(Object.assign(new Error('argument list too long'), { code: 'E2BIG' })) }),
+  })).rejects.toThrow('transfer the context manually')
+})
+
+test('an unrelated exit-promise rejection passes through unchanged', async () => {
+  await expect(runPlan({ ...ok, kind: 'brief' }, {
+    spawn: () => ({ exited: Promise.reject(new Error('child crashed')) }),
+  })).rejects.toThrow('child crashed')
+})
+
+test('a large ambient environment does not fail a brief whose own argv is modest', () => {
+  const previous = process.env.NEKYIA_TEST_LARGE_ENV
+  try {
+    // Past the old summed argv+env threshold (128 KiB) on its own, so this would
+    // have failed checkPlan before the fix even though no single argv string,
+    // the one thing exec() actually bounds per-string, is anywhere near it.
+    process.env.NEKYIA_TEST_LARGE_ENV = 'x'.repeat(200 * 1024)
+    const plan: ExecPlan = { ...ok, kind: 'brief', prompt: 'a modest brief', args: ['a modest brief'] }
+    expect(checkPlan(plan)).toMatchObject({ ok: true })
+  } finally {
+    if (previous === undefined) delete process.env.NEKYIA_TEST_LARGE_ENV
+    else process.env.NEKYIA_TEST_LARGE_ENV = previous
+  }
+})
+
 test('a controlled child receives the exact multiline Unicode prompt and source cwd', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-handoff-child-')))
   temporary.push(root)

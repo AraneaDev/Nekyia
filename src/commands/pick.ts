@@ -7,7 +7,7 @@ import { checkPlan, runPlan, type RunResult } from '../core/resume'
 import { indexPath, loadConfigChecked, type Config } from '../config'
 import { App, type AppProps } from '../tui/App'
 import { releaseTerminal } from '../tui/clipboard'
-import { boundedDisplayText } from '../tui/text'
+import { boundedDisplayText, boundedErrorMessage as message } from '../tui/text'
 import type { ExecPlan } from '../types'
 import { runReindex } from './reindex'
 import { needsConsent } from './firstrun'
@@ -120,12 +120,6 @@ const defaults: PickDependencies = {
       return undefined
     }
   },
-}
-
-/** Extracts and safely formats the message string from an error object. */
-function message(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error)
-  return boundedDisplayText(raw, 512) || 'unknown error'
 }
 
 /** Own the picker lifecycle and launch only after Ink and SQLite are closed. */

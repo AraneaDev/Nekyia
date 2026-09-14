@@ -33,20 +33,33 @@ export interface RunIo {
   spawn(command: string[], options: SpawnOptions): SpawnedProcess
 }
 
-/** Conservative argv/environment allowance; prompts are refused whole, never cut for transport. */
-const MAX_BRIEF_LAUNCH_BYTES = 128 * 1024
+/**
+ * Longest single argv string Linux allows (fs/exec.c's `MAX_ARG_STRLEN`, 32 pages);
+ * exec() rejects any one string past this regardless of how much headroom the
+ * total argv+envp budget has left. Checked per-string rather than summed with
+ * the ambient environment, so an unrelated large shell environment cannot fail
+ * a brief that would have launched fine on its own; prompts are refused whole,
+ * never cut for transport.
+ */
+const MAX_ARG_STRING_BYTES = 128 * 1024
 /** Actionable fallback when argv cannot carry a prompt, including OS-level E2BIG failures. */
 const BRIEF_TOO_LARGE = 'brief is too large to launch as command arguments; export it with "nekyia show <uid>" and transfer the context manually'
 
-/** Measures UTF-8 bytes including terminators before handing a brief to the OS. */
+/** True unless a brief plan's command or one of its arguments alone would exceed the OS's longest-argv-string limit. */
 function briefFitsArguments(plan: ExecPlan): boolean {
   if (plan.kind !== 'brief') return true
-  let bytes = Buffer.byteLength(plan.cmd) + 1
-  for (const arg of plan.args) bytes += Buffer.byteLength(arg) + 1
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined) bytes += Buffer.byteLength(key) + Buffer.byteLength(value) + 2
-  }
-  return bytes < MAX_BRIEF_LAUNCH_BYTES
+  if (Buffer.byteLength(plan.cmd) >= MAX_ARG_STRING_BYTES) return false
+  return plan.args.every((arg) => Buffer.byteLength(arg) < MAX_ARG_STRING_BYTES)
+}
+
+/**
+ * Rewrites an E2BIG failure into the actionable brief-too-large error, whether it
+ * surfaced as a synchronous throw from spawning or as a rejection of the child's
+ * exit promise; anything else passes through unchanged.
+ */
+function asBriefTooLarge(error: unknown): Error {
+  if ((error as NodeJS.ErrnoException)?.code === 'E2BIG') return new Error(BRIEF_TOO_LARGE, { cause: error })
+  return error instanceof Error ? error : new Error(String(error))
 }
 
 /**
@@ -186,12 +199,11 @@ export async function runPlan(plan: ExecPlan, io: RunIo = defaultIo): Promise<nu
       stderr: 'inherit',
     })
   } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === 'E2BIG') throw new Error(BRIEF_TOO_LARGE, { cause: error })
-    throw error
+    throw asBriefTooLarge(error)
   }
   const releaseSignals = holdSignals(proc)
   try {
-    return await proc.exited
+    return await proc.exited.catch((error: unknown) => { throw asBriefTooLarge(error) })
   } finally {
     releaseSignals()
   }

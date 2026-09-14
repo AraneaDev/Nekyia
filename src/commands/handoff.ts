@@ -4,9 +4,9 @@ import { buildAdapters, type Adapter } from '../core/adapter'
 import { IndexDb } from '../core/db'
 import { buildHandoffPlan, type HandoffResult } from '../core/handoff'
 import { checkPlan, runPlan, shellQuote, type RunResult } from '../core/resume'
-import { boundedDisplayText } from '../tui/text'
+import { boundedDisplayText, boundedErrorMessage as message } from '../tui/text'
 import type { Diagnostic, ExecPlan } from '../types'
-import { isSafeClientId, parseUid } from '../types'
+import { isSafeClientId, parseUid, UNSAFE_UID_TEXT } from '../types'
 import { needsConsent } from './firstrun'
 
 /** Options accepted by `nekyia handoff <uid> --to <client>`. */
@@ -56,12 +56,6 @@ const defaults: HandoffDependencies = {
   error: (message) => { console.error(message) },
 }
 
-/** Extracts and safely formats the message string from an error object. */
-function message(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error)
-  return boundedDisplayText(raw, 512) || 'unknown error'
-}
-
 /** Builds a handover from one session and launches a different client with it. */
 export async function runHandoff(
   opts: HandoffOptions,
@@ -73,7 +67,7 @@ export async function runHandoff(
     deps.error('usage: nekyia handoff <uid> --to <client>')
     return 2
   }
-  if (/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(opts.uid)) {
+  if (UNSAFE_UID_TEXT.test(opts.uid)) {
     deps.error('error: uid must not contain control characters')
     return 2
   }
