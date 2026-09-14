@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/AraneaDev/Nekyia/compare/v1.0.0...v1.0.1) (2026-09-14)
+
+
+### Fixes
+
+* stop npm stripping both bin entries on publish ([#63](https://github.com/AraneaDev/Nekyia/issues/63)) ([347de80](https://github.com/AraneaDev/Nekyia/commit/347de80d28afadc4c5ea5ff4272f57ae9ceb05a6))
+
 ## [1.0.0](https://github.com/AraneaDev/Nekyia/compare/v0.0.20...v1.0.0) (2026-09-14)
 
 
