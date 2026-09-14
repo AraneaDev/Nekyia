@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/AraneaDev/Nekyia/compare/v0.0.20...v1.0.0) (2026-09-14)
+
+
+### Features
+
+* publish to npm and cut 1.0.0 ([#59](https://github.com/AraneaDev/Nekyia/issues/59)) ([8b9a704](https://github.com/AraneaDev/Nekyia/commit/8b9a704a4096a0b8dc042548649ba7426e230132))
+
 ## [0.0.20](https://github.com/AraneaDev/Nekyia/compare/v0.0.19...v0.0.20) (2026-09-14)
 
 
