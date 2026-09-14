@@ -6,6 +6,7 @@
       "package-name": "nekyia",
       "include-component-in-tag": false,
       "initial-version": "0.0.1",
+      "release-as": "1.0.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         "README.md"
