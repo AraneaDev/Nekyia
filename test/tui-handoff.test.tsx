@@ -249,6 +249,31 @@ test('compact confirmations keep every line readable by scrolling, with launch a
   }
 })
 
+test('at the smallest heights the footer drops the scroll hint before it drops enter/esc', async () => {
+  const db = seed()
+  const targets = [adapter('claude'), adapter('codex')]
+  const onExec = () => {}
+  const props = { db, cfg: DEFAULT_CONFIG, adapters: targets, checkHandoffPlan: available, onExec, ...opts }
+  const view = render(<App {...props} rows={24} columns={45} />)
+  view.stdin.write('')
+  await tick()
+  view.stdin.write('\r')
+  await tick()
+
+  // Shrink one row at a time: once scrolling is needed, "enter"/"esc" must
+  // survive every height down to the floor, even as the scroll hint itself
+  // is sacrificed first. Regression test for the CodeRabbit-flagged bug
+  // where slice(0, rows - 1) dropped the action line before the hint.
+  for (let rows = 24; rows >= 2; rows--) {
+    view.rerender(<App {...props} rows={rows} columns={45} />)
+    await tick()
+    const frame = view.lastFrame()!
+    expect(frame.split('\n').length).toBeLessThanOrEqual(rows)
+    expect(frame).toContain('enter')
+    expect(frame).toContain('esc')
+  }
+})
+
 test('confirmation paging and resize preserve readable content and reset the scroll bound', async () => {
   const db = seed()
   const targets = [adapter('claude'), adapter('codex')]
