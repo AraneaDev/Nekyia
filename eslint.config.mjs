@@ -91,6 +91,7 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         Bun: 'readonly',
+        URL: 'readonly',
         console: 'readonly',
         process: 'readonly',
       },

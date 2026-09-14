@@ -82,7 +82,10 @@ test('the README follows the project house style and is honest about pre-release
 })
 
 test('the package contains only publishable runtime material', () => {
-  expect(pkg.files).toEqual(['src', 'README.md', 'LICENSE'])
+  // 'bin' is load-bearing, not tidiness: the bin field alone ships only the
+  // launcher, and the launcher imports resolve-bun.mjs, which is not a bin
+  // entry. Drop 'bin' here and the published package fails on its own import.
+  expect(pkg.files).toEqual(['bin', 'src', 'README.md', 'LICENSE'])
   expect(pkg.engines?.bun).toBe('>=1.1.0')
   expect(Object.keys(pkg.dependencies ?? {}).sort()).toEqual(['ink', 'react'])
   expect(Object.keys(pkg.devDependencies ?? {}).sort()).toEqual([
@@ -92,10 +95,17 @@ test('the package contains only publishable runtime material', () => {
   ])
 })
 
-test('both executable entry points use the Bun shebang', () => {
+test('both bins point at the Node-readable launcher', () => {
   for (const entry of Object.values(pkg.bin) as string[]) {
-    expect(readFileSync(join(root, entry), 'utf8')).toStartWith('#!/usr/bin/env bun\n')
+    expect(entry).toBe('./bin/nekyia.mjs')
+    // Node has to be able to read this file, because reaching nekyia from
+    // Node is exactly the case the launcher exists to handle.
+    expect(readFileSync(join(root, entry), 'utf8')).toStartWith('#!/usr/bin/env node\n')
   }
+})
+
+test('the CLI itself still declares Bun', () => {
+  expect(readFileSync(join(root, 'src/cli.ts'), 'utf8')).toStartWith('#!/usr/bin/env bun\n')
 })
 
 test('the bug template carries a disclosure warning', () => {

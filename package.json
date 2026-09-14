@@ -30,10 +30,11 @@
   },
   "type": "module",
   "bin": {
-    "nekyia": "./src/cli.ts",
-    "nek": "./src/cli.ts"
+    "nekyia": "./bin/nekyia.mjs",
+    "nek": "./bin/nekyia.mjs"
   },
   "files": [
+    "bin",
     "src",
     "README.md",
     "LICENSE"

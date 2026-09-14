@@ -1,10 +1,25 @@
 import { afterEach, expect, test } from 'bun:test'
+import { spawnSync } from 'node:child_process'
 import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { resolveBun } from '../bin/resolve-bun.mjs'
 
+const LAUNCHER = join(import.meta.dir, '..', 'bin', 'nekyia.mjs')
 const tempDirs: string[] = []
+
+/**
+ * Absolute path to a node binary, or null on a machine without one.
+ *
+ * Absolute matters: one test spawns with an empty PATH, and a bare 'node'
+ * would then be unresolvable by the spawn itself rather than by the launcher,
+ * which is not the thing under test.
+ */
+function resolveNode(): string | null {
+  const probe = spawnSync('sh', ['-c', 'command -v node'], { encoding: 'utf8' })
+  const path = probe.stdout?.trim()
+  return probe.status === 0 && path ? path : null
+}
 
 function makeTemp(prefix: string): string {
   const path = realpathSync(mkdtempSync(join(tmpdir(), prefix)))
@@ -53,4 +68,37 @@ test('resolveBun looks for bun.exe on Windows', () => {
   const dir = makeTemp('nekyia-bun-')
   writeFileSync(join(dir, 'bun.exe'), 'binary\n')
   expect(resolveBun({ PATH: dir }, 'win32')).toBe(join(dir, 'bun.exe'))
+})
+
+test('the launcher runs the CLI in-process when Bun starts it', () => {
+  const result = spawnSync(process.execPath, [LAUNCHER, '--help'], { encoding: 'utf8' })
+  expect(result.status).toBe(0)
+  expect(result.stdout).toContain('nekyia - search every agent CLI session')
+})
+
+test('the launcher re-execs through Bun when Node starts it', () => {
+  const node = resolveNode()
+  if (!node) return
+  const result = spawnSync(node, [LAUNCHER, '--help'], { encoding: 'utf8' })
+  expect(result.status).toBe(0)
+  expect(result.stdout).toContain('nekyia - search every agent CLI session')
+})
+
+test('the launcher forwards the CLI exit code rather than always exiting zero', () => {
+  const result = spawnSync(process.execPath, [LAUNCHER, 'not-a-real-command'], { encoding: 'utf8' })
+  expect(result.status).not.toBe(0)
+})
+
+test('the launcher explains itself when no Bun is on PATH', () => {
+  const node = resolveNode()
+  if (!node) return
+  const result = spawnSync(node, [LAUNCHER, '--help'], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: '', Path: '' },
+  })
+  expect(result.status).toBe(1)
+  expect(result.stderr).toContain('https://bun.sh')
+  expect(result.stderr).toContain('PATH')
+  // The failure this replaces. If it reappears, the guard stopped working.
+  expect(result.stderr).not.toContain("Cannot find module 'bun:sqlite'")
 })
