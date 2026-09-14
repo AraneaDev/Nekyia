@@ -3,12 +3,38 @@
   "version": "0.0.20",
   "description": "Search every agent CLI session on your machine and resume the right one",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AraneaDev/Nekyia.git"
+  },
+  "homepage": "https://aranea-development.nl/en/tools/nekyia",
+  "bugs": {
+    "url": "https://github.com/AraneaDev/Nekyia/issues"
+  },
+  "author": "AraneaDev",
+  "keywords": [
+    "cli",
+    "bun",
+    "claude-code",
+    "codex",
+    "opencode",
+    "copilot",
+    "agent",
+    "sessions",
+    "search",
+    "resume",
+    "tui"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
-    "nekyia": "./src/cli.ts",
-    "nek": "./src/cli.ts"
+    "nekyia": "./bin/nekyia.mjs",
+    "nek": "./bin/nekyia.mjs"
   },
   "files": [
+    "bin",
     "src",
     "README.md",
     "LICENSE"
@@ -21,7 +47,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "prepare": "git config core.hooksPath .githooks || true"
+    "prepare": "[ -d .githooks ] && git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
