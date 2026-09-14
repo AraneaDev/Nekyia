@@ -82,6 +82,23 @@ test('handoff dry-run exports indexed context for another client without changin
   expect(readFileSync(index)).toEqual(before)
 })
 
+test('handoff exports an indexed Codex conversation into a fresh Claude session', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const uid = 'codex:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+  const shown = run(['show', uid], env)
+  expect(shown.exitCode).toBe(0)
+  const brief = shown.stdout.toString().trimEnd()
+  expect(brief).toContain('earlier codex session')
+  expect(brief).toContain('rewrite the transport layer')
+  expect(brief).toContain('Rewriting transport now.')
+  const result = run(['handoff', uid, '--to', 'claude', '--dry-run', '--json'], env)
+  expect(result.exitCode).toBe(0)
+  expect(JSON.parse(result.stdout.toString())).toEqual({
+    cmd: 'claude', args: [brief], cwd: '/root/other', briefChars: brief.length,
+  })
+})
+
 function environment() {
   const tmp = mkdtempSync(join(tmpdir(), 'nekyia-cli-'))
   temporaries.push(tmp)

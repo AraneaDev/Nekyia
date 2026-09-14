@@ -48,6 +48,15 @@ sending user history to a model provider. Freebuff's current CLI does not accept
 initial prompt arguments, so it is not an interchangeable handoff executable for
 the Codebuff template.
 
+The reverse Codex-to-Claude path was also exercised with the real Claude Code
+2.1.270 interactive CLI: a synthetic Codex-format transcript was indexed, then
+handed off using the built-in Claude template. Claude opened in the recorded
+temporary directory, returned the exact Unicode marker from the brief, and answered
+a follow-up identifying Codex as the source. The test workspace remained unchanged.
+This smoke test used `CLAUDE_CODE_SAFE_MODE=1` to disable local hooks, plugins, and
+MCP customizations; it verifies the handoff and interactive continuation, not those
+customizations. The CLI regression suite also covers indexed Codex-to-Claude export.
+
 ## Deliberate limits
 
 The index is a snapshot. Handoff does not automatically reindex, reconstruct tool
