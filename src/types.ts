@@ -3,8 +3,8 @@ export type ClientId = string
 
 /** Upper bound on a client id, so a hostile manifest cannot produce unbounded uids. */
 export const MAX_CLIENT_ID_LENGTH = 256
-/** Control and bidi characters, which neither half of a uid may contain. Mirrors the class every command that accepts a uid enforces. */
-const UNSAFE_UID_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+/** Control and bidi characters, which neither half of a uid may contain. Exported so every command that accepts a uid enforces the same class rather than retyping it. */
+export const UNSAFE_UID_TEXT = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
 
 /** Client ids must safely round-trip through UIDs and terminal diagnostics. */
 export function isSafeClientId(value: unknown): value is ClientId {

@@ -5,7 +5,7 @@ import { buildBrief } from '../core/brief'
 import { IndexDb } from '../core/db'
 import { query, type QueryOpts, type Row } from '../core/query'
 import { checkPlan, runPlan, type RunResult } from '../core/resume'
-import { boundedDisplayText } from '../tui/text'
+import { boundedDisplayText, boundedErrorMessage as message } from '../tui/text'
 import type { Diagnostic, ExecPlan } from '../types'
 import { needsConsent } from './firstrun'
 
@@ -51,12 +51,6 @@ const defaults: LastDependencies = {
   runPlan,
   /** Outputs an error message to stderr. */
   error: (message) => { console.error(message) },
-}
-
-/** Extracts and safely formats the message string from an error object. */
-function message(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error)
-  return boundedDisplayText(raw, 512) || 'unknown error'
 }
 
 /** Selects the appropriate execution plan to resume or re-brief a given session row. */

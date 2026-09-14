@@ -55,6 +55,47 @@ test('the budget drops the oldest prose first and keeps every prompt', () => {
   db.close()
 })
 
+test('a preamble is prepended before the handover heading', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, ['fix the sse reconnect'], ['done'])
+  const brief = buildBrief(db, 'claude:a', { preamble: 'Review this critically; do not just continue it.' })!
+  expect(brief.startsWith('Review this critically; do not just continue it.')).toBe(true)
+  expect(brief.indexOf('Review this critically')).toBeLessThan(brief.indexOf('# Handover from a previous session'))
+  db.close()
+})
+
+test('the preamble is never dropped, and files trim further to keep the total under budget', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, ['keep me'], [], ['a/one.ts', 'a/two.ts', 'a/three.ts'])
+  const preamble = 'Review this critically; do not just continue it.'
+  // Exactly the length of the full, preamble-free brief: room for all three
+  // files and nothing more. If the preamble were appended after budget
+  // trimming instead of counted as part of the mandatory body, adding it here
+  // would push the result past this budget.
+  const withoutPreamble = buildBrief(db, 'claude:a', { maxChars: 376 })!
+  expect(withoutPreamble.length).toBe(376)
+  expect(withoutPreamble).toContain('a/three.ts')
+
+  const brief = buildBrief(db, 'claude:a', { maxChars: 376, preamble })!
+  expect(brief).toContain(preamble)
+  expect(brief).toContain('keep me')
+  expect(brief.length).toBeLessThanOrEqual(376)
+  expect(brief).not.toContain('a/three.ts')
+  db.close()
+})
+
+test('a whitespace-only preamble is treated as absent, and control characters are stripped from a real one', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, ['keep me'], ['done'])
+  const blank = buildBrief(db, 'claude:a', { preamble: '   \n\t  ' })!
+  expect(blank.startsWith('# Handover from a previous session')).toBe(true)
+
+  const dirty = buildBrief(db, 'claude:a', { preamble: '  reviewthis  ' })!
+  expect(dirty).toContain('reviewthis')
+  expect(dirty).not.toContain('')
+  db.close()
+})
+
 test('an unknown or unhydrated uid returns null rather than throwing', () => {
   const db = IndexDb.open(':memory:')
   expect(buildBrief(db, 'claude:nope')).toBeNull()

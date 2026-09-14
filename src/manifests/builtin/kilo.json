@@ -16,7 +16,7 @@
   },
   "brief": {
     "cmd": "kilo",
-    "args": ["{prompt}"],
+    "args": ["--prompt", "{prompt}"],
     "cwd": "{cwd}"
   }
 }

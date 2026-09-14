@@ -16,7 +16,7 @@
   },
   "brief": {
     "cmd": "opencode",
-    "args": ["{prompt}"],
+    "args": ["--prompt", "{prompt}"],
     "cwd": "{cwd}"
   }
 }

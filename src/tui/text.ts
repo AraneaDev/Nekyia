@@ -37,7 +37,7 @@ export function scanLimit(columns: number): number {
 /**
  * Takes the first `limit` code units without cutting a surrogate pair open, returning the valid text sample.
  */
-function prefixByCodeUnits(value: string, limit: number): { sample: string; truncated: boolean } {
+export function prefixByCodeUnits(value: string, limit: number): { sample: string; truncated: boolean } {
   const truncated = value.length > limit
   let sample = value.slice(0, limit)
   const last = sample.charCodeAt(sample.length - 1)
@@ -91,6 +91,12 @@ export function boundedDisplayText(
     if (width === columns) break
   }
   return result
+}
+
+/** Extracts and bounds a caught value's message, so a diagnostic can never grow unbounded or carry raw escapes. */
+export function boundedErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error)
+  return boundedDisplayText(raw, 512) || 'unknown error'
 }
 
 /**
