@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.20](https://github.com/AraneaDev/Nekyia/compare/v0.0.19...v0.0.20) (2026-09-14)
+
+
+### Features
+
+* add cross-client session handoff ([#57](https://github.com/AraneaDev/Nekyia/issues/57)) ([72ea108](https://github.com/AraneaDev/Nekyia/commit/72ea108d4ffe6e4816280ed86529e5069d48db0d))
+
 ## [0.0.19](https://github.com/AraneaDev/Nekyia/compare/v0.0.18...v0.0.19) (2026-09-08)
 
 
