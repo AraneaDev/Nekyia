@@ -108,9 +108,19 @@ test('the launcher re-execs through Bun when Node starts it', () => {
   expect(result.stdout).toContain('nekyia - search every agent CLI session')
 })
 
-test('the launcher forwards the CLI exit code rather than always exiting zero', () => {
-  const result = spawnSync(process.execPath, [LAUNCHER, 'not-a-real-command'], { encoding: 'utf8' })
-  expect(result.status).not.toBe(0)
+test('the launcher forwards the CLI exit code through both branches', () => {
+  // Asserting "not zero" was near enough to tautological to be useless: it
+  // passed before the launcher existed at all, because a missing module also
+  // exits non-zero. A CliError is exit 2 specifically, so pin that, and pin it
+  // on both the in-process branch and the re-exec branch, since forwarding the
+  // child's status is the part of the re-exec that can silently regress.
+  const underBun = spawnSync(process.execPath, [LAUNCHER, 'not-a-real-command'], { encoding: 'utf8' })
+  expect(underBun.status).toBe(2)
+
+  const node = resolveNode()
+  if (!node) return
+  const underNode = spawnSync(node, [LAUNCHER, 'not-a-real-command'], { encoding: 'utf8' })
+  expect(underNode.status).toBe(2)
 })
 
 test('the launcher explains itself when no Bun is on PATH', () => {
