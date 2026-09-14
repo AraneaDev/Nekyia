@@ -57,8 +57,13 @@ test('the README install block tracks the released version', () => {
 
 test('every interface shot the README points at exists and is generated', () => {
   const readme = read('README.md')
-  const referenced = [...readme.matchAll(/\]\((docs\/media\/[^)]+)\)/gu)].map((match) => match[1]!)
+  // npmjs.com renders the README through GitHub's Markdown API without any
+  // repository context, so a relative path shows a broken image there. An
+  // absolute raw URL renders on both surfaces.
+  const pattern = /\]\(https:\/\/raw\.githubusercontent\.com\/AraneaDev\/Nekyia\/main\/(docs\/media\/[^)]+)\)/gu
+  const referenced = [...readme.matchAll(pattern)].map((match) => match[1]!)
   expect(referenced.length).toBeGreaterThan(0)
+  expect(readme).not.toMatch(/\]\(docs\/media\//u)
   for (const path of referenced) {
     // A missing image renders as a broken icon on the page, which is worse
     // than no image at all.

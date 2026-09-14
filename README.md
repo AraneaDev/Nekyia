@@ -4,18 +4,19 @@
 
 **Find the session. Pick up the thread.**
 
-[![Release](https://img.shields.io/github/v/release/AraneaDev/Nekyia?label=release&include_prereleases)](https://github.com/AraneaDev/Nekyia/releases)
+[![Release](https://img.shields.io/github/v/release/AraneaDev/Nekyia?label=release)](https://github.com/AraneaDev/Nekyia/releases)
 [![Tool page](https://img.shields.io/badge/tool%20page-aranea--development.nl-0b7285)](https://aranea-development.nl/en/tools/nekyia)
 [![CI](https://img.shields.io/github/actions/workflow/status/AraneaDev/Nekyia/ci.yml?label=CI)](https://github.com/AraneaDev/Nekyia/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/AraneaDev/Nekyia?label=license&color=yellow)](./LICENSE)
 [![Language](https://img.shields.io/github/languages/top/AraneaDev/Nekyia)](https://github.com/AraneaDev/Nekyia)
 [![Last commit](https://img.shields.io/github/last-commit/AraneaDev/Nekyia?label=last%20commit)](https://github.com/AraneaDev/Nekyia/commits/main)
 [![Conventional Commits](https://img.shields.io/badge/commits-conventional-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org/)
-[![Status](https://img.shields.io/badge/status-pre--release-orange)](#quick-start)
+[![npm](https://img.shields.io/npm/v/nekyia?label=npm&color=cb3837)](https://www.npmjs.com/package/nekyia)
+[![Downloads](https://img.shields.io/npm/dm/nekyia?label=downloads)](https://www.npmjs.com/package/nekyia)
 
 </div>
 
-![The Nekyia picker: a list of sessions from several agent CLIs, and beneath it the selected session's directory, branch, prompts and touched files](docs/media/picker.svg)
+![The Nekyia picker: a list of sessions from several agent CLIs, and beneath it the selected session's directory, branch, prompts and touched files](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/picker.svg)
 
 > **Nekyia** (Νέκυια) is the rite in the _Odyssey_ through which Odysseus calls up
 > the dead and asks them what they know. This tool does something less dramatic
@@ -27,11 +28,6 @@ matter, and launches the right client. Verified clients resume the exact session
 Search-tier clients start fresh with a deterministic handover that says plainly it is
 a brief, not a resumed state. It can also account for what those sessions did: which
 files they touched, in what order, and whether git is currently tracking them.
-
-> **Status:** pre-release. Nekyia is **not yet published to npm**. Install from the
-> source repository or from the package attached to the
-> [GitHub pre-release](https://github.com/AraneaDev/Nekyia/releases). The command
-> `bun install -g nekyia` is the planned published experience and does not work yet.
 
 ---
 
@@ -51,7 +47,14 @@ files they touched, in what order, and whether git is currently tracking them.
 
 ## Installation
 
-Nekyia requires [Bun](https://bun.sh/) 1.1 or newer.
+Nekyia requires [Bun](https://bun.sh/) 1.1 or newer. It runs on Bun, not on Node, and the
+`nekyia` command says so plainly if Bun is missing rather than failing on an import.
+
+### From npm
+
+```bash
+bun install -g nekyia
+```
 
 ### From a release
 
@@ -73,7 +76,7 @@ bun install --frozen-lockfile
 bun link
 ```
 
-Both install paths expose `nekyia` and the shorter `nek` command.
+All three install paths expose `nekyia` and the shorter `nek` command.
 
 ## Quick start
 
@@ -156,15 +159,15 @@ beside the search line always names what is being searched.
 Typing filters as you go, and the matching span is lit in every title, so the list
 answers each keystroke rather than only shortening.
 
-![Searching: the query is lit inside each matching title, and the row under the cursor is marked in the gutter](docs/media/search.svg)
+![Searching: the query is lit inside each matching title, and the row under the cursor is marked in the gutter](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/search.svg)
 
 Narrowing to one project names it, so you always know what is being searched:
 
-![The picker narrowed to a single project, named beside the session count](docs/media/scoped.svg)
+![The picker narrowed to a single project, named beside the session count](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/scoped.svg)
 
 A query that matches nothing says what to try rather than leaving an empty screen:
 
-![A search that matched nothing, reading "Nothing came up. Try fewer words."](docs/media/empty.svg)
+![A search that matched nothing, reading "Nothing came up. Try fewer words."](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/empty.svg)
 
 ### 3. Read the history before you commit to it
 
@@ -173,7 +176,7 @@ and what came back, in the order it was said, and which files moved. A long repl
 wraps rather than running off the right edge. Arrow keys scroll a line, the page keys
 scroll a screen, and `esc` closes it again.
 
-![Reading a session's history: the pane fills the screen with the conversation in the order it happened, scrolled past the header](docs/media/inspect.svg)
+![Reading a session's history: the pane fills the screen with the conversation in the order it happened, scrolled past the header](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/inspect.svg)
 
 ### 4. Resume or hand over
 
@@ -205,7 +208,7 @@ in the config file to have this happen on its own once the index crosses that ag
 The picker lays itself out against the terminal it is drawn in, so a narrow window
 gets the same interface rather than a broken one:
 
-![The picker on an eighty column terminal, with the same layout at a smaller size](docs/media/narrow.svg)
+![The picker on an eighty column terminal, with the same layout at a smaller size](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/narrow.svg)
 
 ## Commands
 
@@ -364,7 +367,7 @@ Plandex, OpenHands, Amp, Warp Agent, Grok CLI, Rovo Dev, Auggie, Trae, Cline CLI
 and Zed.
 
 I also plan compiled standalone binaries through `bun build --compile` for Linux and
-macOS on x64 and arm64. They are not part of this pre-release, so Bun is required.
+macOS on x64 and arm64. Those do not exist yet, so Bun is required for now.
 
 ## License
 
