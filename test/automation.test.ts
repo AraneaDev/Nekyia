@@ -88,6 +88,20 @@ test('the release config states the post-1.0 bump policy by omission', () => {
   expect(config.packages['.']).not.toHaveProperty('bump-patch-for-minor-pre-major')
 })
 
+test('the release-as override names the version it exists to force', () => {
+  const config = JSON.parse(read('release-please-config.json')) as {
+    packages: Record<string, Record<string, unknown>>
+  }
+  // DELETE THIS TEST AND THE CONFIG KEY ONCE 1.0.0 IS PUBLISHED.
+  //
+  // release-as forces every release to this exact version until the key is
+  // removed, so leaving it in place stalls 1.0.1 and everything after it. It
+  // is here because the Release-As commit trailer did not survive a squash
+  // merge: the trailer landed mid-body rather than in the footer, so
+  // release-please parsed the subject instead and proposed 0.1.0.
+  expect(config.packages['.']?.['release-as']).toBe('1.0.0')
+})
+
 test('the release workflow publishes to npm over OIDC with no stored token', () => {
   const workflow = read('.github/workflows/release-please.yml')
   expect(workflow).toContain('id-token: write')
