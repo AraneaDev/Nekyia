@@ -278,7 +278,7 @@ exact attachment was not confirmed.
 | GitHub Copilot CLI | Resume | `copilot --resume=<id>` |
 | opencode | Search | `opencode --prompt <brief>` |
 | Kilo Code | Search | `kilo --prompt <brief>` |
-| Codebuff / freebuff | Search | `codebuff --cwd <cwd> <brief>` |
+| Codebuff | Search | `codebuff --cwd <cwd> <brief>` |
 
 Kilo shares opencode's tested store format, but its executable was not installed during
 command verification. opencode and Codebuff were exercised against real local IDs, but

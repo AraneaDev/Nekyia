@@ -174,10 +174,12 @@ function BriefConfirmation({ details, rows, columns }: {
   }, [details, width])
   const actions = wrappedDisplayLines('enter continue, esc back', width)
   const overflowing = lines.length + actions.length > rows
-  const footer = [
+  const footerRows = Math.max(0, rows - 1)
+  const footerLines = [
     ...(overflowing ? wrappedDisplayLines('up/down scroll', width) : []),
     ...actions,
-  ].slice(0, Math.max(0, rows - 1))
+  ]
+  const footer = footerRows === 0 ? [] : footerLines.slice(-footerRows)
   const visible = Math.min(lines.length, Math.max(1, rows - footer.length))
   const maxScroll = Math.max(0, lines.length - visible)
   const offset = Math.min(scroll, maxScroll)
