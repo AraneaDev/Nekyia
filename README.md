@@ -48,6 +48,9 @@ files they touched, in what order, and whether git is currently tracking them.
 Nekyia requires [Bun](https://bun.sh/) 1.1 or newer. It runs on Bun, not on Node, and the
 `nekyia` command says so plainly if Bun is missing rather than failing on an import.
 
+Install it from a GitHub release or from source. A registry package is coming; until
+it lands, the two paths below are the supported ones and both are tested.
+
 ### From a release
 
 <!-- x-release-please-start-version -->

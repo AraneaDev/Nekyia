@@ -81,6 +81,9 @@ test('the README follows the project house style and documents the npm install',
   expect(readme).not.toContain('img.shields.io/npm/')
   expect(readme).not.toContain('bun install -g nekyia')
   expect(readme).not.toContain('npmjs.com/package/nekyia')
+  // Say where it does come from, so the absence above reads as a stage
+  // rather than as an omission.
+  expect(readme).toContain('Install it from a GitHub release or from source')
   expect(readme).toContain('> **Nekyia**')
   expect(readme).toContain('git clone https://github.com/AraneaDev/Nekyia.git')
   // The pre-release hedges are gone now that the package is on the registry.
