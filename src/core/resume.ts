@@ -33,6 +33,22 @@ export interface RunIo {
   spawn(command: string[], options: SpawnOptions): SpawnedProcess
 }
 
+/** Conservative argv/environment allowance; prompts are refused whole, never cut for transport. */
+const MAX_BRIEF_LAUNCH_BYTES = 128 * 1024
+/** Actionable fallback when argv cannot carry a prompt, including OS-level E2BIG failures. */
+const BRIEF_TOO_LARGE = 'brief is too large to launch as command arguments; export it with "nekyia show <uid>" and transfer the context manually'
+
+/** Measures UTF-8 bytes including terminators before handing a brief to the OS. */
+function briefFitsArguments(plan: ExecPlan): boolean {
+  if (plan.kind !== 'brief') return true
+  let bytes = Buffer.byteLength(plan.cmd) + 1
+  for (const arg of plan.args) bytes += Buffer.byteLength(arg) + 1
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) bytes += Buffer.byteLength(key) + Buffer.byteLength(value) + 2
+  }
+  return bytes < MAX_BRIEF_LAUNCH_BYTES
+}
+
 /**
  * Checks whether a given file path exists and is an executable file.
  */
@@ -64,6 +80,7 @@ function resolveCommand(command: string, cwd: string): string | undefined {
 
 /** Checks a plan is launchable before any teardown happens, so a failure is reported into a live terminal rather than a torn-down one. */
 export function checkPlan(plan: ExecPlan): RunResult {
+  if (!briefFitsArguments(plan)) return { ok: false, reason: BRIEF_TOO_LARGE }
   if (!plan.cwd) {
     return { ok: false, reason: 'the directory no longer exists' }
   }
@@ -156,15 +173,22 @@ function holdSignals(proc: SpawnedProcess): () => void {
  * The caller must tear down any TUI first: the child owns the terminal.
  */
 export async function runPlan(plan: ExecPlan, io: RunIo = defaultIo): Promise<number> {
+  if (!briefFitsArguments(plan)) throw new Error(BRIEF_TOO_LARGE)
   const command = resolveCommand(plan.cmd, plan.cwd)
   if (!command) throw new Error(`${plan.cmd} was not found or is not executable`)
   releaseStdin()
-  const proc = io.spawn([command, ...plan.args], {
-    cwd: plan.cwd,
-    stdin: 'inherit',
-    stdout: 'inherit',
-    stderr: 'inherit',
-  })
+  let proc: SpawnedProcess
+  try {
+    proc = io.spawn([command, ...plan.args], {
+      cwd: plan.cwd,
+      stdin: 'inherit',
+      stdout: 'inherit',
+      stderr: 'inherit',
+    })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'E2BIG') throw new Error(BRIEF_TOO_LARGE, { cause: error })
+    throw error
+  }
   const releaseSignals = holdSignals(proc)
   try {
     return await proc.exited

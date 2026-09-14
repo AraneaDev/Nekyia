@@ -16,6 +16,42 @@ test('checkPlan accepts a plan whose cwd exists and command is executable', () =
   expect(checkPlan(ok).ok).toBe(true)
 })
 
+test('brief launches reject oversized UTF-8 arguments without truncating or spawning', async () => {
+  const prompt = '🧪'.repeat(40_000)
+  const plan: ExecPlan = { ...ok, kind: 'brief', prompt, args: [prompt] }
+  expect(prompt.length).toBeLessThan(128 * 1024)
+  expect(checkPlan(plan)).toMatchObject({ ok: false, reason: expect.stringContaining('too large') })
+  let spawned = false
+  await expect(runPlan(plan, {
+    spawn: () => { spawned = true; return { exited: Promise.resolve(0) } },
+  })).rejects.toThrow('transfer the context manually')
+  expect(spawned).toBe(false)
+  expect(plan.args).toEqual([prompt])
+})
+
+test('an OS argument-size failure gives an actionable error and installs no signal handlers', async () => {
+  const before = process.listenerCount('SIGTERM')
+  await expect(runPlan({ ...ok, kind: 'brief' }, {
+    spawn: () => { throw Object.assign(new Error('argument list too long'), { code: 'E2BIG' }) },
+  })).rejects.toThrow('transfer the context manually')
+  expect(process.listenerCount('SIGTERM')).toBe(before)
+})
+
+test('a controlled child receives the exact multiline Unicode prompt and source cwd', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-handoff-child-')))
+  temporary.push(root)
+  const prompt = "historical context 🧪\nquotes: ' \" $HOME $(do-not-run) {cwd}\nsecond line"
+  const output = join(root, 'received.json')
+  const program = 'await Bun.write(process.argv[1], JSON.stringify({ cwd: process.cwd(), prompt: process.argv[2] })); process.exit(17)'
+  const plan: ExecPlan = {
+    kind: 'brief', cmd: process.execPath, cwd: root, prompt,
+    args: ['-e', program, output, prompt],
+  }
+  expect(checkPlan(plan).ok).toBe(true)
+  expect(await runPlan(plan)).toBe(17)
+  expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual({ cwd: root, prompt })
+})
+
 test('checkPlan refuses a vanished cwd rather than guessing', () => {
   const result = checkPlan({ ...ok, cwd: '/definitely/not/here' })
   expect(result.ok).toBe(false)

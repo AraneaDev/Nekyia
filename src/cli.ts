@@ -4,10 +4,12 @@ import { resolve } from 'node:path'
 import { runReindex, type ReindexOptions } from './commands/reindex'
 import { runSearch, type SearchOptions } from './commands/search'
 import { runShow, type ShowOptions } from './commands/show'
+import { runHandoff, type HandoffOptions } from './commands/handoff'
 import { parseSince, runTimeline, type TimelineCommandOptions } from './commands/timeline'
 import type { DoctorOptions } from './commands/doctor'
 import type { PruneOptions } from './commands/privacy'
-import { parseUid } from './types'
+import { isSafeClientId, parseUid } from './types'
+import { boundedDisplayText } from './tui/text'
 
 /** The help text, and the single source of truth for the command surface. */
 export const USAGE = `nekyia - search every agent CLI session on your machine and resume the right one
@@ -20,6 +22,7 @@ usage:
   nekyia last                   resume or re-brief the latest session here
   nekyia index [--rebuild]      refresh the index
   nekyia show <uid>             print a deterministic handover as markdown
+  nekyia handoff <uid> --to <client>  start a fresh client with indexed context
   nekyia doctor                 report what was found and what could not be read
   nekyia forget <uid>           remove one session from the index
   nekyia prune --missing        remove sessions whose source is gone
@@ -34,7 +37,9 @@ options:
   --limit <n>       maximum rows (default 40)
   --json            machine-readable output
   --ids             print only session ids, one per line, for show and forget
-  --max-chars <n>   character budget for show (default 40000)
+  --max-chars <n>   brief budget for show/handoff (default 40000; prompts retained)
+  --to <client>     target client for handoff
+  --dry-run         print handoff's planned command, including context
   --sniff           inspect likely unsupported stores (doctor only)
   --emit-manifest <path>  write a draft for the first sniffed store (doctor only)
   --dir <path>      directory a timeline covers (default: the current one)
@@ -46,6 +51,10 @@ directory, newest first, for the one file the path resolves to.
 timeline groups events by session because ordering inside a session is exact
 and ordering between them is by end time only. It reads the index, never a
 transcript.
+
+handoff uses the last indexed context. The target may send it to its configured
+model provider. --dry-run does not check installation; its output contains the
+brief. Use --dry-run --json for { cmd, args, cwd, briefChars } without launching.
 `
 
 /** Represents an error originating from CLI argument parsing or command validation. */
@@ -63,6 +72,8 @@ const OPTIONS = {
   yes: { type: 'boolean' },
   quiet: { type: 'boolean' },
   'max-chars': { type: 'string' },
+  to: { type: 'string' },
+  'dry-run': { type: 'boolean' },
   sniff: { type: 'boolean' },
   'emit-manifest': { type: 'string' },
   missing: { type: 'boolean' },
@@ -71,7 +82,7 @@ const OPTIONS = {
 } as const
 
 /** Every subcommand the CLI answers to; anything else is an unknown command. */
-const COMMANDS = ['index', 'search', 'blame', 'timeline', 'last', 'show', 'doctor', 'forget', 'prune', 'exclude']
+const COMMANDS = ['index', 'search', 'blame', 'timeline', 'last', 'show', 'handoff', 'doctor', 'forget', 'prune', 'exclude']
 
 /** Parses CLI arguments into typed options and positional arguments. */
 function parse(args: string[]) {
@@ -117,6 +128,7 @@ export type CliPlan =
   | { kind: 'doctor'; options: DoctorOptions }
   | { kind: 'index'; options: ReindexOptions }
   | { kind: 'show'; options: ShowOptions }
+  | { kind: 'handoff'; options: HandoffOptions }
   | { kind: 'timeline'; options: TimelineCommandOptions }
   | { kind: 'search'; options: SearchOptions }
 
@@ -138,6 +150,39 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
 
   const { values, positionals } = parse(argv.slice(1))
   const ALL = Object.keys(OPTIONS)
+
+  if (subcommand !== 'handoff' && present(values, ['to', 'dry-run'])) {
+    throw new CliError('--to and --dry-run can only be used with handoff')
+  }
+  if (subcommand === 'handoff') {
+    if (positionals.length !== 1 || !positionals[0]) {
+      throw new CliError('handoff accepts exactly one uid')
+    }
+    const uid = positionals[0]
+    if (/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(uid)) {
+      throw new CliError('uid must not contain control characters')
+    }
+    try {
+      parseUid(uid)
+    } catch {
+      throw new CliError(`malformed uid: ${boundedDisplayText(uid, 128)}`)
+    }
+    if (!values.to) throw new CliError('handoff requires --to <client>')
+    if (!isSafeClientId(values.to)) throw new CliError('invalid target client id')
+    if (present(values, ALL.filter((key) => !['to', 'max-chars', 'dry-run', 'json'].includes(key)))) {
+      throw new CliError('only --to, --max-chars, --dry-run, and --json can be used with handoff')
+    }
+    if (values.json === true && values['dry-run'] !== true) {
+      throw new CliError('--json requires --dry-run')
+    }
+    return {
+      kind: 'handoff',
+      options: {
+        uid, to: values.to, maxChars: nonNegative(values['max-chars']),
+        dryRun: values['dry-run'] === true, json: values.json === true,
+      },
+    }
+  }
 
   if (subcommand === 'last') {
     if (positionals.length > 0) throw new CliError('last does not accept positional arguments')
@@ -386,6 +431,8 @@ async function dispatch(argv: string[]): Promise<number> {
       return runReindex(plan.options)
     case 'show':
       return runShow(plan.options)
+    case 'handoff':
+      return runHandoff(plan.options)
     case 'timeline':
       return runTimeline(plan.options)
     case 'search':

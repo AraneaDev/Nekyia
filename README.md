@@ -189,6 +189,7 @@ deterministic handover, and starts a new client session with that context.
 | `up` / `down` | Move the cursor, or scroll the history while it is open |
 | `enter` | Resume the session, or start a briefed one once you confirm it |
 | `ctrl+o` | Open the session's history, and close it again |
+| `ctrl+t` | Choose another client and confirm a fresh session with this session's context |
 | `tab` | Widen to everywhere, or narrow to the project under the cursor |
 | `ctrl+f` | Cycle the clients your index actually holds |
 | `ctrl+p` / `ctrl+y` | Copy the opening prompt, or the command that would run |
@@ -218,6 +219,7 @@ gets the same interface rather than a broken one:
 | `nekyia last` | Launch the newest visible session in this directory |
 | `nekyia index [--rebuild]` | Refresh fingerprints and changed session content |
 | `nekyia show <uid>` | Print a deterministic handover as Markdown |
+| `nekyia handoff <uid> --to <client>` | Start a fresh target client with the source session's indexed context |
 | `nekyia doctor [--sniff]` | Report clients, paths, size caps, unreadable transcripts, and unsupported stores |
 | `nekyia forget <uid>` | Remove one session and every searchable facet from the index |
 | `nekyia prune --missing` | Remove indexed sessions whose sources disappeared |
@@ -232,6 +234,35 @@ nekyia search "sse reconnect" --ids | head -1 | xargs nekyia show
 
 Run `nekyia --help` for search filters, sort modes, limits, and command-specific options.
 
+To continue work in another client:
+
+```bash
+nekyia handoff claude:<session-id> --to codex
+nekyia handoff claude:<session-id> --to codex --dry-run
+nekyia handoff claude:<session-id> --to codex --dry-run --json
+```
+
+Handoff starts a fresh session using the target's brief command and the source's
+recorded directory (unless a custom manifest overrides it). It uses the last indexed
+context; run `nekyia index` first if the source conversation has changed. It transfers
+no native conversation state, tool state, or file snapshots, and does not restore a
+historical branch. Treat the brief as historical context: current instructions and
+the current repository take precedence. Same-client handoff is also allowed.
+
+`--max-chars <n>` follows `show`'s character budget (default 40,000). User prompts are
+preserved even when the budget is zero or too small. Launching refuses briefs that
+exceed a conservative 128 KiB allowance for command arguments and environment,
+measured in UTF-8 bytes; it never truncates prompts to make them fit. If this happens,
+export with `nekyia show <uid>` and transfer the relevant context manually.
+
+`--dry-run` prints the planned shell command without checking whether the target is
+installed. `--dry-run --json` prints `{ cmd, args, cwd, briefChars }`; `--json` requires
+`--dry-run`. Both outputs include the brief in the arguments and are content exports,
+which may contain private information or secrets retained in user prompts. Execution
+also passes the brief through process arguments, visible where OS permissions permit.
+The target client may send this context to its configured model provider and incur
+token costs. Repeated handoffs can retain earlier briefs inside later prompts.
+
 ## Supported clients
 
 Support means the store format was exercised against real or fidelity-matched local
@@ -245,8 +276,8 @@ exact attachment was not confirmed.
 | Codex | Resume | `codex resume <id>` |
 | Antigravity CLI, agy | Resume | `agy --conversation <id>` |
 | GitHub Copilot CLI | Resume | `copilot --resume=<id>` |
-| opencode | Search | `opencode <brief>` |
-| Kilo Code | Search | `kilo <brief>` |
+| opencode | Search | `opencode --prompt <brief>` |
+| Kilo Code | Search | `kilo --prompt <brief>` |
 | Codebuff / freebuff | Search | `codebuff --cwd <cwd> <brief>` |
 
 Kilo shares opencode's tested store format, but its executable was not installed during
@@ -254,6 +285,10 @@ command verification. opencode and Codebuff were exercised against real local ID
 the result did not prove attachment to the requested context. I do not call any of those
 three resumable. Search-tier clients always start fresh briefed sessions. They never claim
 to recover tool state or file snapshots, and sending a handover can cost tokens.
+
+Fresh handoff commands and the scope of their verification are documented in
+[cross-client handoff notes](docs/cross-client-handoff.md). The Codebuff handoff
+template invokes `codebuff`; current Freebuff does not accept an initial prompt.
 
 ## How it works
 
