@@ -69,6 +69,65 @@ test('ctrl+t chooses another client, confirms the data flow, and emits exactly o
   expect(plans[0]!.prompt).toContain('fix reconnect')
 })
 
+test('pressing r on the target picker launches with the review framing, shown in the confirmation', async () => {
+  const db = seed()
+  const plans: ExecPlan[] = []
+  const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[adapter('claude'), adapter('codex')]}
+    checkHandoffPlan={available} onExec={(plan) => plans.push(plan)} {...opts} />)
+  view.stdin.write('')
+  await tick()
+  expect(view.lastFrame()).toContain('▸ codex')
+  view.stdin.write('r')
+  await tick()
+  const frame = view.lastFrame()!
+  expect(frame).toContain('new session in codex')
+  expect(frame.toLowerCase()).toContain('review')
+  view.stdin.write('\r')
+  await tick()
+  expect(plans).toHaveLength(1)
+  expect(plans[0]!.prompt!.toLowerCase()).toStartWith('review this session')
+})
+
+test('pressing n opens a note input; the typed text becomes the framing for the launched plan', async () => {
+  const db = seed()
+  const plans: ExecPlan[] = []
+  const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[adapter('claude'), adapter('codex')]}
+    checkHandoffPlan={available} onExec={(plan) => plans.push(plan)} {...opts} />)
+  view.stdin.write('')
+  await tick()
+  view.stdin.write('n')
+  await tick()
+  expect(view.lastFrame()).toContain('note')
+  view.stdin.write('focus on the retry logic')
+  await tick()
+  expect(view.lastFrame()).toContain('focus on the retry logic')
+  view.stdin.write('\r')
+  await tick()
+  const frame = view.lastFrame()!
+  expect(frame).toContain('new session in codex')
+  expect(frame).toContain('focus on the retry logic')
+  view.stdin.write('\r')
+  await tick()
+  expect(plans).toHaveLength(1)
+  expect(plans[0]!.prompt).toStartWith('focus on the retry logic')
+})
+
+test('escape from the note input returns to the target picker rather than cancelling the whole handoff', async () => {
+  const db = seed()
+  const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[adapter('claude'), adapter('codex')]}
+    checkHandoffPlan={available} onExec={() => {}} {...opts} />)
+  view.stdin.write('')
+  await tick()
+  view.stdin.write('n')
+  await tick()
+  view.stdin.write('partial note')
+  await tick()
+  view.stdin.write('')
+  await tick()
+  expect(view.lastFrame()).toContain('▸ codex')
+  expect(view.lastFrame()).not.toContain('partial note')
+})
+
 test('escape cancels confirmation to the selected target and then returns to the original query', async () => {
   const db = seed()
   const plans: ExecPlan[] = []

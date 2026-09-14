@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { indexPath } from '../config'
 import { buildAdapters, type Adapter } from '../core/adapter'
 import { IndexDb } from '../core/db'
-import { buildHandoffPlan, type HandoffResult } from '../core/handoff'
+import { buildHandoffPlan, preambleForIntent, type HandoffIntent, type HandoffResult } from '../core/handoff'
 import { checkPlan, runPlan, shellQuote, type RunResult } from '../core/resume'
 import { boundedDisplayText, boundedErrorMessage as message } from '../tui/text'
 import type { Diagnostic, ExecPlan } from '../types'
@@ -16,6 +16,10 @@ export interface HandoffOptions {
   maxChars?: number
   dryRun?: boolean
   json?: boolean
+  /** A canned framing for the target; mutually exclusive with `note` and validated before this reaches here. */
+  intent?: HandoffIntent
+  /** A custom framing, taking the place of `intent`. */
+  note?: string
 }
 
 /** Injection points for the handoff launch, so the command can be tested without spawning anything. */
@@ -30,7 +34,7 @@ export interface HandoffDependencies {
     uid: string,
     targetClient: string,
     adapters: Adapter[],
-    opts?: { maxChars?: number },
+    opts?: { maxChars?: number; preamble?: string },
   ): HandoffResult
   checkPlan(plan: ExecPlan): RunResult
   runPlan(plan: ExecPlan): Promise<number>
@@ -130,7 +134,8 @@ export async function runHandoff(
   let result: HandoffResult | undefined
   let failure: string | undefined
   try {
-    result = deps.buildHandoffPlan(db, opts.uid, opts.to, adapters, { maxChars: opts.maxChars })
+    const preamble = opts.note ?? preambleForIntent(opts.intent ?? 'continue')
+    result = deps.buildHandoffPlan(db, opts.uid, opts.to, adapters, { maxChars: opts.maxChars, preamble })
   } catch (error) {
     failure = `could not plan this handoff: ${message(error)}`
   } finally {

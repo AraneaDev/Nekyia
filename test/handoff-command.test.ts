@@ -71,6 +71,31 @@ test('planning and close failures prevent both launch and dry-run output, closin
   }
 })
 
+test('an intent resolves to its canned preamble, a note is passed through as-is, and neither defaults to none', async () => {
+  const cases: [Partial<HandoffOptions>, string | undefined][] = [
+    [{}, undefined],
+    [{ intent: 'continue' }, undefined],
+    [{ intent: 'review' }, 'Review this session'],
+    [{ note: 'focus on the retry logic' }, 'focus on the retry logic'],
+  ]
+  for (const [extra, expected] of cases) {
+    let seenPreamble: string | undefined = 'unset'
+    const code = await runHandoff({ uid: 'claude:a', to: 'codex', ...extra }, dependencies({
+      buildHandoffPlan: (...args) => {
+        seenPreamble = args[4]?.preamble
+        return {
+          ok: true,
+          plan: { kind: 'brief', cmd: 'codex', args: ['brief'], cwd: '/work/project', prompt: 'brief' },
+          briefChars: 5,
+        }
+      },
+    }))
+    expect(code).toBe(0)
+    if (expected === undefined) expect(seenPreamble).toBeUndefined()
+    else expect(seenPreamble).toContain(expected)
+  }
+})
+
 test('dry-run passes the budget through and skips executable availability checks', async () => {
   for (const maxChars of [undefined, 0, 1000]) {
     const base = dependencies()

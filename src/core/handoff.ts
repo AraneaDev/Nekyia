@@ -6,6 +6,20 @@ import type { ClientId, ExecPlan } from '../types'
 /** Character budget follows the brief builder's prompt-preserving contract. */
 export type HandoffOpts = BriefOpts
 
+/** How the target should treat a handover: pick up the work, or critique it instead of extending it. */
+export type HandoffIntent = 'continue' | 'review'
+
+/** Told once here so the CLI and the TUI picker offer the identical wording. */
+const REVIEW_PREAMBLE = 'Review this session’s changes critically rather than continuing them: look for bugs, missed edge cases, and better approaches instead of treating the work as already correct.'
+
+/** A custom note fits one instruction, not an essay; the brief itself carries the real context. Shared so the CLI and the TUI enforce the same cap. */
+export const MAX_HANDOFF_NOTE_LENGTH = 2_000
+
+/** The preamble a built-in intent contributes to a brief. `continue` adds nothing: it is today's default framing, named only so callers can pass it explicitly. */
+export function preambleForIntent(intent: HandoffIntent): string | undefined {
+  return intent === 'review' ? REVIEW_PREAMBLE : undefined
+}
+
 /** A fresh-session launch plan, or the reason it could not be built. */
 export type HandoffResult =
   | { ok: true; plan: ExecPlan; briefChars: number }

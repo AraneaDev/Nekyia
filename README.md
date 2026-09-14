@@ -189,7 +189,7 @@ deterministic handover, and starts a new client session with that context.
 | `up` / `down` | Move the cursor, or scroll the history while it is open |
 | `enter` | Resume the session, or start a briefed one once you confirm it |
 | `ctrl+o` | Open the session's history, and close it again |
-| `ctrl+t` | Choose another client and confirm a fresh session with this session's context |
+| `ctrl+t` | Choose another client and confirm a fresh session with this session's context (`r` for a review framing, `n` for a custom note) |
 | `tab` | Widen to everywhere, or narrow to the project under the cursor |
 | `ctrl+f` | Cycle the clients your index actually holds |
 | `ctrl+p` / `ctrl+y` | Copy the opening prompt, or the command that would run |
@@ -240,6 +240,8 @@ To continue work in another client:
 nekyia handoff claude:<session-id> --to codex
 nekyia handoff claude:<session-id> --to codex --dry-run
 nekyia handoff claude:<session-id> --to codex --dry-run --json
+nekyia handoff claude:<session-id> --to codex --intent review
+nekyia handoff claude:<session-id> --to codex --note "focus on the retry logic"
 ```
 
 Handoff starts a fresh session using the target's brief command and the source's
@@ -250,10 +252,19 @@ historical branch. Treat the brief as historical context: current instructions a
 the current repository take precedence. Same-client handoff is also allowed.
 
 `--max-chars <n>` follows `show`'s character budget (default 40,000). User prompts are
-preserved even when the budget is zero or too small. Launching refuses briefs that
-exceed a conservative 128 KiB allowance for command arguments and environment,
+preserved even when the budget is zero or too small. Launching refuses a brief whose
+command or argument text alone would exceed a conservative 128 KiB allowance,
 measured in UTF-8 bytes; it never truncates prompts to make them fit. If this happens,
 export with `nekyia show <uid>` and transfer the relevant context manually.
+
+By default the target is told this is a handover to continue, the same framing
+`show` produces on its own. `--intent review` asks the target to critique the
+session's changes instead of extending them: look for bugs, missed edge cases, and
+better approaches. `--note <text>` replaces that framing with your own instruction
+(up to 2,000 characters) and cannot be combined with `--intent`. Either framing is
+prepended to the brief and, like the rest of the mandatory header, is never dropped
+to fit the character budget. The `ctrl+t` picker offers the same choice interactively:
+`r` for review, `n` to type a note, plain `enter` to continue as before.
 
 `--dry-run` prints the planned shell command without checking whether the target is
 installed. `--dry-run --json` prints `{ cmd, args, cwd, briefChars }`; `--json` requires

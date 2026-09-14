@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { buildAdapter } from '../src/core/adapter'
 import { buildBrief } from '../src/core/brief'
 import { IndexDb } from '../src/core/db'
-import { buildHandoffPlan } from '../src/core/handoff'
+import { buildHandoffPlan, preambleForIntent } from '../src/core/handoff'
 import { validateManifest } from '../src/manifests/load'
 import type { SessionRef } from '../src/types'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -53,6 +53,22 @@ function adapter(id = 'codex', brief = true) {
     ...(brief ? { brief: { cmd: id, args: ['{prompt}'], cwd: '{cwd}' } } : {}),
   }))
 }
+
+test('review asks the target to critique rather than continue; continue adds nothing', () => {
+  expect(preambleForIntent('continue')).toBeUndefined()
+  const review = preambleForIntent('review')
+  expect(review).toBeDefined()
+  expect(review!.toLowerCase()).toContain('review')
+  expect(review!.toLowerCase()).toContain('critic')
+})
+
+test('handoff\'s preamble option threads a review intent into the launched plan\'s prompt', () => {
+  const db = seed()
+  const result = buildHandoffPlan(db, 'claude:a', 'codex', [adapter()], { preamble: preambleForIntent('review') })
+  if (!result.ok) throw new Error(result.reason)
+  expect(result.plan.prompt).toStartWith(preambleForIntent('review')!)
+  expect(result.plan.prompt).toContain('fix reconnect 🧪\nthen test it')
+})
 
 test('handoff starts fresh in the source directory for both cross-client and same-client targets', () => {
   const db = seed()

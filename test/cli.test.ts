@@ -24,9 +24,34 @@ test('planCli parses handoff options including a zero budget', () => {
   })
 })
 
+test('planCli parses an intent preset and a custom note for handoff', () => {
+  expect(planCli(['handoff', 'claude:a', '--to', 'codex', '--intent', 'review'])).toMatchObject({
+    kind: 'handoff', options: { intent: 'review', note: undefined },
+  })
+  expect(planCli(['handoff', 'claude:a', '--to', 'codex', '--note', 'focus on the retry logic'])).toMatchObject({
+    kind: 'handoff', options: { intent: undefined, note: 'focus on the retry logic' },
+  })
+  expect(planCli(['handoff', 'claude:a', '--to', 'codex'])).toMatchObject({
+    kind: 'handoff', options: { intent: undefined, note: undefined },
+  })
+})
+
+test('handoff rejects an unknown intent, combining --intent with --note, and an oversized note', () => {
+  const cases: [string[], string][] = [
+    [['--intent', 'rewrite'], 'continue or review'],
+    [['--intent', 'review', '--note', 'x'], 'cannot be combined'],
+    [['--note', 'x'.repeat(2001)], '2000 characters or fewer'],
+  ]
+  for (const [flags, reason] of cases) {
+    expect(() => planCli(['handoff', 'claude:a', '--to', 'codex', ...flags])).toThrow(reason)
+  }
+  expect(planCli(['handoff', 'claude:a', '--to', 'codex', '--note', 'x'.repeat(2000)]))
+    .toMatchObject({ options: { note: 'x'.repeat(2000) } })
+})
+
 test('handoff flags are rejected by every other command before any mutations', () => {
   for (const command of ['index', 'search', 'blame', 'timeline', 'last', 'show', 'doctor', 'forget', 'prune', 'exclude']) {
-    for (const flags of [['--to', 'codex'], ['--dry-run']]) {
+    for (const flags of [['--to', 'codex'], ['--dry-run'], ['--intent', 'review'], ['--note', 'x']]) {
       expect(() => planCli([command, ...flags])).toThrow('can only be used with handoff')
     }
   }
@@ -80,6 +105,28 @@ test('handoff dry-run exports indexed context for another client without changin
     expect(result.stderr.toString()).toContain(error!)
   }
   expect(readFileSync(index)).toEqual(before)
+})
+
+test('handoff --intent review and --note each prepend their framing to the exported brief', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const uid = 'claude:11111111-2222-3333-4444-555555555555'
+  const shown = run(['show', uid, '--max-chars', '0'], env).stdout.toString().trimEnd()
+
+  const review = run(['handoff', uid, '--to', 'codex', '--dry-run', '--json', '--max-chars', '0', '--intent', 'review'], env)
+  expect(review.exitCode).toBe(0)
+  const reviewBrief = JSON.parse(review.stdout.toString()).args[0] as string
+  expect(reviewBrief.toLowerCase()).toStartWith('review this session')
+  expect(reviewBrief).toContain(shown)
+
+  const noted = run(['handoff', uid, '--to', 'codex', '--dry-run', '--json', '--max-chars', '0', '--note', 'focus on the retry logic'], env)
+  expect(noted.exitCode).toBe(0)
+  const notedBrief = JSON.parse(noted.stdout.toString()).args[0] as string
+  expect(notedBrief).toStartWith('focus on the retry logic')
+  expect(notedBrief).toContain(shown)
+
+  const plain = run(['handoff', uid, '--to', 'codex', '--dry-run', '--json', '--max-chars', '0', '--intent', 'continue'], env)
+  expect(JSON.parse(plain.stdout.toString()).args[0]).toBe(shown)
 })
 
 test('handoff exports an indexed Codex conversation into a fresh Claude session', () => {

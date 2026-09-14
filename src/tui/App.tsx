@@ -3,7 +3,7 @@ import { Box, measureElement, Text, useApp, useInput, type DOMElement } from 'in
 import type { Config } from '../config'
 import type { Adapter } from '../core/adapter'
 import { buildBrief } from '../core/brief'
-import { buildHandoffPlan } from '../core/handoff'
+import { buildHandoffPlan, MAX_HANDOFF_NOTE_LENGTH, preambleForIntent } from '../core/handoff'
 import type { IndexDb } from '../core/db'
 import { checkPlan, shellQuote } from '../core/resume'
 import type { ExecPlan } from '../types'
@@ -150,6 +150,8 @@ interface Confirmation {
   chars: number
   client: string
   source?: string
+  /** The framing shown to the target, bounded for display; absent for the default continue intent. */
+  framing?: string
 }
 
 /** A wrapped, scrollable confirmation whose action hints never compete with its body for rows. */
@@ -168,6 +170,7 @@ function BriefConfirmation({ details, rows, columns }: {
       `${cmd} in ${directory}`,
       `Start a new session in ${details.client} with a ${details.chars} character brief.`,
       ...(details.source ? [`Context from the selected ${details.source} session.`] : []),
+      ...(details.framing ? [`Framing: ${details.framing}`] : []),
       'It carries no tool state or file snapshots, and it costs tokens.',
       'The target client may send this context to its configured model provider.',
     ].flatMap((text) => wrappedDisplayLines(text, width))
@@ -438,6 +441,8 @@ export function App({
   )
   const [confirm, setConfirm] = useState<Confirmation | null>(null)
   const [handoff, setHandoff] = useState<HandoffPicker | null>(null)
+  /** null outside note-entry; a string, possibly empty, while typing a custom framing for the highlighted target. */
+  const [handoffNote, setHandoffNote] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const executing = useRef(false)
   const mounted = useRef(true)
@@ -546,12 +551,12 @@ export function App({
   }
 
   /** Keeps planning and availability failures in the picker so another target can be chosen. */
-  function chooseHandoffTarget(): void {
+  function chooseHandoffTarget(preamble?: string): void {
     if (!handoff) return
     const target = handoff.adapters[handoff.index]
     if (!target) return
     try {
-      const result = buildHandoffPlan(db, handoff.uid, target.id, adapters)
+      const result = buildHandoffPlan(db, handoff.uid, target.id, adapters, { preamble })
       if (!result.ok) { announce(boundedDisplayText(result.reason, 120)); return }
       const checked = checkHandoffPlan(result.plan)
       if (!checked.ok) {
@@ -563,6 +568,7 @@ export function App({
         plan: result.plan, chars: result.briefChars,
         client: boundedDisplayText(target.manifest.name, 64),
         source: boundedDisplayText(handoff.source, 32),
+        framing: preamble ? boundedDisplayText(preamble, 96) : undefined,
       })
     } catch {
       announce('could not plan this handoff')
@@ -650,6 +656,16 @@ export function App({
       else if (key.escape) setConfirm(null)
       return
     }
+    if (handoff && handoffNote !== null) {
+      if (key.escape) { setHandoffNote(null) }
+      else if (key.ctrl && input === 'c') exit()
+      else if (key.return) { chooseHandoffTarget(handoffNote.trim() || undefined); setHandoffNote(null) }
+      else if (key.backspace || key.delete) setHandoffNote(deleteLastGrapheme(handoffNote))
+      else if (input && !key.ctrl && !key.meta) {
+        setHandoffNote(handoffNote.length < MAX_HANDOFF_NOTE_LENGTH ? handoffNote + input : handoffNote)
+      }
+      return
+    }
     if (handoff) {
       if (key.escape) { setHandoff(null); setNote('') }
       else if (key.ctrl && input === 'c') exit()
@@ -658,6 +674,8 @@ export function App({
         setHandoff({ ...handoff, index: (handoff.index + delta + handoff.adapters.length) % handoff.adapters.length })
         setNote('')
       } else if (key.return) chooseHandoffTarget()
+      else if (input === 'r') chooseHandoffTarget(preambleForIntent('review'))
+      else if (input === 'n') { setHandoffNote(''); setNote('') }
       return
     }
     if (key.ctrl && input === 'c') { exit(); return }
@@ -714,6 +732,19 @@ export function App({
     return <BriefConfirmation details={confirm} rows={terminalHeight} columns={terminalWidth} />
   }
 
+  if (handoff && handoffNote !== null) {
+    const target = handoff.adapters[handoff.index]
+    return (
+      <Box flexDirection="column" paddingX={1} width={terminalWidth} height={terminalHeight} overflow="hidden">
+        <Text bold color="yellow" wrap="truncate-end">
+          Custom note for {boundedDisplayText(target?.manifest.name ?? '', 64)}
+        </Text>
+        <Text dimColor wrap="truncate-end">Replaces the default framing. Enter to launch, esc to go back.</Text>
+        <Text wrap="truncate-end">{boundedPathTail(handoffNote, Math.max(1, terminalWidth - 2))}</Text>
+      </Box>
+    )
+  }
+
   if (handoff) {
     const visible = Math.max(1, terminalHeight - 5)
     const start = Math.max(0, Math.min(handoff.index - Math.floor(visible / 2), handoff.adapters.length - visible))
@@ -726,7 +757,7 @@ export function App({
             {start + offset === handoff.index ? '▸ ' : '  '}{boundedDisplayText(adapter.manifest.name, Math.max(1, terminalWidth - 6))}
           </Text>
         ))}
-        <Text dimColor wrap="truncate-end">{handoff.index + 1}/{handoff.adapters.length} · up/down to choose, enter to select, esc to cancel</Text>
+        <Text dimColor wrap="truncate-end">{handoff.index + 1}/{handoff.adapters.length} · up/down choose, enter continue, r review, n note, esc cancel</Text>
         <Text color="yellow" wrap="truncate-end">{boundedDisplayText(note, 120)}</Text>
       </Box>
     )

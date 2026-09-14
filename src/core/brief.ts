@@ -4,6 +4,8 @@ import type { IndexDb } from './db'
 export interface BriefOpts {
   /** Roughly four characters per token, so 40,000 is about 10k tokens. */
   maxChars?: number
+  /** Instruction shown before the handover itself, e.g. to ask the target to review rather than continue. Mandatory like the header: never dropped by the budget. */
+  preamble?: string
 }
 
 /**
@@ -144,6 +146,7 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
   const cappedByLimit = fileRows.length > FILE_LIMIT
   const files = fileRows.slice(0, FILE_LIMIT).map((row) => oneLine(row.path)).filter(Boolean)
   const budget = budgetOf(opts.maxChars)
+  const preamble = opts.preamble?.trim() ? safeText(opts.preamble).trim() : null
 
   // The markers are parameters rather than something render() derives, so that
   // the mandatory-body measurement below can ask for a brief without them and
@@ -158,12 +161,16 @@ export function buildBrief(db: IndexDb, uid: string, opts: BriefOpts = {}): stri
     proseOmitted: boolean,
     overBudget = false,
   ): string => {
-    const out: string[] = [
+    const out: string[] = []
+    // Mandatory, like the header below it, so it survives budget trimming
+    // whole: it is an instruction about how to read everything that follows.
+    if (preamble) out.push(preamble, '')
+    out.push(
       '# Handover from a previous session',
       '',
       `This is context from an earlier ${oneLine(ref.client) || '(unknown)'} session, not a resumed session.`,
       'Tool state and file snapshots are gone, so re-read anything you need.',
-    ]
+    )
     if (ref.missing) {
       out.push('The original session source is currently unavailable; this handover uses its last indexed copy.')
     }

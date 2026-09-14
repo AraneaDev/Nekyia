@@ -21,9 +21,18 @@ from the supplied review was needed.
   Compact confirmations scroll with Up/Down or Page Up/Page Down while keeping
   the launch and cancel hints visible.
 - The existing launcher remains responsible for executable resolution, inherited
-  stdio, signals, and child exit status. Brief launches now have a conservative
-  128 KiB UTF-8 argv/environment check and an actionable OS `E2BIG` fallback.
-  Prompt text is never shortened to satisfy that transport limit.
+  stdio, signals, and child exit status. Brief launches now check each argv string
+  against a conservative 128 KiB UTF-8 allowance (Linux's real per-string exec()
+  limit) rather than summing argv with the ambient environment, plus an actionable
+  OS `E2BIG` fallback for whatever that pre-check misses. Prompt text is never
+  shortened to satisfy that transport limit.
+- `buildHandoffPlan`/`buildBrief` accept an optional `preamble`, prepended ahead of
+  the handover heading and folded into the same mandatory-body measurement the
+  header already uses, so it is never dropped by the character budget. `--intent
+  review` (CLI) and `r` (TUI) resolve to a canned preamble via
+  `preambleForIntent`; `--note`/`n` supply custom text instead, capped at
+  `MAX_HANDOFF_NOTE_LENGTH` (2,000 chars). `continue`/`enter` is unchanged from
+  the original implementation.
 
 ## Target template verification
 
