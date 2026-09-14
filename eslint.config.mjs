@@ -80,4 +80,20 @@ export default tseslint.config(
     files: ['src/cli.ts', 'src/commands/**/*.ts', 'src/render.ts'],
     rules: { 'no-console': 'off' },
   },
+
+  {
+    // The launcher is the one part of the package Node has to be able to read
+    // start to finish, so it is plain .mjs rather than TypeScript. Nothing
+    // else here declares Node globals for a .mjs file, and these are the ones
+    // it uses. Bun is deliberately included: the launcher branches on whether
+    // it exists.
+    files: ['bin/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        Bun: 'readonly',
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+  },
 )
