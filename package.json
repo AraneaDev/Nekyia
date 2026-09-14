@@ -30,8 +30,8 @@
   },
   "type": "module",
   "bin": {
-    "nekyia": "./bin/nekyia.mjs",
-    "nek": "./bin/nekyia.mjs"
+    "nekyia": "bin/nekyia.mjs",
+    "nek": "bin/nekyia.mjs"
   },
   "files": [
     "bin",

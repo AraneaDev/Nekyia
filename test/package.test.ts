@@ -103,9 +103,20 @@ test('the package contains only publishable runtime material', () => {
   ])
 })
 
+test('no bin path carries a leading ./, which npm strips on publish', () => {
+  // npm's publish-time normalization rejects a "./"-prefixed bin target and
+  // silently drops the entry, so the package installs with no command at all.
+  // It warns and carries on, and `npm pack` does not warn, so this is only
+  // visible on a publish. Nekyia shipped 1.0.0 into exactly that failure.
+  for (const entry of Object.values(pkg.bin) as string[]) {
+    expect(entry).not.toStartWith('./')
+    expect(entry).not.toStartWith('/')
+  }
+})
+
 test('both bins point at the Node-readable launcher', () => {
   for (const entry of Object.values(pkg.bin) as string[]) {
-    expect(entry).toBe('./bin/nekyia.mjs')
+    expect(entry).toBe('bin/nekyia.mjs')
     // Node has to be able to read this file, because reaching nekyia from
     // Node is exactly the case the launcher exists to handle.
     expect(readFileSync(join(root, entry), 'utf8')).toStartWith('#!/usr/bin/env node\n')
