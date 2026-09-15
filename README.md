@@ -410,12 +410,18 @@ and Zed.
 I also plan compiled standalone binaries through `bun build --compile` for Linux and
 macOS on x64 and arm64. Those do not exist yet, so Bun is required for now.
 
+## Further reading
+
+- [Recovering a Claude Code session your picker will not show you](https://tim-schipper.nl/en/blog/recover-crashed-claude-code-session)
+- [Your best context is in a session you cannot find](https://tim-schipper.nl/en/blog/search-agent-session-history)
+
 ## License
 
 Nekyia is available under the [MIT license](LICENSE).
 
 ---
 
-Built by [Aranea Development](https://aranea-development.nl). In the _Odyssey_, Odysseus
+Built by [Tim Schipper](https://tim-schipper.nl/en) and released as open source under
+[Aranea Development](https://aranea-development.nl). In the _Odyssey_, Odysseus
 digs the trench and the dead crowd forward; he holds them back until the one shade he
 needs may speak. `nekyia --version` says the same thing in one line.
