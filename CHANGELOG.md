@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.2](https://github.com/AraneaDev/Nekyia/compare/v1.0.1...v1.0.2) (2026-09-15)
+
+
+### Documentation
+
+* lead with the install path that works until npm is live ([28bbaff](https://github.com/AraneaDev/Nekyia/commit/28bbaff7f6828f5c98902a1541ef7589a136844a))
+* **readme:** credit the author and link the write-up ([#70](https://github.com/AraneaDev/Nekyia/issues/70)) ([1c3afc2](https://github.com/AraneaDev/Nekyia/commit/1c3afc2a2d459e232dcbd0afbe258a3bd6c1e869))
+* remove the npm install until the package is on the registry ([ec4d165](https://github.com/AraneaDev/Nekyia/commit/ec4d1654f5b08288675fef9da331f938ac833933))
+* say where Nekyia installs from while the registry package is pending ([47d0f60](https://github.com/AraneaDev/Nekyia/commit/47d0f6042534516f8718d8132d1266afb9dc0d71))
+
+
+### Tests
+
+* assert the launcher forwards exit code 2, not merely non-zero ([bfa85ba](https://github.com/AraneaDev/Nekyia/commit/bfa85ba2a2b332b3f01baaed346d9d9e9ad4d011))
+
 ## [1.0.1](https://github.com/AraneaDev/Nekyia/compare/v1.0.0...v1.0.1) (2026-09-14)
 
 
