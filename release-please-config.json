@@ -7,6 +7,7 @@
       "include-component-in-tag": false,
       "initial-version": "0.0.1",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": ["README.md", "CHANGELOG.md", "docs", "test", "tests", ".github", "assets"],
       "extra-files": [
         "README.md"
       ],
