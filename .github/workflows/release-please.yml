@@ -14,6 +14,7 @@ on:
       - '**/*.test.*'
       - '**/*.spec.*'
       - '.github/**'
+      - 'release-please-config.json'
   workflow_dispatch:
 
 permissions:
