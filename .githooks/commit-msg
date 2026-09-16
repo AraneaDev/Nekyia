@@ -1,0 +1,9 @@
+#!/bin/sh
+# One rule for a commit subject, shared with the pull request title check in
+# .github/workflows/pr-title.yml. Both call the same script, so neither can
+# drift from the other.
+#
+# Deliberate exception (a fixup you intend to squash away):
+#     git commit --no-verify
+
+exec bash "$(dirname "$0")/../scripts/check-commit-style.sh" --file "$1"
