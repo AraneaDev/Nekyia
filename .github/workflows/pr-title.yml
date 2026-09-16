@@ -20,12 +20,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # The base commit, at full depth: the commit walk below needs the history
-      # the pull request branched from, and the script comes from here rather
-      # than from the branch under review.
+      # The base BRANCH at full depth, not the pull request's pinned base
+      # commit: a pull request opened before this check existed pins a base
+      # commit that predates the script, and the job then fails on a missing
+      # file rather than on the title. The branch tip is equally trusted and is
+      # the rule as it stands now.
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -46,13 +48,15 @@ jobs:
       # are fetched as data and never executed.
       - name: Check every commit on the branch
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           git fetch --quiet origin "refs/pull/$PR_NUMBER/head"
+          # Where the branch actually left this one, rather than the pull
+          # request's pinned base commit, which goes stale as main moves on.
+          base=$(git merge-base HEAD FETCH_HEAD)
           status=0
           while IFS= read -r subject; do
             [ -n "$subject" ] || continue
             bash scripts/check-commit-style.sh "$subject" || status=1
-          done < <(git log --format='%s' "$BASE_SHA..FETCH_HEAD")
+          done < <(git log --format='%s' "$base..FETCH_HEAD")
           exit "$status"
