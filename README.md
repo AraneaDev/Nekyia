@@ -21,11 +21,12 @@
 > with old agent sessions: it brings back the useful context, and an account of
 > what they did to your files.
 
-Nekyia searches the local histories kept by your agent CLIs, ranks the sessions that
-matter, and launches the right client. Verified clients resume the exact session.
-Search-tier clients start fresh with a deterministic handover that says plainly it is
-a brief, not a resumed state. It can also account for what those sessions did: which
-files they touched, in what order, and whether git is currently tracking them.
+**TL;DR:** Nekyia searches local histories from several agent CLIs and helps you resume the
+right session. It indexes transcript metadata in SQLite, ranks matches with full-text search,
+and either launches a verified session or builds a deterministic handover for a fresh one.
+
+It can also show which files a session touched, in what order, and whether git currently tracks
+them. Everything stays local, with no model-written summaries or tool-output indexing.
 
 ---
 

@@ -308,6 +308,31 @@ test('display helpers are ineligible without their matching nonempty display env
   }
 })
 
+test('host clipboard selects platform-native and X11 helpers with exact argv', async () => {
+  const calls: Array<{ command: string; args: string[]; text: string }> = []
+  const runtime = (platform: string, env: Record<string, string | undefined>): ClipboardRuntime => ({
+    platform,
+    env,
+    which: (command) => `/usr/bin/${command}`,
+    run: async (command, args, text) => {
+      calls.push({ command, args, text })
+      return 0
+    },
+    isTTY: false,
+    writeTty: async () => {},
+  })
+
+  await createHostClipboard(runtime('darwin', {}))!.writeText('mac text')
+  await createHostClipboard(runtime('win32', {}))!.writeText('windows text')
+  await createHostClipboard(runtime('linux', { DISPLAY: ':0' }))!.writeText('x11 text')
+
+  expect(calls).toEqual([
+    { command: '/usr/bin/pbcopy', args: [], text: 'mac text' },
+    { command: '/usr/bin/clip', args: [], text: 'windows text' },
+    { command: '/usr/bin/xclip', args: ['-selection', 'clipboard'], text: 'x11 text' },
+  ])
+})
+
 test('a failed eligible helper falls back to OSC52 only on a TTY', async () => {
   const writes: string[] = []
   const ttyRuntime: ClipboardRuntime = {

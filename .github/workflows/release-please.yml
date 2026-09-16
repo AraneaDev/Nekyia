@@ -3,6 +3,17 @@ name: Release Please
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '**/docs/**'
+      - 'test/**'
+      - 'tests/**'
+      - '**/test/**'
+      - '**/tests/**'
+      - '**/*.test.*'
+      - '**/*.spec.*'
+      - '.github/**'
   workflow_dispatch:
 
 permissions:
