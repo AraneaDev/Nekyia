@@ -7,7 +7,7 @@
       "include-component-in-tag": false,
       "initial-version": "0.0.1",
       "changelog-path": "CHANGELOG.md",
-      "exclude-paths": ["README.md", "CHANGELOG.md", "docs", "test", "tests", ".github", "release-please-config.json", "assets"],
+      "exclude-paths": ["README.md", "CHANGELOG.md", "docs", "test", "tests", ".github", "assets"],
       "extra-files": [
         "README.md"
       ],
@@ -26,15 +26,18 @@
         },
         {
           "type": "docs",
-          "section": "Documentation"
+          "section": "Documentation",
+          "hidden": true
         },
         {
           "type": "test",
-          "section": "Tests"
+          "section": "Tests",
+          "hidden": true
         },
         {
           "type": "ci",
-          "section": "Continuous integration"
+          "section": "Continuous integration",
+          "hidden": true
         },
         {
           "type": "refactor",
