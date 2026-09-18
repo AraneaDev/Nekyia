@@ -328,3 +328,12 @@ test('doctor separates a size cap from an unreadable source and prints the cap s
   expect(text).toContain(`maxFileBytes   ${DEFAULT_CONFIG.maxFileBytes}`)
   expect(text).toContain('No setting recovers that')
 })
+
+test('doctor reports resume capability from a launcher', () => {
+  const setup = environment()
+  const result = run(['doctor', '--json'], setup.env)
+  expect(result.exitCode).toBe(0)
+  const report = JSON.parse(result.stdout.toString())
+  const codebuff = report.clients.find((client: any) => client.client === 'codebuff')
+  expect(codebuff.canResume).toBe(true)
+})
