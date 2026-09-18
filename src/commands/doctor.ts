@@ -13,7 +13,7 @@ import {
 } from 'node:fs'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { buildAdapter, originFor, type Adapter } from '../core/adapter'
+import { buildAdapter, canResume, originFor, type Adapter } from '../core/adapter'
 import { IndexDb } from '../core/db'
 import { sniffRoots, type SniffResult } from '../core/sniff'
 import { configDir, dataDir, indexPath, loadConfig, userManifestDir } from '../config'
@@ -348,7 +348,7 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<number> {
       sessions,
       authoritative,
       tier: manifest.tier,
-      canResume: !!manifest.resume,
+      canResume: canResume(manifest),
     })
   }
 

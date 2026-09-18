@@ -4,7 +4,7 @@ import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writ
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
-import { buildAdapter, buildAdapters, canBrief } from '../src/core/adapter'
+import { buildAdapter, buildAdapters, canBrief, canResume } from '../src/core/adapter'
 import { validateManifest, type Manifest } from '../src/manifests/load'
 import codebuffManifest from '../src/manifests/builtin/codebuff.json'
 
@@ -340,4 +340,22 @@ test('the built-in Codebuff store opens in either Codebuff or Freebuff', () => {
     args: ['--continue', chat.nativeId, '--cwd', '/root/proj'], cwd: '/root/proj',
   })
   expect(adapter.plan(chat, 'the brief', 'codebuff')?.args).toEqual(['--cwd', '/root/proj', 'the brief'])
+})
+
+test('canResume looks inside launchers', () => {
+  expect(canResume(validateManifest(codebuffManifest))).toBe(true)
+  const withTopLevel = validateManifest({
+    schema: 1, id: 'test', name: 'Test', roots: ['/tmp'],
+    format: 'jsonl-transcript', tier: 'search',
+    jsonl: { glob: '*.jsonl', variant: 'claude' },
+    resume: { cmd: 'test', args: ['--resume', '{id}'], cwd: '{cwd}' },
+  })
+  expect(canResume(withTopLevel)).toBe(true)
+  const briefOnly = validateManifest({
+    schema: 1, id: 'test', name: 'Test', roots: ['/tmp'],
+    format: 'jsonl-transcript', tier: 'search',
+    jsonl: { glob: '*.jsonl', variant: 'claude' },
+    brief: { cmd: 'test', args: ['{prompt}'], cwd: '{cwd}' },
+  })
+  expect(canResume(briefOnly)).toBe(false)
 })

@@ -188,6 +188,12 @@ export function canBrief(manifest: Manifest): boolean {
     || Object.values(manifest.launchers ?? {}).some((launcher) => !!launcher.brief)
 }
 
+/** Whether a client can reopen a session by id at all, directly or through one of its launchers. */
+export function canResume(manifest: Manifest): boolean {
+  return !!manifest.resume
+    || Object.values(manifest.launchers ?? {}).some((launcher) => !!launcher.resume)
+}
+
 /**
  * Wires one manifest into a working adapter, resolving its roots and format module.
  *
