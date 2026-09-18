@@ -15,7 +15,8 @@ import { promises as fsPromises } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
-import { jsonDir, readHeadTail } from '../src/formats/json-dir'
+import { jsonDir } from '../src/formats/json-dir'
+import { readHeadTail } from '../src/formats/safe-read'
 import { validateManifest } from '../src/manifests/load'
 
 const FIX = join(import.meta.dir, 'fixtures')
