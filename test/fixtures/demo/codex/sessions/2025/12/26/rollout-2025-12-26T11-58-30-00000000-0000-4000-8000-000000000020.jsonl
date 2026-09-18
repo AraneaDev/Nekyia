@@ -1,0 +1,3 @@
+{"timestamp":"2025-12-26T11:58:29.000Z","type":"session_meta","payload":{"session_id":"00000000-0000-4000-8000-000000000020","cwd":"/home/dev/work/web-console","originator":"codex-tui","cli_version":"0.144.5"}}
+{"timestamp":"2025-12-26T11:58:30.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"compare two approaches to optimistic updates"}]}}
+{"timestamp":"2025-12-26T12:00:00.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Here is the outline, with the trade-offs first and the recommendation last."}]}}
