@@ -1,10 +1,13 @@
 import { expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
 import { cursorReader, transcriptFolder, unwrapUserText } from '../src/formats/cursor'
 import { validateManifest } from '../src/manifests/load'
 import cursorManifest from '../src/manifests/builtin/cursor.json'
 import { buildAdapter } from '../src/core/adapter'
+import { MAX_SESSION_FILES } from '../src/types'
 
 const FIX = join(import.meta.dir, 'fixtures', 'cursor')
 const manifest = validateManifest({
@@ -79,6 +82,43 @@ test('a store that vanishes between discovery and hydration comes back degraded,
   expect(doc.prose).toEqual([])
   expect(doc.files).toEqual([])
   expect(doc.truncated).toBe(false)
+})
+
+test('a duplicate path arriving after the file cap does not itself mark the session truncated', async () => {
+  // Filling the cap exactly, then reoffering one of those same paths, must not
+  // flip `truncated`: that path was never going to grow the set further, so
+  // nothing was actually dropped on its account. A genuinely new path arriving
+  // after the cap is the one that should.
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-cursor-'))
+  const nativeId = 'c0ffee00-0000-4000-8000-0000000000ff'
+  const cwd = '/root/proj'
+  const transcriptDir = join(root, 'projects', transcriptFolder(cwd), 'agent-transcripts', nativeId)
+  mkdirSync(transcriptDir, { recursive: true })
+
+  const blocks = Array.from({ length: MAX_SESSION_FILES }, (_, index) => (
+    { type: 'tool_use', input: { path: `/root/proj/file-${index}.ts` } }
+  ))
+  // One more block reusing the very first path: the set is already full and
+  // already holds this path, so this must not be counted as a drop.
+  blocks.push({ type: 'tool_use', input: { path: '/root/proj/file-0.ts' } })
+  const line = JSON.stringify({ role: 'assistant', message: { content: blocks } })
+  writeFileSync(join(transcriptDir, `${nativeId}.jsonl`), `${line}\n`)
+
+  const ref = {
+    uid: `cursor:${nativeId}`, client: 'cursor', nativeId, cwd, gitBranch: null,
+    title: null, startedAt: 0, endedAt: 0, turns: null, parentNativeId: null,
+    tier: 'resume' as const, origin: 'manifest' as const, sourcePaths: [], fingerprint: '',
+  }
+  const doc = await cursorReader.hydrate(manifest, root, ref, DEFAULT_CONFIG)
+  expect(doc.files).toHaveLength(MAX_SESSION_FILES)
+  expect(doc.truncated).toBe(false)
+
+  // A genuinely new path offered after the cap is the one that should mark it.
+  blocks.push({ type: 'tool_use', input: { path: '/root/proj/file-new.ts' } })
+  writeFileSync(join(transcriptDir, `${nativeId}.jsonl`), `${JSON.stringify({ role: 'assistant', message: { content: blocks } })}\n`)
+  const truncatedDoc = await cursorReader.hydrate(manifest, root, ref, DEFAULT_CONFIG)
+  expect(truncatedDoc.files).toHaveLength(MAX_SESSION_FILES)
+  expect(truncatedDoc.truncated).toBe(true)
 })
 
 /** cursor-agent 2026.09.15-d2fe57e, from its own --help. */
