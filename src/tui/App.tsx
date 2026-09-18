@@ -128,6 +128,23 @@ export function previewLines(rows: number): number {
   // than a dozen lines under a very long list, while the list keeps the rest.
   return Math.max(4, Math.min(Math.floor(rows / 3), Math.max(4, rows - 10)))
 }
+
+/**
+ * The name to show for a handoff target: the launcher that will actually
+ * receive the brief, not the manifest's own name.
+ *
+ * A manifest with launchers can be named "Codebuff / Freebuff" for display
+ * elsewhere, but only the launcher with a brief command can ever receive one
+ * (Freebuff takes no prompt), so showing the combined name as a handoff
+ * target overstates what will run. Falls back to the manifest name for a
+ * client with no launchers of its own.
+ */
+export function handoffTargetName(adapter: Adapter): string {
+  const launchers = adapter.manifest.launchers
+  if (!launchers) return adapter.manifest.name
+  const briefer = Object.values(launchers).find((launcher) => launcher.brief)
+  return briefer?.name ?? adapter.manifest.name
+}
 const COPY_PROMPT_CHARS = 65_536
 const COPY_PROMPT_BYTES = 16_384
 const COPY_COMMAND_BYTES = 8_192
@@ -642,7 +659,7 @@ export function App({
       setNote('')
       setConfirm({
         plan: result.plan, chars: result.briefChars,
-        client: boundedDisplayText(target.manifest.name, 64),
+        client: boundedDisplayText(handoffTargetName(target), 64),
         source: boundedDisplayText(handoff.source, 32),
         framing: preamble ? boundedDisplayText(preamble, 96) : undefined,
       })
@@ -829,7 +846,7 @@ export function App({
     return (
       <Box flexDirection="column" paddingX={1} width={terminalWidth} height={terminalHeight} overflow="hidden">
         <Text bold color="yellow" wrap="truncate-end">
-          Custom note for {boundedDisplayText(target?.manifest.name ?? '', 64)}
+          Custom note for {boundedDisplayText(target ? handoffTargetName(target) : '', 64)}
         </Text>
         <Text dimColor wrap="truncate-end">Replaces the default framing. Enter to launch, esc to go back.</Text>
         <Text wrap="truncate-end">{boundedPathTail(handoffNote, Math.max(1, terminalWidth - 2))}</Text>
@@ -846,7 +863,7 @@ export function App({
         <Text dimColor wrap="truncate-end">Start fresh with the last indexed context.</Text>
         {handoff.adapters.slice(start, start + visible).map((adapter, offset) => (
           <Text key={adapter.id} color={start + offset === handoff.index ? 'cyan' : undefined} wrap="truncate-end">
-            {start + offset === handoff.index ? '▸ ' : '  '}{boundedDisplayText(adapter.manifest.name, Math.max(1, terminalWidth - 6))}
+            {start + offset === handoff.index ? '▸ ' : '  '}{boundedDisplayText(handoffTargetName(adapter), Math.max(1, terminalWidth - 6))}
           </Text>
         ))}
         <Text dimColor wrap="truncate-end">{handoff.index + 1}/{handoff.adapters.length} · up/down choose, enter continue, r review, n note, esc cancel</Text>

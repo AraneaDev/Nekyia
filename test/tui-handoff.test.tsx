@@ -23,6 +23,19 @@ function adapter(id: string, brief = true): Adapter {
   }))
 }
 
+/** A shared store whose manifest name names both clients, but only one can take a brief. */
+function sharedLauncherAdapter(): Adapter {
+  return buildAdapter(validateManifest({
+    schema: 1, id: 'codebuff', name: 'Codebuff / Freebuff', roots: ['/nonexistent'],
+    format: 'json-dir', tier: 'search',
+    jsonDir: { glob: 'projects/*/chats/*', variant: 'codebuff' },
+    launchers: {
+      codebuff: { name: 'Codebuff', tier: 'search', brief: { cmd: 'codebuff', args: ['--cwd', '{cwd}', '{prompt}'], cwd: '{cwd}' } },
+      freebuff: { name: 'Freebuff', tier: 'resume', resume: { cmd: 'freebuff', args: ['--continue', '{id}', '--cwd', '{cwd}'], cwd: '{cwd}' } },
+    },
+  }))
+}
+
 function seed(hydrated = true) {
   const db = IndexDb.open(':memory:')
   databases.push(db)
@@ -388,4 +401,22 @@ test('confirmation paging and resize preserve readable content and reset the scr
   view.rerender(<App {...props} rows={8} columns={45} />)
   await tick()
   expect(view.lastFrame()).toBe(first)
+})
+
+test('a shared-store handoff target is named for the launcher that briefs it, not the combined manifest name', async () => {
+  const db = seed()
+  const plans: ExecPlan[] = []
+  const view = render(<App db={db} cfg={DEFAULT_CONFIG}
+    adapters={[adapter('claude'), sharedLauncherAdapter()]}
+    checkHandoffPlan={available} onExec={(plan) => plans.push(plan)} {...opts} />)
+  view.stdin.write('')
+  await tick()
+  const list = view.lastFrame()!
+  expect(list).toContain('▸ Codebuff')
+  expect(list).not.toContain('Codebuff / Freebuff')
+  view.stdin.write('\r')
+  await tick()
+  const confirmed = view.lastFrame()!
+  expect(confirmed).toContain('new session in Codebuff')
+  expect(confirmed).not.toContain('Codebuff / Freebuff')
 })
