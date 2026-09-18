@@ -33,7 +33,7 @@ them. Everything stays local, with no model-written summaries or tool-output ind
 
 ## Features
 
-- **One Search Surface**: query Claude Code, Codex, GitHub Copilot CLI, opencode, Kilo Code, Codebuff, goose, and Antigravity histories together
+- **One Search Surface**: query Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode, Kilo Code, Codebuff, Freebuff, goose, and Antigravity histories together
 - **Verified Resume**: attach to the selected session by ID only where that exact command was tested
 - **Deterministic Handovers**: start search-tier clients with every indexed user prompt, each message kept whole and in order, touched files, branch context, bounded assistant prose, and a note of whatever had to be left out
 - **Two-Phase Indexing**: discover cheap fingerprints first, then hydrate only sessions that changed
@@ -290,10 +290,19 @@ exact attachment was not confirmed.
 | Codex | Resume | `codex resume <id>` |
 | Antigravity CLI, agy | Resume | `agy --conversation <id>` |
 | GitHub Copilot CLI | Resume | `copilot --resume=<id>` |
+| Cursor | Resume | `cursor-agent --resume <id>` |
 | opencode | Search | `opencode --prompt <brief>` |
 | Kilo Code | Search | `kilo --prompt <brief>` |
-| Codebuff | Search | `codebuff --cwd <cwd> <brief>` |
+| Codebuff / Freebuff | Freebuff: Resume, Codebuff: Search | `freebuff --continue <id> --cwd <cwd>` or `codebuff --cwd <cwd> <brief>` |
 | goose | Search | `goose run -t <brief> -s` |
+
+Cursor and Freebuff were both verified against a real install: `cursor-agent --resume <id>`
+and `freebuff --continue <id> --cwd <cwd>` each reopened the session they were given.
+Freebuff and Codebuff share one store and nothing in it records which of the two wrote a
+chat, so Nekyia lists each chat once and lets you choose the client that opens the store.
+With one of them installed it uses that one. With both, the first Enter on one of their
+chats asks, and ctrl+l flips the choice afterwards. Freebuff takes no prompt argument, so
+it cannot receive a handover; Codebuff can.
 
 The goose adapter was written from goose's published source and CLI reference rather
 than from a local install, so it is derived rather than observed. Its documented resume
