@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/AraneaDev/Nekyia/compare/v1.0.1...v1.0.2) (2026-09-18)
+
+
+### Fixes
+
+* ignore release configuration changes ([#74](https://github.com/AraneaDev/Nekyia/issues/74)) ([1529e8f](https://github.com/AraneaDev/Nekyia/commit/1529e8fa49cd68560b698ac9ff8729e3fce655fd))
+
 ## [1.0.1](https://github.com/AraneaDev/Nekyia/compare/v1.0.0...v1.0.1) (2026-09-14)
 
 
