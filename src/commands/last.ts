@@ -3,6 +3,7 @@ import { indexPath, loadConfigChecked, type Config } from '../config'
 import { buildAdapters, type Adapter } from '../core/adapter'
 import { buildBrief } from '../core/brief'
 import { IndexDb } from '../core/db'
+import { defaultOnPath, resolveLauncher, type OnPath } from '../core/launcher'
 import { query, type QueryOpts, type Row } from '../core/query'
 import { checkPlan, runPlan, type RunResult } from '../core/resume'
 import { boundedDisplayText, boundedErrorMessage as message } from '../tui/text'
@@ -20,6 +21,7 @@ export interface LastDependencies {
   query(db: IndexDb, cfg: Config, opts: QueryOpts): Row[]
   buildBrief(db: IndexDb, uid: string): string | null
   cwd(): string
+  onPath: OnPath
   checkPlan(plan: ExecPlan): RunResult
   runPlan(plan: ExecPlan): Promise<number>
   error(message: string): void
@@ -47,6 +49,7 @@ const defaults: LastDependencies = {
   buildBrief,
   /** Returns the current working directory. */
   cwd: () => process.cwd(),
+  onPath: defaultOnPath(),
   checkPlan,
   runPlan,
   /** Outputs an error message to stderr. */
@@ -59,12 +62,32 @@ function planFor(
   row: Row,
   adapters: Adapter[],
   makeBrief: LastDependencies['buildBrief'],
+  cfg: Config,
+  onPath: OnPath,
 ): { plan: ExecPlan | null; reason?: string } {
   const adapter = adapters.find((candidate) => candidate.id === row.client)
   if (!adapter) return { plan: null, reason: `no adapter for ${boundedDisplayText(row.client, 64)}` }
 
-  if (row.tier === 'resume') {
-    const plan = adapter.plan(row)
+  // A shared store has no launcher of its own to plan from: which command
+  // actually opens it depends on the same saved-choice/installed resolution
+  // the picker uses, so `last` must run it too rather than guessing the
+  // manifest's nominal tier.
+  let launcher: string | undefined
+  let tier = row.tier
+  if (adapter.manifest.launchers) {
+    const state = resolveLauncher(adapter.manifest, cfg, onPath)
+    if (state.kind === 'none') return { plan: null, reason: `none of ${state.options.join(', ')} is on PATH` }
+    if (state.kind === 'ask') {
+      return {
+        plan: null,
+        reason: `both ${state.options.join(' and ')} are installed; choose one with ctrl+l in the picker`,
+      }
+    }
+    if (state.kind === 'chosen') { launcher = state.name; tier = state.spec.tier }
+  }
+
+  if (tier === 'resume') {
+    const plan = adapter.plan(row, undefined, launcher)
     if (!plan) return { plan: null, reason: 'the latest session cannot be launched' }
     if (plan.kind !== 'resume') {
       return { plan: null, reason: 'adapter plan does not match the resume session' }
@@ -72,10 +95,10 @@ function planFor(
     return { plan }
   }
 
-  if (row.tier === 'search') {
+  if (tier === 'search') {
     const brief = makeBrief(db, row.uid)
     if (!brief) return { plan: null, reason: 'nothing is indexed for the latest session yet' }
-    const plan = adapter.plan(row, brief)
+    const plan = adapter.plan(row, brief, launcher)
     if (!plan) return { plan: null, reason: 'the latest session cannot start a briefed session' }
     if (plan.kind !== 'brief') {
       return { plan: null, reason: 'adapter plan does not match the search session' }
@@ -129,13 +152,14 @@ export async function runLast(overrides: Partial<LastDependencies> = {}): Promis
   let plan: ExecPlan | null = null
   let failure: string | undefined
   try {
-    const rows = deps.query(db, deps.loadConfig(), {
+    const cfg = deps.loadConfig()
+    const rows = deps.query(db, cfg, {
       cwd: deps.cwd(),
       sort: 'recent',
       limit: 1,
     })
     if (rows.length === 0) failure = 'no sessions matched the current directory'
-    else ({ plan, reason: failure } = planFor(db, rows[0]!, adapters, deps.buildBrief))
+    else ({ plan, reason: failure } = planFor(db, rows[0]!, adapters, deps.buildBrief, cfg, deps.onPath))
   } catch (error) {
     failure = `could not select the latest session: ${message(error)}`
   } finally {
