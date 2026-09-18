@@ -11,6 +11,7 @@
 [![Language](https://img.shields.io/github/languages/top/AraneaDev/Nekyia)](https://github.com/AraneaDev/Nekyia)
 [![Last commit](https://img.shields.io/github/last-commit/AraneaDev/Nekyia?label=last%20commit)](https://github.com/AraneaDev/Nekyia/commits/main)
 [![Conventional Commits](https://img.shields.io/badge/commits-conventional-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org/)
+[![npm](https://img.shields.io/npm/v/nekyia?label=npm&color=cb3837)](https://www.npmjs.com/package/nekyia)
 
 </div>
 
@@ -49,8 +50,11 @@ them. Everything stays local, with no model-written summaries or tool-output ind
 Nekyia requires [Bun](https://bun.sh/) 1.1 or newer. It runs on Bun, not on Node, and the
 `nekyia` command says so plainly if Bun is missing rather than failing on an import.
 
-Install it from a GitHub release or from source. A registry package is coming; until
-it lands, the two paths below are the supported ones and both are tested.
+### From npm
+
+```bash
+bun install -g nekyia
+```
 
 ### From a release
 
@@ -72,7 +76,7 @@ bun install --frozen-lockfile
 bun link
 ```
 
-Both install paths expose `nekyia` and the shorter `nek` command.
+All three install paths expose `nekyia` and the shorter `nek` command.
 
 ## Quick start
 
