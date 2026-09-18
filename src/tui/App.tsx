@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Box, measureElement, Text, useApp, useInput, type DOMElement } from 'ink'
-import type { Config } from '../config'
-import type { Adapter } from '../core/adapter'
+import { saveLauncherChoice, type Config } from '../config'
+import { canBrief, type Adapter } from '../core/adapter'
 import { buildBrief } from '../core/brief'
 import { buildHandoffPlan, MAX_HANDOFF_NOTE_LENGTH, preambleForIntent } from '../core/handoff'
 import type { IndexDb } from '../core/db'
+import {
+  defaultOnPath, nextLauncher, presentations, resolveLauncher, type OnPath,
+} from '../core/launcher'
 import { checkPlan, shellQuote } from '../core/resume'
 import type { ExecPlan } from '../types'
 import { List } from './List'
@@ -385,6 +388,10 @@ export interface AppProps {
   onExec: (plan: ExecPlan, pendingCopy?: Promise<void>) => void
   /** Preflight for handoffs while the target picker can still report failures. */
   checkHandoffPlan?: typeof checkPlan
+  /** Whether a launcher's command is on PATH. Injectable so tests never depend on the host. */
+  onPath?: OnPath
+  /** Persists a launcher choice. Injectable so tests never write the user's config. */
+  saveLauncher?: (clientId: string, launcher: string) => Promise<void>
   /** Requests a reindex. Offered, and ctrl+r wired to it, only once the index has gone stale. */
   onReindex?: () => void
   /** null explicitly disables copying; undefined uses the host clipboard when present. */
@@ -408,7 +415,7 @@ export interface AppProps {
 export function App({
   db, cfg, adapters, cwd, now, onExec, onReindex, clipboard,
   clipboardFactory = createHostClipboard, rows, columns, indexedAt,
-  checkHandoffPlan = checkPlan,
+  checkHandoffPlan = checkPlan, onPath, saveLauncher = saveLauncherChoice,
 }: AppProps) {
   const { exit } = useApp()
   const { rows: terminalHeight, columns: terminalWidth } = useTerminalSize(rows, columns)
@@ -416,10 +423,23 @@ export function App({
   const detailRef = useRef<DOMElement | null>(null)
   const [inspecting, setInspecting] = useState(false)
   const [scroll, setScroll] = useState(0)
-  const sessions = useSessions(db, cfg, cwd)
+  const pathCheck = useMemo(() => onPath ?? defaultOnPath(), [onPath])
+  // Launcher choices made this run, layered over whatever was saved on disk. A
+  // failed save still applies for the rest of the session, because refusing to
+  // act on a choice that was just made would be a worse surprise than one that
+  // does not survive a restart.
+  const [choices, setChoices] = useState<Record<string, string>>(cfg.launchers ?? {})
+  const liveCfg = useMemo(() => ({ ...cfg, launchers: choices }), [cfg, choices])
+  const shown = useMemo(
+    () => presentations(adapters.map((adapter) => adapter.manifest), liveCfg, pathCheck),
+    [adapters, liveCfg, pathCheck],
+  )
+  /** Which client to ask about, and which of its options is highlighted, while the picker waits on an answer. */
+  const [launcherAsk, setLauncherAsk] = useState<{ client: string; options: string[]; index: number } | null>(null)
+  const sessions = useSessions(db, cfg, cwd, shown)
   const selectedRow = sessions.rows[sessions.selected]
   const handoffTargets = useMemo(
-    () => adapters.filter((adapter) => adapter.id !== selectedRow?.client && adapter.manifest.brief),
+    () => adapters.filter((adapter) => adapter.id !== selectedRow?.client && canBrief(adapter.manifest)),
     [adapters, selectedRow?.client],
   )
   // Inspecting with nothing selected is a mode with nothing in it, whose footer
@@ -492,12 +512,14 @@ export function App({
   /**
    * Safely calls the adapter's plan method, returning an object containing the plan and a boolean indicating if an adapter planning exception occurred.
    */
-  function planSafely(adapter: Adapter, row: NonNullable<typeof selectedRow>, brief?: string): {
+  function planSafely(
+    adapter: Adapter, row: NonNullable<typeof selectedRow>, brief?: string, launcher?: string,
+  ): {
     plan: ExecPlan | null
     failed: boolean
   } {
     try {
-      return { plan: adapter.plan(row, brief), failed: false }
+      return { plan: adapter.plan(row, brief, launcher), failed: false }
     } catch {
       announce('could not plan this session')
       return { plan: null, failed: true }
@@ -506,15 +528,31 @@ export function App({
 
   /**
    * Initiates a resume or brief plan based on the currently selected row, confirming if necessary.
+   *
+   * `chosen` is the launcher just picked from the ask overlay, applied to this
+   * activation immediately rather than waiting on the state update it also
+   * triggers, so the same keypress that answers the question also acts on it.
    */
-  function activate(): void {
+  function activate(chosen?: string): void {
     const row = selectedRow
     if (!row || executing.current) return
     const adapter = adapterFor(row.client)
     if (!adapter) { announce(`no adapter for ${boundedDisplayText(row.client, 32)}`); return }
 
-    if (row.tier === 'resume') {
-      const { plan, failed } = planSafely(adapter, row)
+    let launcher: string | undefined
+    let tier = row.tier
+    const launchers = adapter.manifest.launchers
+    if (launchers) {
+      const state = chosen !== undefined && launchers[chosen]
+        ? { kind: 'chosen' as const, name: chosen, spec: launchers[chosen]! }
+        : resolveLauncher(adapter.manifest, liveCfg, pathCheck)
+      if (state.kind === 'none') { announce(`none of ${state.options.join(', ')} is on PATH`); return }
+      if (state.kind === 'ask') { setLauncherAsk({ client: adapter.id, options: state.options, index: 0 }); return }
+      if (state.kind === 'chosen') { launcher = state.name; tier = state.spec.tier }
+    }
+
+    if (tier === 'resume') {
+      const { plan, failed } = planSafely(adapter, row, undefined, launcher)
       if (!plan) {
         if (!failed) announce('this session cannot be launched')
         return
@@ -532,13 +570,35 @@ export function App({
       return
     }
     if (!brief) { announce('nothing indexed for this session yet'); return }
-    const { plan, failed } = planSafely(adapter, row, brief)
+    const { plan, failed } = planSafely(adapter, row, brief, launcher)
     if (!plan) {
       if (!failed) announce('this session cannot be launched')
       return
     }
     if (plan.kind !== 'brief') { announce('adapter plan does not match the search session'); return }
-    setConfirm({ plan, chars: brief.length, client: boundedDisplayText(row.client, 32) })
+    setConfirm({ plan, chars: brief.length, client: boundedDisplayText(launcher ?? row.client, 32) })
+  }
+
+  /** Applies a launcher choice for this run and saves it; a failed save still applies it for now. */
+  async function chooseLauncher(client: string, name: string, thenActivate: boolean): Promise<void> {
+    setLauncherAsk(null)
+    setChoices((current) => ({ ...current, [client]: name }))
+    if (thenActivate) activate(name)
+    try {
+      await saveLauncher(client, name)
+    } catch {
+      announce('could not save the launcher choice; it applies to this run only')
+    }
+  }
+
+  /** Flips the selected row's store to its next installed launcher. */
+  function flipSelectedLauncher(): void {
+    const adapter = selectedRow ? adapterFor(selectedRow.client) : undefined
+    if (!adapter?.manifest.launchers) { announce('this client opens in only one way'); return }
+    const next = nextLauncher(adapter.manifest, liveCfg, pathCheck)
+    if (!next) { announce('only one of its clients is on PATH'); return }
+    void chooseLauncher(adapter.id, next, false)
+    announce(`opens in ${adapter.manifest.launchers[next]!.name}`)
   }
 
   /** Offers clients with brief templates, including those with no history yet. */
@@ -651,6 +711,15 @@ export function App({
 
   useInput((input, key) => {
     if (executing.current) return
+    if (launcherAsk) {
+      if (key.escape) { setLauncherAsk(null); return }
+      if (key.tab || key.upArrow || key.downArrow) {
+        setLauncherAsk({ ...launcherAsk, index: (launcherAsk.index + 1) % launcherAsk.options.length })
+        return
+      }
+      if (key.return) { void chooseLauncher(launcherAsk.client, launcherAsk.options[launcherAsk.index]!, true); return }
+      return
+    }
     if (confirm) {
       if (key.return) emit(confirm.plan)
       else if (key.escape) setConfirm(null)
@@ -718,6 +787,7 @@ export function App({
     if (key.ctrl && input === 'p') { copyPrompt(); return }
     if (key.ctrl && input === 'y') { copyCommand(); return }
     if (key.ctrl && input === 't') { openHandoff(); return }
+    if (key.ctrl && input === 'l') { flipSelectedLauncher(); return }
     if (key.ctrl && input === 'f') { sessions.cycleClient(); return }
     if (key.ctrl && input === 'r' && reindexOffered && !executing.current) {
       executing.current = true
@@ -825,6 +895,7 @@ export function App({
         ? [
           ['enter', enterLabel], ['ctrl+o', 'history'],
           ...(handoffTargets.length ? [['ctrl+t', 'handoff']] : []),
+          ...(selectedRow && adapterFor(selectedRow.client)?.manifest.launchers ? [['ctrl+l', 'client']] : []),
           ['ctrl+p', 'prompt'], ['ctrl+y', 'command'],
         ] as [string, string][]
         : []),
@@ -884,6 +955,13 @@ export function App({
             <Preview lines={detail} offset={offset} maxLines={detailLines} />
           </Box>
         </>
+      ) : null}
+      {launcherAsk ? (
+        <Text>
+          Open with {launcherAsk.options.map((name, index) => (
+            index === launcherAsk.index ? `[${name}]` : name
+          )).join(' / ')}?  tab switch · enter open · esc cancel
+        </Text>
       ) : null}
       {sparse && !reading ? <SparseHint project={scope} /> : null}
       <Box flexShrink={0} marginTop={1}>

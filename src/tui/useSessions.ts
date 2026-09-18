@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { dirname } from 'node:path'
 import type { Config } from '../config'
 import type { IndexDb } from '../core/db'
+import type { Presentation } from '../core/launcher'
 import { querySnapshot, readSessionSnapshot, type Row, type SessionSnapshot } from '../core/query'
 
 /**
@@ -103,7 +104,9 @@ function initialScope(db: IndexDb, cfg: Config, snapshot: SessionSnapshot, cwd: 
 }
 
 /** Query state shared by the picker and its keyboard bindings. */
-export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsState {
+export function useSessions(
+  db: IndexDb, cfg: Config, cwd: string, presentation?: Map<string, Presentation>,
+): SessionsState {
   // The picker holds one index handle for its whole run, so the session table is
   // read once here and every keystroke reuses those rows and the fork chains
   // derived from them, instead of rescanning the table per character typed.
@@ -159,8 +162,9 @@ export function useSessions(db: IndexDb, cfg: Config, cwd: string): SessionsStat
       // never existed"; the preview says which one it is in red.
       includeMissing: true,
       limit: SESSION_DISPLAY_LIMIT + 1,
+      presentation,
     }),
-    [db, queryConfig, snapshot, text, scope, cwd, client],
+    [db, queryConfig, snapshot, text, scope, cwd, client, presentation],
   )
   const overflowed = found.length > SESSION_DISPLAY_LIMIT
   const rows = useMemo(
