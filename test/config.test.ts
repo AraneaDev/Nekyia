@@ -8,6 +8,7 @@ import {
   updateConfig,
   loadConfigChecked,
   DEFAULT_CONFIG,
+  saveLauncherChoice,
 } from '../src/config'
 import { mkdtempSync, realpathSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -246,4 +247,17 @@ test('loadConfig still answers with a usable config in every one of those cases'
     writeFileSync(join(configDir(), 'config.json'), raw)
     expect(loadConfig()).toEqual(DEFAULT_CONFIG)
   }
+})
+
+test('a launcher choice is saved and read back', async () => {
+  await saveLauncherChoice('codebuff', 'freebuff')
+  expect(loadConfig().launchers).toEqual({ codebuff: 'freebuff' })
+  await saveLauncherChoice('codebuff', 'codebuff')
+  expect(loadConfig().launchers).toEqual({ codebuff: 'codebuff' })
+})
+
+test('a malformed launchers field is dropped rather than trusted', () => {
+  mkdirSync(configDir(), { recursive: true })
+  writeFileSync(join(configDir(), 'config.json'), JSON.stringify({ launchers: { codebuff: 7 } }))
+  expect(loadConfig().launchers).toBeUndefined()
 })
