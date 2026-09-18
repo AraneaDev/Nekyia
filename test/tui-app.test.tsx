@@ -2041,3 +2041,19 @@ test('with neither client installed, Enter says so instead of launching', async 
   view.unmount()
   db.close()
 })
+
+test('ctrl+y copies the command of the client the store opens in', async () => {
+  const db = IndexDb.open(':memory:')
+  seedShared(db)
+  const copied: string[] = []
+  const view = render(
+    <App db={db} cfg={{ ...DEFAULT_CONFIG, launchers: { codebuff: 'freebuff' } }} adapters={sharedAdapters}
+      onExec={() => {}} onPath={both} saveLauncher={async () => {}}
+      clipboard={{ writeText: async (text) => { copied.push(text) } }} {...opts} />,
+  )
+  view.stdin.write('')
+  await tick()
+  expect(copied[0]).toContain('freebuff --continue c1')
+  view.unmount()
+  db.close()
+})
