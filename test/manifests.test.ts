@@ -271,6 +271,13 @@ test('a launcher claiming the resume tier needs a resume command', () => {
   })).toThrow('requires a resume command')
 })
 
+test('a launcher claiming the search tier needs a brief command', () => {
+  expect(() => validateManifest({
+    ...launcherBase,
+    launchers: { ...twoLaunchers, one: { name: 'One', tier: 'search' as const, resume: { cmd: 'one', args: ['--continue', '{id}'] } } },
+  })).toThrow('tier "search" requires a brief command')
+})
+
 test('a single launcher is just a manifest, so launchers must name at least two', () => {
   expect(() => validateManifest({ ...launcherBase, launchers: { one: twoLaunchers.one } }))
     .toThrow('between 2 and 8')

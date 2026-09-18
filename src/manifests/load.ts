@@ -411,6 +411,9 @@ function validateLaunchers(value: unknown): Record<string, LauncherSpec> {
     if (raw.tier === 'resume' && resume === undefined) {
       throw new Error(`launcher ${key}: tier "resume" requires a resume command`)
     }
+    if (raw.tier === 'search' && brief === undefined) {
+      throw new Error(`launcher ${key}: tier "search" requires a brief command`)
+    }
     if (resume === undefined && brief === undefined) {
       throw new Error(`launcher ${key} needs a resume or a brief command`)
     }

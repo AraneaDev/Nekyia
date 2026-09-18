@@ -173,8 +173,11 @@ function commandSource(
   const launchers = manifest.launchers
   if (!launchers) return manifest
   if (promptText) {
-    const named = launcher === undefined ? undefined : launchers[launcher]
-    if (named?.brief) return named
+    // A named launcher is a request for that launcher specifically: if it
+    // cannot take a brief, the caller gets a refusal, not another launcher's
+    // brief standing in for it. The "first launcher with a brief" fallback is
+    // only for the handoff path, which names no launcher at all.
+    if (launcher !== undefined) return launchers[launcher]?.brief ? launchers[launcher]! : null
     return Object.values(launchers).find((candidate) => candidate.brief) ?? null
   }
   return launcher === undefined ? null : launchers[launcher] ?? null
