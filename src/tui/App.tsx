@@ -6,10 +6,10 @@ import { buildBrief } from '../core/brief'
 import { buildHandoffPlan, MAX_HANDOFF_NOTE_LENGTH, preambleForIntent } from '../core/handoff'
 import type { IndexDb } from '../core/db'
 import {
-  defaultOnPath, nextLauncher, presentations, resolveLauncher, type OnPath,
+  defaultOnPath, nextLauncher, presentations, resolveForLaunch, type OnPath, type ResolveForLaunch,
 } from '../core/launcher'
 import { checkPlan, shellQuote } from '../core/resume'
-import type { ExecPlan, Tier } from '../types'
+import type { ExecPlan } from '../types'
 import { List } from './List'
 import { boundedDisplayText, boundedPathTail, MAX_DISPLAY_COLUMNS, prefixByCodeUnits, wrappedDisplayLines } from './text'
 import { projectName, relTime } from '../render'
@@ -536,32 +536,17 @@ export function App({
    * tier": `copyCommand` used to skip this and plan with no launcher at all,
    * which planned nothing once a resume-tier launcher was the active choice.
    */
-  type RowLauncher =
-    | { kind: 'resolved'; launcher: string | undefined; tier: Tier }
-    | { kind: 'ask'; options: string[] }
-    | { kind: 'unavailable'; message: string }
+  type RowLauncher = ResolveForLaunch
 
   /**
-   * Resolves which launcher opens `row`'s store, mirroring `resolveLauncher`
-   * for clients that have one and passing single-launcher clients through
-   * unchanged.
+   * Resolves which launcher opens `row`'s store, and what tier to treat it as.
    *
-   * `chosen` is a launcher just picked from the ask overlay, honoured ahead of
-   * `liveCfg` so the same keypress that answers the question can also act on
-   * it without waiting on the state update `chooseLauncher` also triggers.
+   * A thin wrapper over `resolveForLaunch`: the resolution itself, and its
+   * refusal wording for an uninstalled launcher, live in one place shared with
+   * `nekyia last`.
    */
   function resolveRowLauncher(adapter: Adapter, row: NonNullable<typeof selectedRow>, chosen?: string): RowLauncher {
-    const launchers = adapter.manifest.launchers
-    if (!launchers) return { kind: 'resolved', launcher: undefined, tier: row.tier }
-    const state = chosen !== undefined && launchers[chosen]
-      ? { kind: 'chosen' as const, name: chosen, spec: launchers[chosen]! }
-      : resolveLauncher(adapter.manifest, liveCfg, pathCheck)
-    if (state.kind === 'none') return { kind: 'unavailable', message: `none of ${state.options.join(', ')} is on PATH` }
-    if (state.kind === 'ask') return { kind: 'ask', options: state.options }
-    if (state.kind === 'chosen') return { kind: 'resolved', launcher: state.name, tier: state.spec.tier }
-    // Unreachable: resolveLauncher only answers 'single' when manifest.launchers
-    // is absent, and this line is reached only when it is present.
-    return { kind: 'resolved', launcher: undefined, tier: row.tier }
+    return resolveForLaunch(adapter.manifest, row.tier, liveCfg, pathCheck, chosen)
   }
 
   /**

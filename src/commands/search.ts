@@ -28,8 +28,13 @@ export interface SearchOptions {
  * than the indexed summary can open the transcript itself. It stays an array:
  * a session can span several files, and for the directory-backed clients it is
  * not a single transcript at all.
+ *
+ * Exported for its own unit test: `client` stays the manifest id that wrote
+ * the session, even for a shared store whose `tier` follows whichever launcher
+ * was resolved, because rewriting `client` to the launcher's name would lose
+ * which store the row actually came from. `launcher` carries that name instead.
  */
-function publicRow(row: ReturnType<typeof query>[number], sourcePaths: string[]) {
+export function publicRow(row: ReturnType<typeof query>[number], sourcePaths: string[]) {
   return {
     uid: row.uid,
     client: row.client,
@@ -48,6 +53,11 @@ function publicRow(row: ReturnType<typeof query>[number], sourcePaths: string[])
     // Present only when the chain's score was earned by a different session
     // than the one named here, so `score` is never read as this row's own.
     ...(row.matchedUid === undefined ? {} : { matchedUid: row.matchedUid }),
+    // Present only when the presentation overlay resolved a launcher for this
+    // client, so client/tier combinations the manifest itself can never
+    // produce (e.g. "codebuff" at tier "resume") are explained rather than
+    // looking unexplained.
+    ...(row.clientLabel === undefined ? {} : { launcher: row.clientLabel }),
     sourcePaths,
   }
 }

@@ -86,3 +86,48 @@ export function presentations(
 export function defaultOnPath(): OnPath {
   return (command) => resolveCommand(command, process.cwd()) !== undefined
 }
+
+/**
+ * What a caller planning a launch should do about a row's client: a settled
+ * launcher and the tier to treat it as (`launcher` is undefined for a client
+ * with no `launchers` of its own, and `tier` then stays the row's own), a
+ * question that still needs asking, or a refusal with the message to show.
+ *
+ * Both `nekyia last` and the picker plan a launch for a selected row, and both
+ * need the same answer to "which client, and does that change the tier". This
+ * is the one place that answer is worked out, so the refusal wording for an
+ * uninstalled launcher exists in a single copy.
+ */
+export type ResolveForLaunch =
+  | { kind: 'resolved'; launcher: string | undefined; tier: Tier }
+  | { kind: 'ask'; options: string[] }
+  | { kind: 'unavailable'; message: string }
+
+/**
+ * Resolves which launcher opens a row's store and what tier to treat it as.
+ *
+ * `chosen` is a launcher just picked from an ask overlay, honoured ahead of
+ * `config`'s saved choice so the same keypress that answers the question can
+ * also act on it without waiting on a config update to land.
+ */
+export function resolveForLaunch(
+  manifest: Manifest,
+  rowTier: Tier,
+  config: Config,
+  onPath: OnPath,
+  chosen?: string,
+): ResolveForLaunch {
+  const launchers = manifest.launchers
+  if (!launchers) return { kind: 'resolved', launcher: undefined, tier: rowTier }
+  const state = chosen !== undefined && launchers[chosen]
+    ? { kind: 'chosen' as const, name: chosen, spec: launchers[chosen]! }
+    : resolveLauncher(manifest, config, onPath)
+  if (state.kind === 'none') {
+    return { kind: 'unavailable', message: `none of ${state.options.join(', ')} is on PATH` }
+  }
+  if (state.kind === 'ask') return { kind: 'ask', options: state.options }
+  if (state.kind === 'chosen') return { kind: 'resolved', launcher: state.name, tier: state.spec.tier }
+  // Unreachable: resolveLauncher only answers 'single' when manifest.launchers
+  // is absent, and this line is reached only when it is present.
+  return { kind: 'resolved', launcher: undefined, tier: rowTier }
+}

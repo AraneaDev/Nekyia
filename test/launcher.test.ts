@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { DEFAULT_CONFIG, type Config } from '../src/config'
 import {
-  nextLauncher, presentationFor, presentations, resolveLauncher,
+  nextLauncher, presentationFor, presentations, resolveForLaunch, resolveLauncher,
 } from '../src/core/launcher'
 import { validateManifest } from '../src/manifests/load'
 
@@ -71,4 +71,32 @@ test('rows show the chosen launcher, and the manifest defaults while undecided',
 test('presentations covers only clients that have launchers', () => {
   const map = presentations([shared, single], saved('freebuff'), installed('codebuff', 'freebuff', 'claude'))
   expect([...map.keys()]).toEqual(['codebuff'])
+})
+
+test('resolveForLaunch passes a launcherless manifest straight through with the row\'s own tier', () => {
+  expect(resolveForLaunch(single, 'resume', DEFAULT_CONFIG, installed('claude')))
+    .toEqual({ kind: 'resolved', launcher: undefined, tier: 'resume' })
+})
+
+test('resolveForLaunch resolves a shared store to its saved launcher and that launcher\'s tier', () => {
+  expect(resolveForLaunch(shared, 'search', saved('freebuff'), installed('codebuff', 'freebuff')))
+    .toEqual({ kind: 'resolved', launcher: 'freebuff', tier: 'resume' })
+})
+
+test('resolveForLaunch asks when both are installed and nothing is saved or chosen', () => {
+  expect(resolveForLaunch(shared, 'search', DEFAULT_CONFIG, installed('codebuff', 'freebuff')))
+    .toEqual({ kind: 'ask', options: ['codebuff', 'freebuff'] })
+})
+
+test('resolveForLaunch reports which launchers are unavailable when none is installed', () => {
+  expect(resolveForLaunch(shared, 'search', DEFAULT_CONFIG, installed()))
+    .toEqual({ kind: 'unavailable', message: 'none of codebuff, freebuff is on PATH' })
+})
+
+test('resolveForLaunch honours an explicit chosen launcher ahead of the saved choice or PATH state', () => {
+  // The same keypress that answers the ask overlay must act on that choice
+  // immediately, without waiting on the config update to land, so an explicit
+  // `chosen` bypasses resolveLauncher entirely rather than merely seeding it.
+  expect(resolveForLaunch(shared, 'search', saved('codebuff'), installed('codebuff', 'freebuff'), 'freebuff'))
+    .toEqual({ kind: 'resolved', launcher: 'freebuff', tier: 'resume' })
 })
