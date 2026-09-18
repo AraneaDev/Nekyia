@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
 import { cursorReader, transcriptFolder, unwrapUserText } from '../src/formats/cursor'
 import { validateManifest } from '../src/manifests/load'
+import cursorManifest from '../src/manifests/builtin/cursor.json'
+import { buildAdapter } from '../src/core/adapter'
 
 const FIX = join(import.meta.dir, 'fixtures', 'cursor')
 const manifest = validateManifest({
@@ -77,4 +79,30 @@ test('a store that vanishes between discovery and hydration comes back degraded,
   expect(doc.prose).toEqual([])
   expect(doc.files).toEqual([])
   expect(doc.truncated).toBe(false)
+})
+
+/** cursor-agent 2026.09.15-d2fe57e, from its own --help. */
+const CURSOR_SUBCOMMANDS = [
+  'persist', 'install-shell-integration', 'uninstall-shell-integration', 'login', 'logout', 'mcp',
+  'plugin', 'worker', 'status', 'models', 'bedrock', 'about', 'update', 'create-chat',
+  'generate-rule', 'agent', 'ls', 'resume', 'help',
+]
+
+test('a brief cannot be parsed as a cursor-agent subcommand, whatever note leads it', () => {
+  // commander dispatches only when the whole operand equals a command name, and
+  // a brief is one argument that always carries the handover heading.
+  const adapter = buildAdapter(validateManifest(cursorManifest))
+  for (const note of CURSOR_SUBCOMMANDS) {
+    const brief = `${note}\n\n# Handover from a previous session\n\ncontext`
+    const plan = adapter.plan({ nativeId: FULL, cwd: '/root/proj' }, brief)!
+    expect(plan.args).toHaveLength(1)
+    expect(CURSOR_SUBCOMMANDS).not.toContain(plan.args[0]!)
+  }
+})
+
+test('the built-in Cursor client resumes by chat id', () => {
+  const adapter = buildAdapter(validateManifest(cursorManifest))
+  expect(adapter.plan({ nativeId: FULL, cwd: '/root/proj' })).toEqual({
+    kind: 'resume', cmd: 'cursor-agent', args: ['--resume', FULL], cwd: '/root/proj',
+  })
 })

@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "id": "cursor",
+  "name": "Cursor",
+  "roots": ["~/.cursor"],
+  "format": "json-dir",
+  "tier": "resume",
+  "jsonDir": {
+    "glob": "chats/*/*",
+    "variant": "cursor"
+  },
+  "resume": {
+    "cmd": "cursor-agent",
+    "args": ["--resume", "{id}"],
+    "cwd": "{cwd}"
+  },
+  "brief": {
+    "cmd": "cursor-agent",
+    "args": ["{prompt}"],
+    "cwd": "{cwd}"
+  }
+}
