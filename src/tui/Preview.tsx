@@ -254,7 +254,7 @@ export function buildPreviewLines(
   // difference.
   const rawTitle = typeof row.title === 'string' ? row.title : ''
   const asked = prompts.filter((line, index) => !(index === 0 && line === rawTitle))
-  const client = safe(row.client, 32) || 'unknown client'
+  const client = safe(row.clientLabel ?? row.client, 32) || 'unknown client'
   const cwd = safe(row.cwd, headWidth) || '(unknown directory)'
   const branch = safe(row.gitBranch, 64)
   const turns = typeof row.turns === 'number' && Number.isFinite(row.turns) && row.turns > 0
@@ -278,8 +278,18 @@ export function buildPreviewLines(
     },
   ]
   if (row.tier !== 'resume') {
+    // A store with launchers but no launcher resolved yet (an ask or none
+    // state) has not settled on a client, so the preview cannot claim a
+    // specific one "cannot resume by id"; PATH state is not known here
+    // either, so the wording stays neutral about which client will answer.
+    const undecided = row.clientLabel !== undefined && row.launcher === undefined
     head.push({
-      text: safe(`${client} cannot resume by id · enter starts a new briefed session`, headWidth),
+      text: safe(
+        undecided
+          ? 'enter asks which client opens this store'
+          : `${client} cannot resume by id · enter starts a new briefed session`,
+        headWidth,
+      ),
       color: 'yellow',
     })
   }
