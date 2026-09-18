@@ -26,7 +26,22 @@ export interface Scan {
  * Nothing derives this. A change in what the readers keep is a decision someone
  * made, so it is recorded by hand, the way the schema ladder is.
  */
-const EXTRACTION_VERSION = 2
+const EXTRACTION_VERSION = 1
+
+/**
+ * A reader's own revision, for a change only that reader's output depends on.
+ *
+ * It takes the base version's place in the fingerprint rather than joining it,
+ * so every other reader hashes exactly what it did before and none of their
+ * sessions is re-read for a change they cannot see.
+ *
+ * Codex 2: the branch is read from the session metadata.
+ */
+function readerVersion(manifest: Manifest): number {
+  return manifest.format === 'jsonl-transcript' && manifest.jsonl?.variant === 'codex'
+    ? 2
+    : EXTRACTION_VERSION
+}
 
 /**
  * What this build would extract from a client's sources, rather than what those
@@ -45,7 +60,7 @@ const EXTRACTION_VERSION = 2
  */
 export function extractionFingerprint(manifest: Manifest, cfg: Config): string {
   return createHash('sha256').update(JSON.stringify([
-    EXTRACTION_VERSION,
+    readerVersion(manifest),
     cfg.maxFileBytes,
     manifest.format,
     manifest.jsonl ?? null,
