@@ -262,4 +262,63 @@ insertCopilotFile.run(
 insertCopilotFile.run('c51a6cd4-ff7c-40af-ac6b-7ef82da474ca', '   ', 'edit', 1)
 copilot.close()
 
+// goose stores one SQLite database for Desktop and CLI alike. The columns here
+// follow goose's own reader: sessions keyed by `id` with `working_dir`, and
+// messages whose `content_json` is a JSON array of typed blocks.
+const goose = recreate('goose/sessions.db')
+goose.exec(`
+  CREATE TABLE sessions(id TEXT PRIMARY KEY, name TEXT, description TEXT, session_type TEXT, working_dir TEXT, parent_session_id TEXT, created_at TEXT, updated_at TEXT);
+  CREATE TABLE messages(id INTEGER PRIMARY KEY, message_id TEXT, session_id TEXT, role TEXT, content_json TEXT, created_timestamp INTEGER);
+`)
+const insertGooseSession = goose.prepare(
+  'INSERT INTO sessions VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)',
+)
+// The three timestamp encodings goose's reader tolerates in one column: an ISO
+// string, unix seconds, and unix milliseconds. The manifest normalises all
+// three to milliseconds in SQL, so each one needs a row to normalise.
+insertGooseSession.run(
+  '20260218_1', 'daily', 'Rework the retry budget', 'user',
+  '/root/proj', null, '2026-02-18T09:20:00Z', '2026-02-18T10:05:00Z',
+)
+insertGooseSession.run(
+  '20260218_2', 'seconds', 'Session timed in unix seconds', 'user',
+  '/root/proj', '20260218_1', '1771406400', '1771410000',
+)
+insertGooseSession.run(
+  '20260218_3', 'millis', 'Session timed in unix milliseconds', 'user',
+  '/root/other', null, '1771406400000', '1771410000000',
+)
+const insertGooseMessage = goose.prepare(
+  'INSERT INTO messages VALUES (?1, ?2, ?3, ?4, ?5, ?6)',
+)
+insertGooseMessage.run(
+  1, 'msg_g_user', '20260218_1', 'user',
+  JSON.stringify([{ type: 'text', text: 'raise the retry budget' }]),
+  1771406400000,
+)
+// Two text blocks in one message: goose concatenates them, so the reader must
+// not drop the second.
+insertGooseMessage.run(
+  2, 'msg_g_asst', '20260218_1', 'assistant',
+  JSON.stringify([
+    { type: 'text', text: 'Raised it to five.' },
+    { type: 'text', text: 'The backoff is unchanged.' },
+  ]),
+  1771406460000,
+)
+// A tool block beside a text one. Only the text is indexed; the marker proves
+// the tool payload never reaches the index.
+insertGooseMessage.run(
+  3, 'msg_g_tool', '20260218_1', 'assistant',
+  JSON.stringify([
+    { type: 'toolResponse', text: 'SECRET_TOOL_OUTPUT_MUST_NOT_BE_INDEXED' },
+    { type: 'text', text: 'Read the config.' },
+  ]),
+  1771406520000,
+)
+// A session whose content_json is absent. goose defaults it to '[]', and the
+// manifest's COALESCE has to do the same rather than drop the row.
+insertGooseMessage.run(4, 'msg_g_empty', '20260218_2', 'user', null, 1771406400000)
+goose.close()
+
 console.log('fixtures written')

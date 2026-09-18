@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "id": "goose",
+  "name": "goose",
+  "roots": ["~/.local/share/goose/sessions"],
+  "format": "sqlite-store",
+  "tier": "search",
+  "sqlite": {
+    "file": "sessions.db",
+    "sessions": "SELECT id AS id, working_dir AS cwd, description AS title, parent_session_id AS parent_id, CASE WHEN CAST(created_at AS TEXT) GLOB '*[^0-9]*' THEN CAST(strftime('%s', created_at) AS INTEGER) * 1000 WHEN CAST(created_at AS INTEGER) > 10000000000 THEN CAST(created_at AS INTEGER) ELSE CAST(created_at AS INTEGER) * 1000 END AS started_at, CASE WHEN CAST(updated_at AS TEXT) GLOB '*[^0-9]*' THEN CAST(strftime('%s', updated_at) AS INTEGER) * 1000 WHEN CAST(updated_at AS INTEGER) > 10000000000 THEN CAST(updated_at AS INTEGER) ELSE CAST(updated_at AS INTEGER) * 1000 END AS ended_at FROM sessions",
+    "revision": "ended_at",
+    "text": "SELECT m.role AS role, group_concat(json_extract(b.value, '$.text'), char(10)) AS text FROM messages m, json_each(COALESCE(m.content_json, '[]')) b WHERE m.session_id = ?1 AND json_extract(b.value, '$.type') = 'text' GROUP BY m.id, m.role ORDER BY m.id",
+    "textShape": "plain",
+    "timeUnit": "ms"
+  },
+  "brief": {
+    "cmd": "goose",
+    "args": ["run", "-t", "{prompt}", "-s"],
+    "cwd": "{cwd}"
+  }
+}

@@ -68,7 +68,7 @@ test('doctor names every built-in client, provenance, paths, and override', () =
   const result = run(['doctor'], setup.env)
   expect(result.exitCode).toBe(0)
   const out = result.stdout.toString()
-  for (const client of ['claude', 'codex', 'opencode', 'kilo', 'codebuff', 'agy']) {
+  for (const client of ['claude', 'codex', 'opencode', 'kilo', 'codebuff', 'agy', 'goose']) {
     expect(out).toContain(client)
   }
   expect(out).toContain('built-in')
@@ -185,10 +185,12 @@ test('doctor reports every bounded loaded manifest without a second silent cap',
   const report = JSON.parse(result.stdout.toString())
   const reported = new Set(report.clients.map((client: any) => client.client))
   for (const id of ids) expect(reported.has(id)).toBe(true)
-  for (const id of ['agy', 'claude', 'codebuff', 'codex', 'copilot', 'kilo', 'opencode']) {
-    expect(reported.has(id)).toBe(true)
-  }
-  expect(report.clients).toHaveLength(263)
+  const builtins = ['agy', 'claude', 'codebuff', 'codex', 'copilot', 'goose', 'kilo', 'opencode']
+  for (const id of builtins) expect(reported.has(id)).toBe(true)
+  // Derived from the two lists above rather than written out: a hardcoded total
+  // goes stale the moment a built-in client is added, and it fails somewhere
+  // unrelated to the change that broke it.
+  expect(report.clients).toHaveLength(ids.length + builtins.length)
 })
 
 test('doctor --sniff emits a deterministic working draft without private samples', async () => {

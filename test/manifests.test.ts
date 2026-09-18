@@ -176,6 +176,7 @@ test('loads all built-in manifests without errors', () => {
     'codebuff',
     'codex',
     'copilot',
+    'goose',
     'kilo',
     'opencode',
   ])
@@ -184,6 +185,9 @@ test('loads all built-in manifests without errors', () => {
 })
 
 test('bounds user-manifest enumeration and reports honest overflow', () => {
+  // Read the built-in count rather than folding it into a literal total, so
+  // adding a client does not fail this test for a reason it is not about.
+  const builtinCount = loadManifests().manifests.length
   const clients = join(process.env.XDG_CONFIG_HOME!, 'nekyia', 'clients')
   mkdirSync(clients, { recursive: true })
   for (let index = 0; index < 257; index++) {
@@ -192,7 +196,7 @@ test('bounds user-manifest enumeration and reports honest overflow', () => {
   }
   const loaded = loadManifests()
   expect(loaded.diagnostics.some((item) => item.message.includes('at least one additional manifest omitted'))).toBe(true)
-  expect(loaded.manifests.length).toBeLessThanOrEqual(263)
+  expect(loaded.manifests.length).toBeLessThanOrEqual(builtinCount + 256)
 })
 
 test('bounds total directory entries even when none are manifests', () => {
