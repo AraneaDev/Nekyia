@@ -17,6 +17,7 @@ import {
 } from '../src/tui/clipboard'
 import type { Row } from '../src/core/query'
 import type { ExecPlan, SessionRef } from '../src/types'
+import codebuffManifest from '../src/manifests/builtin/codebuff.json'
 
 const NOW = 1_800_000_000_000
 
@@ -1959,6 +1960,84 @@ test('a session that just ended is not described as "now ago"', async () => {
   await tick()
   expect(view.lastFrame()).not.toContain('now ago')
   expect(view.lastFrame()).toContain('just now')
+  view.unmount()
+  db.close()
+})
+
+const sharedAdapters = [buildAdapter(validateManifest({ ...codebuffManifest, roots: ['/nonexistent'] }))]
+const both = (command: string) => command === 'codebuff' || command === 'freebuff'
+
+function seedShared(db: IndexDb): void {
+  seed(db, { uid: 'codebuff:c1', client: 'codebuff', nativeId: 'c1', tier: 'search', title: 'A shared chat' })
+}
+
+test('with both clients installed and no choice saved, Enter asks which one', async () => {
+  const db = IndexDb.open(':memory:')
+  seedShared(db)
+  const saves: Array<[string, string]> = []
+  const plans: ExecPlan[] = []
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={sharedAdapters} onExec={(plan) => plans.push(plan)}
+      onPath={both} saveLauncher={async (client, name) => { saves.push([client, name]) }} {...opts} />,
+  )
+  view.stdin.write('\r')
+  await tick()
+  expect(view.lastFrame()).toContain('Open with')
+  view.stdin.write('\t')
+  await tick()
+  view.stdin.write('\r')
+  await tick()
+  expect(saves).toEqual([['codebuff', 'freebuff']])
+  expect(plans[0]).toMatchObject({ kind: 'resume', cmd: 'freebuff', args: ['--continue', 'c1', '--cwd', '/root/proj'] })
+  view.unmount()
+  db.close()
+})
+
+test('a saved choice opens without asking, and the row shows it', async () => {
+  const db = IndexDb.open(':memory:')
+  seedShared(db)
+  const plans: ExecPlan[] = []
+  const view = render(
+    <App db={db} cfg={{ ...DEFAULT_CONFIG, launchers: { codebuff: 'freebuff' } }} adapters={sharedAdapters}
+      onExec={(plan) => plans.push(plan)} onPath={both} saveLauncher={async () => {}} {...opts} />,
+  )
+  expect(view.lastFrame()).toContain('freebuff')
+  view.stdin.write('\r')
+  await tick()
+  expect(view.lastFrame()).not.toContain('Open with')
+  expect(plans[0]?.cmd).toBe('freebuff')
+  view.unmount()
+  db.close()
+})
+
+test('ctrl+l flips the launcher, saves it, and the row label follows', async () => {
+  const db = IndexDb.open(':memory:')
+  seedShared(db)
+  const saves: Array<[string, string]> = []
+  const view = render(
+    <App db={db} cfg={{ ...DEFAULT_CONFIG, launchers: { codebuff: 'codebuff' } }} adapters={sharedAdapters}
+      onExec={() => {}} onPath={both} saveLauncher={async (client, name) => { saves.push([client, name]) }} {...opts} />,
+  )
+  view.stdin.write('\x0C')
+  await tick()
+  expect(saves).toEqual([['codebuff', 'freebuff']])
+  expect(view.lastFrame()).toContain('freebuff')
+  view.unmount()
+  db.close()
+})
+
+test('with neither client installed, Enter says so instead of launching', async () => {
+  const db = IndexDb.open(':memory:')
+  seedShared(db)
+  const plans: ExecPlan[] = []
+  const view = render(
+    <App db={db} cfg={DEFAULT_CONFIG} adapters={sharedAdapters} onExec={(plan) => plans.push(plan)}
+      onPath={() => false} saveLauncher={async () => {}} {...opts} />,
+  )
+  view.stdin.write('\r')
+  await tick()
+  expect(view.lastFrame()).toContain('is on PATH')
+  expect(plans).toEqual([])
   view.unmount()
   db.close()
 })
