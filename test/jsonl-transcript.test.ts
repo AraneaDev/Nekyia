@@ -513,6 +513,53 @@ test('hydrates only Codex user input_text and assistant output_text', async () =
   expect(doc.ref.turns).toBe(2)
 })
 
+test('Codex discovery reads the branch from the session metadata', async () => {
+  await inTempDir(async (root) => {
+    const rollout = (name: string, git: unknown, later?: unknown) => {
+      writeJsonl(join(root, `${name}.jsonl`), [
+        {
+          timestamp: '2026-08-02T09:00:00.000Z',
+          type: 'session_meta',
+          payload: { session_id: name, cwd: '/home/dev/work/proj', ...(git === undefined ? {} : { git }) },
+        },
+        {
+          type: 'response_item',
+          payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: `ask ${name}` }] },
+        },
+        ...(later === undefined ? [] : [{
+          timestamp: '2026-08-03T09:00:00.000Z',
+          type: 'session_meta',
+          payload: { session_id: 'later', cwd: '/home/dev/work/other', git: later },
+        }]),
+      ])
+    }
+    // Codex records the checkout it started in beside the cwd, when there is one.
+    rollout('with-branch', { commit_hash: 'abc123', branch: 'fix/retry-budget' })
+    // Outside a repository the object is simply absent.
+    rollout('no-git', undefined)
+    // A detached head, or a shape this reader does not know, names no branch.
+    rollout('unusable', { branch: '' })
+    // Like the id and cwd, the first metadata row decides.
+    rollout('first-wins', { branch: 'main' }, { branch: 'feat/later' })
+
+    const manifest = validateManifest({
+      ...codex,
+      tier: 'search',
+      resume: undefined,
+      jsonl: { glob: '*.jsonl', variant: 'codex' },
+    })
+    const { refs } = await jsonlTranscript.discover(manifest, root)
+    const branch = Object.fromEntries(refs.map((ref) => [ref.nativeId, ref.gitBranch]))
+
+    expect(branch).toEqual({
+      'with-branch': 'fix/retry-budget',
+      'no-git': null,
+      unusable: null,
+      'first-wins': 'main',
+    })
+  })
+})
+
 test('Codex ignores injected user envelopes and locks the first valid session metadata', async () => {
   await inTempDir(async (root) => {
     const path = join(root, 'codex.jsonl')

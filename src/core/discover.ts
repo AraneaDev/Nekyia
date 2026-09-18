@@ -26,7 +26,7 @@ export interface Scan {
  * Nothing derives this. A change in what the readers keep is a decision someone
  * made, so it is recorded by hand, the way the schema ladder is.
  */
-const EXTRACTION_VERSION = 1
+const EXTRACTION_VERSION = 2
 
 /**
  * What this build would extract from a client's sources, rather than what those

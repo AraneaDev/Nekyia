@@ -452,6 +452,18 @@ function codexMetadataId(payload: JsonObject): string | null {
 }
 
 /**
+ * The branch Codex recorded for the checkout a session started in.
+ *
+ * Codex writes it beside the cwd, under `git`, and leaves the object out
+ * entirely outside a repository. An empty name, as a detached head can leave,
+ * names no branch.
+ */
+function codexBranch(payload: JsonObject): string | null {
+  const git = isObject(payload.git) ? payload.git : undefined
+  return typeof git?.branch === 'string' && git.branch.length > 0 ? git.branch : null
+}
+
+/**
  * Extracts a session reference from a Codex-format JSONL file.
  */
 function discoverCodex(
@@ -464,6 +476,7 @@ function discoverCodex(
 ): SessionRef | null {
   let nativeId: string | null = null
   let cwd: string | null = null
+  let branch: string | null = null
   let title: string | null = null
   let startedAt = stat.mtime.getTime()
   let hasMetadata = false
@@ -485,6 +498,7 @@ function discoverCodex(
         }
         nativeId = id
         if (typeof payload.cwd === 'string') cwd = payload.cwd
+        branch = codexBranch(payload)
         startedAt = parsedTimestamp(row.timestamp) ?? startedAt
         hasMetadata = true
       }
@@ -514,7 +528,7 @@ function discoverCodex(
 
   return nativeId === null
     ? null
-    : baseRef(manifest, path, stat, nativeId, startedAt, cwd, null, title)
+    : baseRef(manifest, path, stat, nativeId, startedAt, cwd, branch, title)
 }
 
 /**
