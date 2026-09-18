@@ -47,6 +47,8 @@ test('the README carries no em dashes', () => {
   const readme = readFileSync(join(root, 'README.md'), 'utf8')
   expect(readme).not.toContain('—')
   expect(readme).not.toMatch(/\b(?:we|our|companies)\b/i)
+  expect(readme).toContain('| Cursor | Resume | `cursor-agent --resume <id>` |')
+  expect(readme).toContain('ctrl+l')
 })
 
 test('the README names the exact roadmap and truthful launch tiers', () => {
