@@ -48,6 +48,7 @@ claim a completed provider-backed conversation in every client.
 | OpenCode | `opencode --prompt <brief>` | [Official TUI CLI reference](https://opencode.ai/docs/cli/); positional argument is a project directory |
 | Kilo | `kilo --prompt <brief>` | [Official CLI reference](https://kilo.ai/docs/code-with-ai/platforms/cli-reference) |
 | Codebuff | `codebuff --cwd <cwd> <brief>` | [CLI parser](https://github.com/CodebuffAI/codebuff/blob/main/cli/src/cli-args.ts) retains positional text as `initialPrompt`; [entry point](https://github.com/CodebuffAI/codebuff/blob/main/cli/src/index.tsx) passes it into the interactive app |
+| Cursor | `cursor-agent <brief>`, run in the session cwd | Checked on 2026-09-18 against installed `cursor-agent` 2026.09.15-d2fe57e. The brief is passed as one argv element, and `cursor-agent`'s commander parser (`_findCommand` in its bundle) dispatches a subcommand only when the whole operand equals a command name. Every brief carries the "# Handover from a previous session" heading, so a brief can never be taken for a subcommand, whatever note leads it. Pinned by the test in `test/cursor.test.ts`. |
 
 Copilot, OpenCode, Kilo, and Codebuff were not installed in the implementation
 environment. Their contracts were checked against official documentation/source.
@@ -55,7 +56,8 @@ The built-in template test checks every target with multiline Unicode context.
 A controlled child test checks actual argv delivery, cwd, and exit status without
 sending user history to a model provider. Freebuff's current CLI does not accept
 initial prompt arguments, so it is not an interchangeable handoff executable for
-the Codebuff template.
+the Codebuff template, and it is not offered as a handoff target at all: a
+handoff target needs a brief command, and Freebuff has none.
 
 The reverse Codex-to-Claude path was also exercised with the real Claude Code
 2.1.270 interactive CLI: a synthetic Codex-format transcript was indexed, then
