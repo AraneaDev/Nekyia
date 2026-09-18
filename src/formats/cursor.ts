@@ -182,7 +182,10 @@ async function hydrate(_manifest: Manifest, root: string, ref: SessionRef, confi
         } else if (block.type === 'tool_use' && isObject(block.input) && typeof block.input.path === 'string') {
           // The path a tool acted on is a facet; the tool's input and output are not indexed.
           if (files.size < MAX_SESSION_FILES) files.add(block.input.path)
-          else truncated = true
+          // A path the set already holds was never going to grow it further,
+          // so reoffering it after the cap drops nothing and must not mark
+          // the session truncated on its own.
+          else if (!files.has(block.input.path)) truncated = true
         }
       }
       if (!texts.length) continue
