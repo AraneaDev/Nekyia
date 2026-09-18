@@ -3,7 +3,7 @@ import { indexPath, loadConfigChecked, type Config } from '../config'
 import { buildAdapters, type Adapter } from '../core/adapter'
 import { buildBrief } from '../core/brief'
 import { IndexDb } from '../core/db'
-import { defaultOnPath, resolveLauncher, type OnPath } from '../core/launcher'
+import { defaultOnPath, resolveForLaunch, type OnPath } from '../core/launcher'
 import { query, type QueryOpts, type Row } from '../core/query'
 import { checkPlan, runPlan, type RunResult } from '../core/resume'
 import { boundedDisplayText, boundedErrorMessage as message } from '../tui/text'
@@ -71,20 +71,17 @@ function planFor(
   // A shared store has no launcher of its own to plan from: which command
   // actually opens it depends on the same saved-choice/installed resolution
   // the picker uses, so `last` must run it too rather than guessing the
-  // manifest's nominal tier.
-  let launcher: string | undefined
-  let tier = row.tier
-  if (adapter.manifest.launchers) {
-    const state = resolveLauncher(adapter.manifest, cfg, onPath)
-    if (state.kind === 'none') return { plan: null, reason: `none of ${state.options.join(', ')} is on PATH` }
-    if (state.kind === 'ask') {
-      return {
-        plan: null,
-        reason: `both ${state.options.join(' and ')} are installed; choose one with ctrl+l in the picker`,
-      }
+  // manifest's nominal tier. `resolveForLaunch` is the one place that
+  // resolution and its refusal wording live.
+  const resolved = resolveForLaunch(adapter.manifest, row.tier, cfg, onPath)
+  if (resolved.kind === 'unavailable') return { plan: null, reason: resolved.message }
+  if (resolved.kind === 'ask') {
+    return {
+      plan: null,
+      reason: `both ${resolved.options.join(' and ')} are installed; choose one with ctrl+l in the picker`,
     }
-    if (state.kind === 'chosen') { launcher = state.name; tier = state.spec.tier }
   }
+  const { launcher, tier } = resolved
 
   if (tier === 'resume') {
     const plan = adapter.plan(row, undefined, launcher)
