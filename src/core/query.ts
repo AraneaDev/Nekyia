@@ -47,6 +47,14 @@ export interface Row extends SearchRef {
   matchedUid?: string
   /** The client a row opens in, when that differs from the client id that wrote it. */
   clientLabel?: string
+  /**
+   * The launcher actually resolved to open this row's store, when one was.
+   *
+   * Absent whenever the overlay is showing a default label while undecided
+   * (an `ask` or `none` launcher state), so a caller cannot mistake a
+   * not-yet-chosen launcher for one that was.
+   */
+  launcher?: string
 }
 
 const DAY = 86_400_000
@@ -437,6 +445,7 @@ function search(
       score: finite(score),
       collapsed: 0,
       ...(shown ? { tier: shown.tier, clientLabel: shown.label } : {}),
+      ...(shown?.launcher === undefined ? {} : { launcher: shown.launcher }),
     }
   })
 

@@ -53,11 +53,11 @@ export function publicRow(row: ReturnType<typeof query>[number], sourcePaths: st
     // Present only when the chain's score was earned by a different session
     // than the one named here, so `score` is never read as this row's own.
     ...(row.matchedUid === undefined ? {} : { matchedUid: row.matchedUid }),
-    // Present only when the presentation overlay resolved a launcher for this
-    // client, so client/tier combinations the manifest itself can never
-    // produce (e.g. "codebuff" at tier "resume") are explained rather than
-    // looking unexplained.
-    ...(row.clientLabel === undefined ? {} : { launcher: row.clientLabel }),
+    // Present only when the presentation overlay actually resolved a launcher
+    // for this client (never merely while asking or unavailable), so a caller
+    // never reads a launcher name that was never chosen and cannot open
+    // anything.
+    ...(row.launcher === undefined ? {} : { launcher: row.launcher }),
     sourcePaths,
   }
 }

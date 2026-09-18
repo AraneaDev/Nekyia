@@ -55,16 +55,25 @@ export function nextLauncher(manifest: Manifest, config: Config, onPath: OnPath)
   return installed[(installed.indexOf(current.name) + 1) % installed.length]!
 }
 
-/** What a row shows for a client with launchers: the tier and name of whichever opens it. */
+/**
+ * What a row shows for a client with launchers: the tier and name of whichever opens it.
+ *
+ * `label` is a display name and is set even while undecided, defaulting to the
+ * manifest id. `launcher` is the name of a launcher actually resolved to open
+ * the store, and is set only in the `chosen` case: an `ask` or `none` state
+ * has not chosen anything, so nothing was launched and nothing should claim
+ * to have been.
+ */
 export interface Presentation {
   tier: Tier
   label: string
+  launcher?: string
 }
 
 /** Null for a single-launcher client, whose stored tier and id already say everything. */
 export function presentationFor(manifest: Manifest, state: LauncherState): Presentation | null {
   if (state.kind === 'single') return null
-  if (state.kind === 'chosen') return { tier: state.spec.tier, label: state.name }
+  if (state.kind === 'chosen') return { tier: state.spec.tier, label: state.name, launcher: state.name }
   return { tier: manifest.tier, label: manifest.id }
 }
 

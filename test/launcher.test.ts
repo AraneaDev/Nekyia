@@ -63,8 +63,17 @@ test('flipping cycles between installed launchers, and is impossible with one', 
 
 test('rows show the chosen launcher, and the manifest defaults while undecided', () => {
   expect(presentationFor(shared, resolveLauncher(shared, saved('freebuff'), installed('codebuff', 'freebuff'))))
-    .toEqual({ tier: 'resume', label: 'freebuff' })
+    .toEqual({ tier: 'resume', label: 'freebuff', launcher: 'freebuff' })
+  // Both installed, nothing saved: the state is `ask`, so nothing was chosen
+  // and no `launcher` should be reported even though a default label is shown.
   expect(presentationFor(shared, resolveLauncher(shared, DEFAULT_CONFIG, installed('codebuff', 'freebuff'))))
+    .toEqual({ tier: 'search', label: 'codebuff' })
+})
+
+test('presentationFor names no launcher when nothing is installed either', () => {
+  // The `none` state shows the manifest's default label too, but nothing can
+  // open the store, so `launcher` must be absent here as well.
+  expect(presentationFor(shared, resolveLauncher(shared, DEFAULT_CONFIG, installed())))
     .toEqual({ tier: 'search', label: 'codebuff' })
 })
 
