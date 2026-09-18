@@ -67,3 +67,14 @@ test('without a transcript at the derived path, prompts come from prompt_history
   expect(doc.prompts).toEqual(['explain the build'])
   expect(doc.prose).toEqual([])
 })
+
+test('a store that vanishes between discovery and hydration comes back degraded, not thrown', async () => {
+  const { refs } = await cursorReader.discover(manifest, FIX)
+  const ref = refs.find((candidate) => candidate.nativeId === FULL)!
+  const doc = await cursorReader.hydrate(manifest, join(FIX, 'no-such-root'), ref, DEFAULT_CONFIG)
+  expect(doc.degraded).toBe(true)
+  expect(doc.prompts).toEqual([])
+  expect(doc.prose).toEqual([])
+  expect(doc.files).toEqual([])
+  expect(doc.truncated).toBe(false)
+})
