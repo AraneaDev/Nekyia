@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.1.0](https://github.com/AraneaDev/Nekyia/compare/v1.0.2...v1.1.0) (2026-09-18)
+
+
+### Features
+
+* **clients:** open Codebuff chats in Freebuff too ([db2f7e0](https://github.com/AraneaDev/Nekyia/commit/db2f7e0a77808aef5160fa53dbd68203f423bc8e))
+* **clients:** read and resume Cursor sessions ([7245eae](https://github.com/AraneaDev/Nekyia/commit/7245eae6d906d8daede6627a60f23c04abf2bcd2))
+* **clients:** read goose sessions ([5134bdf](https://github.com/AraneaDev/Nekyia/commit/5134bdffd2a804bd70debd326711a7d20c132d4f))
+* **cli:** follow the chosen client in last and search ([6bca17b](https://github.com/AraneaDev/Nekyia/commit/6bca17bd9d1c0fc8bc81ac57e71105eae6236508))
+* **config:** remember which client opens a shared store ([a2f4fed](https://github.com/AraneaDev/Nekyia/commit/a2f4fede264114b9b0877b3d12ff66b9ea49ed4d))
+* **core:** plan a launch through the chosen launcher ([775e3d0](https://github.com/AraneaDev/Nekyia/commit/775e3d0db6d12dd9f132c2903dc6a0db145f3e17))
+* **core:** resolve which client opens a shared store ([8bca767](https://github.com/AraneaDev/Nekyia/commit/8bca76737a745336aeae5a54a2413da06350102c))
+* **formats:** discover Cursor chats ([046455a](https://github.com/AraneaDev/Nekyia/commit/046455a9fe8ede8a56a5d5a7e592fb14fcdadb5d))
+* **formats:** read Cursor transcripts ([6982a36](https://github.com/AraneaDev/Nekyia/commit/6982a36bfc0f2abc64c35e65dce41391cbc15b7f))
+* **manifests:** let a store name more than one client to open it ([7a61046](https://github.com/AraneaDev/Nekyia/commit/7a61046db39b660ff44aa3da4b5e282dec4a32fe))
+* **query:** show which client a shared store opens in ([caecc9a](https://github.com/AraneaDev/Nekyia/commit/caecc9a0f8867041d008dd38c17afd4da14126f1))
+* **tui:** choose between Codebuff and Freebuff, and flip with ctrl+l ([e796798](https://github.com/AraneaDev/Nekyia/commit/e796798d355721406c40586a73c2c7f215bd4ae6))
+
+
+### Fixes
+
+* **cursor:** a duplicate path at the file cap no longer marks truncated ([e70276c](https://github.com/AraneaDev/Nekyia/commit/e70276c3b9660aca8788898714af47e3024620cc))
+* **cursor:** fall back to prompt history when a transcript holds no text ([c9b4b4b](https://github.com/AraneaDev/Nekyia/commit/c9b4b4b9262b564d2e65528a38d0e4e0aaaab90d))
+* **doctor:** report resume capability that lives in a launcher ([3ad5ba5](https://github.com/AraneaDev/Nekyia/commit/3ad5ba52ec5c80f9fe923b8abc6f4b3fd43e4859))
+* **doctor:** report resume only where the tier would plan it ([7615bb9](https://github.com/AraneaDev/Nekyia/commit/7615bb9dc5d4dbb2275414e2a7fdfa9d639b3ac1))
+* **formats:** let the Cursor reader report a vanished store instead of throwing ([84a1aa3](https://github.com/AraneaDev/Nekyia/commit/84a1aa31b670a06470bc6a6556cf7a8fd5a1ec36))
+* **manifests:** keep a launcher named __proto__ ([d50edad](https://github.com/AraneaDev/Nekyia/commit/d50edadbf355bf2f5a1c021a5437f164c2662c9d))
+* **manifests:** require a brief on every search-tier launcher ([d9c3d93](https://github.com/AraneaDev/Nekyia/commit/d9c3d933bb61ff5bacdae77584a875bf27e45686))
+* **search:** stop naming a launcher that was never chosen ([ef032ce](https://github.com/AraneaDev/Nekyia/commit/ef032ce05b25be5c3dbb1af90f4a9babb6551499))
+* **timeline:** apply the presentation overlay to --json output ([fadfeb9](https://github.com/AraneaDev/Nekyia/commit/fadfeb94faaa06df84c828c00a95f151d97e9daa))
+* **tui:** copy the command of the client the store opens in ([b5363ce](https://github.com/AraneaDev/Nekyia/commit/b5363ce95f93099f57b28f5c254fc6619867ef7e))
+* **tui:** name a handoff target by its briefing launcher ([ef9ca37](https://github.com/AraneaDev/Nekyia/commit/ef9ca37e3ef38a2f12254aacad73517a70d444b2))
+* **tui:** say no client is chosen, not that Enter will ask ([b21dcb0](https://github.com/AraneaDev/Nekyia/commit/b21dcb09e6c25e819bb010456ee6b7c4e33251a0))
+* **tui:** stop naming a client the preview has not chosen yet ([b227aa0](https://github.com/AraneaDev/Nekyia/commit/b227aa0e2124084d327194f3f3a9858469f37554))
+
+
+### Refactoring
+
+* **core:** resolve a launch in one place, and name the launcher in search --json ([e1c5922](https://github.com/AraneaDev/Nekyia/commit/e1c5922cb48904bb782df3cd03c441c012a0ef4f))
+* **formats:** give the Codebuff reader its own module ([35f5b05](https://github.com/AraneaDev/Nekyia/commit/35f5b05f9b3f144fce069c0dc6e32b5b3d5e9c1c))
+* **formats:** move the safe-read helpers out of json-dir ([34f31bc](https://github.com/AraneaDev/Nekyia/commit/34f31bc2cdd2baee4940e75b4097263924893381))
+
 ## [1.0.2](https://github.com/AraneaDev/Nekyia/compare/v1.0.1...v1.0.2) (2026-09-18)
 
 
