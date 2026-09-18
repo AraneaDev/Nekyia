@@ -294,3 +294,14 @@ test('json-dir accepts the cursor variant and still rejects unknown ones', () =>
   expect(() => validateManifest({ ...launcherBase, jsonDir: { glob: 'x', variant: 'other' as any } }))
     .toThrow('jsonDir.variant must be "codebuff" or "cursor"')
 })
+
+test('a launcher named __proto__ is kept as a launcher, not taken for the prototype', () => {
+  // JSON.parse makes __proto__ an own key. Assigning it onto an ordinary
+  // object would set the prototype instead, and the launcher would vanish
+  // from Object.keys without validation ever failing.
+  const manifest = validateManifest(JSON.parse(JSON.stringify({
+    ...launcherBase,
+    launchers: { ...twoLaunchers },
+  }).replace('"one":', '"__proto__":')))
+  expect(Object.keys(manifest.launchers!)).toEqual(['__proto__', 'two'])
+})
