@@ -48,7 +48,7 @@ them. Everything stays local, with no model-written summaries or tool-output ind
 ## Installation
 
 Nekyia requires [Bun](https://bun.sh/) 1.1 or newer. It runs on Bun, not on Node, and the
-`nekyia` command says so plainly if Bun is missing rather than failing on an import.
+command says so plainly if Bun is missing rather than failing on an import.
 
 ### From npm
 
@@ -76,45 +76,46 @@ bun install --frozen-lockfile
 bun link
 ```
 
-All three install paths expose `nekyia` and the shorter `nek` command.
+All three install paths expose `nekyia` and the shorter `nek`, which do the same thing. The
+examples below use `nek`.
 
 ## Quick start
 
 ### 1. Build the local index
 
 ```bash
-nekyia index
+nek index
 ```
 
 The first run shows what Nekyia plans to inspect and asks for consent before it
-opens a transcript store or creates the index. Use `nekyia index --yes` only when
+opens a transcript store or creates the index. Use `nek index --yes` only when
 you have already reviewed that boundary and need a non-interactive run.
 
 ### 2. Find a session
 
 ```bash
-nekyia                         # interactive picker
-nekyia search reconnect race   # table output
-nekyia search reconnect --json # machine-readable output
-nekyia blame src/sse.ts        # recent sessions that touched this file
-nekyia last                    # newest session under this directory
+nek                         # interactive picker
+nek search reconnect race   # table output
+nek search reconnect --json # machine-readable output
+nek blame src/sse.ts        # recent sessions that touched this file
+nek last                    # newest session under this directory
 ```
 
 Search defaults to the current directory. Pass `--all` to search everywhere,
 `--client <id>` for one client, or `--file <path>` for sessions that touched a file.
-`nekyia blame <path>` resolves the path from the current directory, then searches
+`nek blame <path>` resolves the path from the current directory, then searches
 globally and newest-first for that exact normalized file. "Touched" means the path
 appeared in indexed tool input; it does not prove that the session modified the file.
 `--json` adds `sourcePaths` to every row, so an agent can read the raw transcript
 itself instead of trusting the indexed summary.
 
-`nekyia timeline` covers a directory rather than one file. Ordering inside a session is
+`nek timeline` covers a directory rather than one file. Ordering inside a session is
 exact; between sessions it is by end time, which the index knows coarsely, so events stay
 grouped by session rather than merged into one stream. A session whose own directory sits
 elsewhere and which named these files relatively is not found, the same limit `blame` has.
 
 ```
-$ nekyia timeline --dir . --since 7d --limit 2
+$ nek timeline --dir . --since 7d --limit 2
 
 /home/dev/work/api-gateway · 2 sessions · 12 events · git was not consulted
 exact order inside a session, end-time order between them
@@ -144,8 +145,8 @@ not that it has your latest edits. The header says outright when git could not b
 as it does above, since a missing marker would otherwise read as "git tracks this".
 
 File operations are recorded from the next hydration onward, so sessions already in the
-index list their files without any operations until you run `nekyia index --rebuild`. A
-plain `nekyia index` will not fill them in: it hydrates only sessions whose transcript
+index list their files without any operations until you run `nek index --rebuild`. A
+plain `nek index` will not fill them in: it hydrates only sessions whose transcript
 changed, and an old session's transcript has not. Timeline output says which sessions are
 in that state rather than showing them as though nothing happened.
 
@@ -180,7 +181,7 @@ scroll a screen, and `esc` closes it again.
 
 ### 4. Resume or hand over
 
-Press Enter in the picker, or run `nekyia last`. A resume-tier row launches the
+Press Enter in the picker, or run `nek last`. A resume-tier row launches the
 verified exact-session command. A search-tier row asks for confirmation, builds a
 deterministic handover, and starts a new client session with that context.
 
@@ -216,41 +217,41 @@ gets the same interface rather than a broken one:
 
 | Command | What it does |
 | --- | --- |
-| `nekyia` | Open the interactive picker |
-| `nekyia search <query>` | Search from the terminal, with optional JSON or id-only output |
-| `nekyia blame <path>` | List recent sessions that touched this exact file |
-| `nekyia timeline [--dir <path>]` | What happened to files in a directory, in the order it happened |
-| `nekyia last` | Launch the newest visible session in this directory |
-| `nekyia index [--rebuild]` | Refresh fingerprints and changed session content |
-| `nekyia show <uid>` | Print a deterministic handover as Markdown |
-| `nekyia handoff <uid> --to <client>` | Start a fresh target client with the source session's indexed context |
-| `nekyia doctor [--sniff]` | Report clients, paths, size caps, unreadable transcripts, and unsupported stores |
-| `nekyia forget <uid>` | Remove one session and every searchable facet from the index |
-| `nekyia prune --missing` | Remove indexed sessions whose sources disappeared |
-| `nekyia exclude <glob>` | Add an index-time directory exclusion |
+| `nek` | Open the interactive picker |
+| `nek search <query>` | Search from the terminal, with optional JSON or id-only output |
+| `nek blame <path>` | List recent sessions that touched this exact file |
+| `nek timeline [--dir <path>]` | What happened to files in a directory, in the order it happened |
+| `nek last` | Launch the newest visible session in this directory |
+| `nek index [--rebuild]` | Refresh fingerprints and changed session content |
+| `nek show <uid>` | Print a deterministic handover as Markdown |
+| `nek handoff <uid> --to <client>` | Start a fresh target client with the source session's indexed context |
+| `nek doctor [--sniff]` | Report clients, paths, size caps, unreadable transcripts, and unsupported stores |
+| `nek forget <uid>` | Remove one session and every searchable facet from the index |
+| `nek prune --missing` | Remove indexed sessions whose sources disappeared |
+| `nek exclude <glob>` | Add an index-time directory exclusion |
 
 `--ids` prints only the session ids, one per line, so a session you picked out by eye
 can be handed straight to another command:
 
 ```bash
-nekyia search "sse reconnect" --ids | head -1 | xargs nekyia show
+nek search "sse reconnect" --ids | head -1 | xargs nek show
 ```
 
-Run `nekyia --help` for search filters, sort modes, limits, and command-specific options.
+Run `nek --help` for search filters, sort modes, limits, and command-specific options.
 
 To continue work in another client:
 
 ```bash
-nekyia handoff claude:<session-id> --to codex
-nekyia handoff claude:<session-id> --to codex --dry-run
-nekyia handoff claude:<session-id> --to codex --dry-run --json
-nekyia handoff claude:<session-id> --to codex --intent review
-nekyia handoff claude:<session-id> --to codex --note "focus on the retry logic"
+nek handoff claude:<session-id> --to codex
+nek handoff claude:<session-id> --to codex --dry-run
+nek handoff claude:<session-id> --to codex --dry-run --json
+nek handoff claude:<session-id> --to codex --intent review
+nek handoff claude:<session-id> --to codex --note "focus on the retry logic"
 ```
 
 Handoff starts a fresh session using the target's brief command and the source's
 recorded directory (unless a custom manifest overrides it). It uses the last indexed
-context; run `nekyia index` first if the source conversation has changed. It transfers
+context; run `nek index` first if the source conversation has changed. It transfers
 no native conversation state, tool state, or file snapshots, and does not restore a
 historical branch. Treat the brief as historical context: current instructions and
 the current repository take precedence. Same-client handoff is also allowed.
@@ -259,7 +260,7 @@ the current repository take precedence. Same-client handoff is also allowed.
 preserved even when the budget is zero or too small. Launching refuses a brief whose
 command or argument text alone would exceed a conservative 128 KiB allowance,
 measured in UTF-8 bytes; it never truncates prompts to make them fit. If this happens,
-export with `nekyia show <uid>` and transfer the relevant context manually.
+export with `nek show <uid>` and transfer the relevant context manually.
 
 By default the target is told this is a handover to continue, the same framing
 `show` produces on its own. `--intent review` asks the target to critique the
@@ -343,11 +344,11 @@ The index reads transcripts already on your disk and stores selected paths and t
 locally. That indexed copy can survive deletion of the original transcript. You control
 that retention explicitly:
 
-- `nekyia forget <uid>` purges one indexed session
-- `nekyia prune --missing` purges sessions whose source files disappeared
-- `nekyia exclude '/work/private'` adds an exclusion covering that directory and everything
+- `nek forget <uid>` purges one indexed session
+- `nek prune --missing` purges sessions whose source files disappeared
+- `nek exclude '/work/private'` adds an exclusion covering that directory and everything
   under it, expanding a leading `~` and resolving a relative directory against the one you
-  ran it in, and the next `nekyia index` then deletes what was already indexed there,
+  ran it in, and the next `nek index` then deletes what was already indexed there,
   including sessions whose transcripts have since been deleted
 
 `exclude` and `hiddenClients` are instructions rather than preferences, and the values
@@ -403,8 +404,8 @@ that session. Without it the whole database shares one fingerprint and any chang
 every session in it, which is slower and is the right default: declaring a revision the
 store does not honour means edits nobody notices.
 
-`nekyia doctor --sniff` looks for session-shaped stores without declaring them supported.
-`nekyia doctor --sniff --emit-manifest ./my-client.json` writes a non-overwriting draft
+`nek doctor --sniff` looks for session-shaped stores without declaring them supported.
+`nek doctor --sniff --emit-manifest ./my-client.json` writes a non-overwriting draft
 for the first store it can describe. Inspect and test that draft before moving it into the
 user manifest directory or contributing it.
 
@@ -445,4 +446,4 @@ Nekyia is available under the [MIT license](LICENSE).
 Built by [Tim Schipper](https://tim-schipper.nl/en) and released as open source under
 [Aranea Development](https://aranea-development.nl). In the _Odyssey_, Odysseus
 digs the trench and the dead crowd forward; he holds them back until the one shade he
-needs may speak. `nekyia --version` says the same thing in one line.
+needs may speak. `nek --version` says the same thing in one line.
