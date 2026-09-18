@@ -18,6 +18,7 @@ test('every built-in brief template delivers context using its interactive promp
     claude: [prompt], codex: [prompt], agy: ['--prompt-interactive', prompt],
     copilot: ['--interactive', prompt], opencode: ['--prompt', prompt],
     kilo: ['--prompt', prompt], codebuff: ['--cwd', cwd, prompt],
+    goose: ['run', '-t', prompt, '-s'],
   }
   const directory = join(import.meta.dir, '../src/manifests/builtin')
   for (const file of readdirSync(directory).filter((name) => name.endsWith('.json'))) {

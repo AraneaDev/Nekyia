@@ -7,6 +7,7 @@ import { DEFAULT_CONFIG } from '../src/config'
 import { parseCwd, parseSqlTime, sqliteStore } from '../src/formats/sqlite-store'
 import { renderArgs, validateManifest } from '../src/manifests/load'
 import copilotManifest from '../src/manifests/builtin/copilot.json'
+import gooseManifest from '../src/manifests/builtin/goose.json'
 
 const FIX = join(import.meta.dir, 'fixtures')
 const tempDirs: string[] = []
@@ -60,6 +61,45 @@ test('parseCwd rejects malformed encodings and non-string plain values', () => {
   expect(parseCwd(JSON.stringify(['file:///%zz']), 'file-uri-array')).toBe(null)
   expect(parseCwd(42, 'plain')).toBe(null)
   expect(parseCwd('   ', 'plain')).toBe(null)
+})
+
+// The real manifest, pointed at the fixture, so a query that drifts from the
+// shipped one fails here rather than only on a user's machine.
+const goose = validateManifest({
+  ...gooseManifest, roots: [join(FIX, 'goose')],
+})
+
+test('goose discover normalises all three timestamp encodings to one instant', async () => {
+  const { refs } = await sqliteStore.discover(goose, join(FIX, 'goose'))
+  const byId = Object.fromEntries(refs.map((ref) => [ref.nativeId, ref]))
+  expect(refs).toHaveLength(3)
+  // goose writes created_at as an ISO string, unix seconds or unix milliseconds
+  // and its own reader tolerates all three, so the manifest normalises them in
+  // SQL. These three rows carry the same moment in the three encodings.
+  const started = new Set(Object.values(byId).map((ref) => ref.startedAt))
+  expect(started.size).toBe(1)
+  expect(byId['20260218_1']!.cwd).toBe('/root/proj')
+  expect(byId['20260218_1']!.title).toBe('Rework the retry budget')
+  expect(byId['20260218_2']!.parentNativeId).toBe('20260218_1')
+})
+
+test('goose hydrate joins every text block and keeps tool output out', async () => {
+  const { refs } = await sqliteStore.discover(goose, join(FIX, 'goose'))
+  const ref = refs.find((candidate) => candidate.nativeId === '20260218_1')!
+  const doc = await sqliteStore.hydrate(goose, join(FIX, 'goose'), ref, DEFAULT_CONFIG)
+  expect(doc.prompts).toEqual(['raise the retry budget'])
+  // Two text blocks in one message join rather than the second being dropped.
+  expect(doc.prose).toContain('Raised it to five.\nThe backoff is unchanged.')
+  expect(doc.prose).toContain('Read the config.')
+  expect([...doc.prompts, ...doc.prose].join(' ')).not.toContain('SECRET_TOOL_OUTPUT')
+})
+
+test('goose hydrate treats a missing content_json as empty rather than failing', async () => {
+  const { refs } = await sqliteStore.discover(goose, join(FIX, 'goose'))
+  const ref = refs.find((candidate) => candidate.nativeId === '20260218_2')!
+  const doc = await sqliteStore.hydrate(goose, join(FIX, 'goose'), ref, DEFAULT_CONFIG)
+  expect(doc.prompts).toEqual([])
+  expect(doc.prose).toEqual([])
 })
 
 test('opencode discover reads sessions with directory, title and parent', async () => {

@@ -33,7 +33,7 @@ them. Everything stays local, with no model-written summaries or tool-output ind
 
 ## Features
 
-- **One Search Surface**: query Claude Code, Codex, GitHub Copilot CLI, opencode, Kilo Code, Codebuff, and Antigravity histories together
+- **One Search Surface**: query Claude Code, Codex, GitHub Copilot CLI, opencode, Kilo Code, Codebuff, goose, and Antigravity histories together
 - **Verified Resume**: attach to the selected session by ID only where that exact command was tested
 - **Deterministic Handovers**: start search-tier clients with every indexed user prompt, each message kept whole and in order, touched files, branch context, bounded assistant prose, and a note of whatever had to be left out
 - **Two-Phase Indexing**: discover cheap fingerprints first, then hydrate only sessions that changed
@@ -293,6 +293,12 @@ exact attachment was not confirmed.
 | opencode | Search | `opencode --prompt <brief>` |
 | Kilo Code | Search | `kilo --prompt <brief>` |
 | Codebuff | Search | `codebuff --cwd <cwd> <brief>` |
+| goose | Search | `goose run -t <brief> -s` |
+
+The goose adapter was written from goose's published source and CLI reference rather
+than from a local install, so it is derived rather than observed. Its documented resume
+flag, `goose session --resume --session-id <id>`, is deliberately not wired up: this
+project claims the resume tier only where attachment was verified against a real client.
 
 Kilo shares opencode's tested store format, but its executable was not installed during
 command verification. opencode and Codebuff were exercised against real local IDs, but
