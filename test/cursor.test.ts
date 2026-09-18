@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
@@ -87,7 +87,10 @@ test('a store that vanishes between discovery and hydration comes back degraded,
 test('a transcript that yields no text falls back to prompt_history.json', async () => {
   // The file exists at the derived path but holds nothing indexable (here,
   // only a tool call). The session must stay findable by what was typed.
-  const root = mkdtempSync(join(tmpdir(), 'nekyia-cursor-'))
+  // Resolved, because discovery hands hydrate real paths: on macOS the temp
+  // dir sits behind the /var -> /private/var symlink, and an unresolved
+  // source path would fail the containment check hydrate applies.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-cursor-')))
   const nativeId = 'c0ffee00-0000-4000-8000-0000000000fe'
   const cwd = '/root/proj'
   const transcriptDir = join(root, 'projects', transcriptFolder(cwd), 'agent-transcripts', nativeId)
