@@ -103,11 +103,11 @@ test('collectPaths recursively finds path fields and ignores ordinary strings', 
 test('collectPatchPaths reads the three file headers of a bare apply_patch body', () => {
   const patch = [
     '*** Begin Patch',
-    '*** Update File: /root/proj/src/updated.ts',
+    '*** Update File: /home/dev/work/proj/src/updated.ts',
     '@@ -1,4 +1,4 @@',
     '-const old = 1',
     '+const fresh = 2',
-    '*** Add File: /root/proj/src/added.ts',
+    '*** Add File: /home/dev/work/proj/src/added.ts',
     '+SECRET_PATCH_CONTENT',
     '*** Delete File: relative/old.ts',
     '*** End Patch',
@@ -117,8 +117,8 @@ test('collectPatchPaths reads the three file headers of a bare apply_patch body'
   // is why the call's own name has to be enough to let it through.
   expect(patch).not.toContain('apply_patch')
   expect(collectPatchPaths(patch, 'apply_patch').sort()).toEqual([
-    '/root/proj/src/added.ts',
-    '/root/proj/src/updated.ts',
+    '/home/dev/work/proj/src/added.ts',
+    '/home/dev/work/proj/src/updated.ts',
     'relative/old.ts',
   ])
   expect(collectPatchPaths(patch)).toEqual([])
@@ -127,12 +127,12 @@ test('collectPatchPaths reads the three file headers of a bare apply_patch body'
 test('collectPatchPaths ignores hunks, patch content and ordinary path mentions', () => {
   expect(collectPatchPaths([
     '*** Begin Patch',
-    '@@ /root/proj/src/hunk.ts @@',
-    '+import { added } from "/root/proj/src/imported.ts"',
-    '-const removed = "/root/proj/src/removed.ts"',
-    ' *** Update File: /root/proj/src/indented.ts',
-    'see also /root/proj/src/mentioned.ts',
-    '*** Move File: /root/proj/src/moved.ts',
+    '@@ /home/dev/work/proj/src/hunk.ts @@',
+    '+import { added } from "/home/dev/work/proj/src/imported.ts"',
+    '-const removed = "/home/dev/work/proj/src/removed.ts"',
+    ' *** Update File: /home/dev/work/proj/src/indented.ts',
+    'see also /home/dev/work/proj/src/mentioned.ts',
+    '*** Move File: /home/dev/work/proj/src/moved.ts',
     '*** Update File: not a filesystem target',
     '*** End Patch',
   ].join('\n'), 'apply_patch')).toEqual([])
@@ -140,23 +140,23 @@ test('collectPatchPaths ignores hunks, patch content and ordinary path mentions'
 
 test('collectPatchPaths reads an embedded patch only when the call drives the bridge', () => {
   const source = [
-    'const patch = "*** Begin Patch\\n*** Add File: /root/proj/Dockerfile\\n'
-    + '+RUN chmod 0755 /opt/bin \\\\\\n*** Update File: /root/proj/src/continued.ts\\n+SECRET";',
-    'text("also wrote /root/proj/src/not-touched.ts");',
+    'const patch = "*** Begin Patch\\n*** Add File: /home/dev/work/proj/Dockerfile\\n'
+    + '+RUN chmod 0755 /opt/bin \\\\\\n*** Update File: /home/dev/work/proj/src/continued.ts\\n+SECRET";',
+    'text("also wrote /home/dev/work/proj/src/not-touched.ts");',
   ].join('\n')
 
   expect(collectPatchPaths(`${source}\nawait tools.apply_patch(patch);`, 'exec').sort()).toEqual([
-    '/root/proj/Dockerfile',
-    '/root/proj/src/continued.ts',
+    '/home/dev/work/proj/Dockerfile',
+    '/home/dev/work/proj/src/continued.ts',
   ])
   expect(collectPatchPaths(`${source}\nawait tools.write_file(patch);`, 'exec')).toEqual([])
 })
 
 test('collectPatchPaths bounds the body it reads and the paths it returns', () => {
-  expect(collectPatchPaths('*** Add File: /root/proj/src/kept.ts', 'apply_patch'))
-    .toEqual(['/root/proj/src/kept.ts'])
+  expect(collectPatchPaths('*** Add File: /home/dev/work/proj/src/kept.ts', 'apply_patch'))
+    .toEqual(['/home/dev/work/proj/src/kept.ts'])
   expect(collectPatchPaths(
-    `*** Add File: /root/proj/src/kept.ts\n${'x'.repeat(1024 * 1024)}`,
+    `*** Add File: /home/dev/work/proj/src/kept.ts\n${'x'.repeat(1024 * 1024)}`,
     'apply_patch',
   )).toEqual([])
   expect(collectPatchPaths(`*** Add File: /root/${'a'.repeat(4096)}.ts`, 'apply_patch')).toEqual([])
@@ -189,7 +189,7 @@ test('discover rejects empty native IDs for every JSONL variant', async () => {
     writeJsonl(join(root, 'codex.jsonl'), [{
       timestamp: '2026-08-01T00:00:00.000Z',
       type: 'session_meta',
-      payload: { session_id: '', cwd: '/root/proj' },
+      payload: { session_id: '', cwd: '/home/dev/work/proj' },
     }])
     writeJsonl(join(root, 'generic.jsonl'), [{
       session: { id: '' },
@@ -342,7 +342,7 @@ test('discovers Claude metadata from the bounded transcript head', async () => {
   expect(result.refs[0]).toMatchObject({
     uid: 'claude:11111111-2222-3333-4444-555555555555',
     nativeId: '11111111-2222-3333-4444-555555555555',
-    cwd: '/root/proj',
+    cwd: '/home/dev/work/proj',
     gitBranch: 'main',
     title: 'fix the sse reconnect race',
     startedAt: Date.parse('2026-08-01T10:00:00.000Z'),
@@ -431,7 +431,7 @@ test('Claude hydration does not count empty or tool-only messages as turns', asy
       {
         message: {
           role: 'assistant',
-          content: [{ type: 'tool_use', input: { file_path: '/root/proj/a.ts' } }],
+          content: [{ type: 'tool_use', input: { file_path: '/home/dev/work/proj/a.ts' } }],
         },
       },
       { message: { role: 'user', content: 'safe prompt' } },
@@ -440,7 +440,7 @@ test('Claude hydration does not count empty or tool-only messages as turns', asy
     const doc = await jsonlTranscript.hydrate(claude, root, refs[0]!, DEFAULT_CONFIG)
 
     expect(doc.ref.turns).toBe(1)
-    expect(doc.files).toContain('/root/proj/a.ts')
+    expect(doc.files).toContain('/home/dev/work/proj/a.ts')
   })
 })
 
@@ -464,7 +464,7 @@ test('extracts file facets from Claude tool input', async () => {
   const { refs } = await jsonlTranscript.discover(claude, join(fixtures, 'claude'))
   const doc = await jsonlTranscript.hydrate(claude, '', refs[0]!, DEFAULT_CONFIG)
 
-  expect(doc.files).toContain('/root/proj/src/sse.ts')
+  expect(doc.files).toContain('/home/dev/work/proj/src/sse.ts')
 })
 
 test('over-cap Claude transcripts keep prompts and facets but drop prose', async () => {
@@ -480,7 +480,7 @@ test('over-cap Claude transcripts keep prompts and facets but drop prose', async
   // Dropped prose is dropped from the transcript too, rather than leaving a
   // history that reads as if the assistant never answered anything.
   expect(doc.dialogue).toEqual([{ role: 'user', text: 'fix the sse reconnect race' }])
-  expect(doc.files).toContain('/root/proj/src/sse.ts')
+  expect(doc.files).toContain('/home/dev/work/proj/src/sse.ts')
 })
 
 test('discovers Codex metadata and title', async () => {
@@ -494,7 +494,7 @@ test('discovers Codex metadata and title', async () => {
   expect(refs[0]).toMatchObject({
     uid: 'codex:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     nativeId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
-    cwd: '/root/other',
+    cwd: '/home/dev/work/other',
     title: 'rewrite the transport layer',
     startedAt: Date.parse('2026-08-02T09:00:00.000Z'),
   })
@@ -596,7 +596,7 @@ test('Codex filters injected input blocks without dropping adjacent actual promp
       {
         timestamp: '2026-08-02T09:00:00.000Z',
         type: 'session_meta',
-        payload: { session_id: 'mixed-blocks', cwd: '/root/proj' },
+        payload: { session_id: 'mixed-blocks', cwd: '/home/dev/work/proj' },
       },
       {
         type: 'response_item',
@@ -643,7 +643,7 @@ test('Codex hydration excludes developer and tool output while extracting tool p
       {
         timestamp: '2026-08-02T09:00:00.000Z',
         type: 'session_meta',
-        payload: { session_id: 'codex-private', cwd: '/root/proj' },
+        payload: { session_id: 'codex-private', cwd: '/home/dev/work/proj' },
       },
       {
         type: 'response_item',
@@ -657,7 +657,7 @@ test('Codex hydration excludes developer and tool output while extracting tool p
         type: 'response_item',
         payload: {
           type: 'function_call',
-          arguments: JSON.stringify({ file_path: '/root/proj/src/tool.ts' }),
+          arguments: JSON.stringify({ file_path: '/home/dev/work/proj/src/tool.ts' }),
         },
       },
       {
@@ -671,7 +671,7 @@ test('Codex hydration excludes developer and tool output while extracting tool p
           name: 'apply_patch',
           input: [
             '*** Begin Patch',
-            '*** Update File: /root/proj/src/patched.ts',
+            '*** Update File: /home/dev/work/proj/src/patched.ts',
             '+PATCH_BODY_SECRET',
             '*** End Patch',
           ].join('\n'),
@@ -683,9 +683,9 @@ test('Codex hydration excludes developer and tool output while extracting tool p
           type: 'custom_tool_call',
           name: 'exec',
           input: [
-            'const patch = "*** Begin Patch\\n*** Add File: /root/proj/src/scripted.ts\\n+MORE_SECRET";',
+            'const patch = "*** Begin Patch\\n*** Add File: /home/dev/work/proj/src/scripted.ts\\n+MORE_SECRET";',
             'await tools.apply_patch(patch);',
-            'ordinary mention /root/proj/src/not-touched.ts',
+            'ordinary mention /home/dev/work/proj/src/not-touched.ts',
           ].join('\n'),
         },
       },
@@ -695,8 +695,8 @@ test('Codex hydration excludes developer and tool output while extracting tool p
         type: 'response_item',
         payload: {
           type: 'custom_tool_call_output',
-          output: 'CUSTOM_TOOL_OUTPUT_SECRET\n*** Add File: /root/proj/src/from-output.ts',
-          input: '*** Add File: /root/proj/src/from-output-input.ts',
+          output: 'CUSTOM_TOOL_OUTPUT_SECRET\n*** Add File: /home/dev/work/proj/src/from-output.ts',
+          input: '*** Add File: /home/dev/work/proj/src/from-output-input.ts',
         },
       },
       {
@@ -733,9 +733,9 @@ test('Codex hydration excludes developer and tool output while extracting tool p
     expect(doc.prompts).toEqual(['safe prompt'])
     expect(doc.prose).toEqual(['safe prose'])
     expect(doc.files.sort()).toEqual([
-      '/root/proj/src/patched.ts',
-      '/root/proj/src/scripted.ts',
-      '/root/proj/src/tool.ts',
+      '/home/dev/work/proj/src/patched.ts',
+      '/home/dev/work/proj/src/scripted.ts',
+      '/home/dev/work/proj/src/tool.ts',
     ])
     expect(indexed).not.toContain('DEVELOPER_SECRET')
     expect(indexed).not.toContain('TOOL_OUTPUT_SECRET')
@@ -751,13 +751,13 @@ test('Codex custom patch calls honour the per-session file ceiling', async () =>
     const path = join(root, 'codex.jsonl')
     const headers = Array.from(
       { length: MAX_SESSION_FILES + 40 },
-      (_, index) => `*** Add File: /root/proj/src/f${index}.ts`,
+      (_, index) => `*** Add File: /home/dev/work/proj/src/f${index}.ts`,
     )
     writeJsonl(path, [
       {
         timestamp: '2026-08-02T09:00:00.000Z',
         type: 'session_meta',
-        payload: { session_id: 'codex-ceiling', cwd: '/root/proj' },
+        payload: { session_id: 'codex-ceiling', cwd: '/home/dev/work/proj' },
       },
       {
         type: 'response_item',
@@ -796,13 +796,13 @@ test('the file event log keeps recording after the file cap is reached', async (
     const path = join(root, 'codex.jsonl')
     const headers = Array.from(
       { length: MAX_SESSION_FILES + 5 },
-      (_, index) => `*** Add File: /root/proj/src/f${index}.ts`,
+      (_, index) => `*** Add File: /home/dev/work/proj/src/f${index}.ts`,
     )
     writeJsonl(path, [
       {
         timestamp: '2026-08-02T09:00:00.000Z',
         type: 'session_meta',
-        payload: { session_id: 'codex-events-after-cap', cwd: '/root/proj' },
+        payload: { session_id: 'codex-events-after-cap', cwd: '/home/dev/work/proj' },
       },
       {
         type: 'response_item',
@@ -817,7 +817,7 @@ test('the file event log keeps recording after the file cap is reached', async (
         payload: {
           type: 'custom_tool_call',
           name: 'apply_patch',
-          input: '*** Update File: /root/proj/src/after-cap.ts',
+          input: '*** Update File: /home/dev/work/proj/src/after-cap.ts',
         },
       },
     ])
@@ -837,7 +837,7 @@ test('the file event log keeps recording after the file cap is reached', async (
     // untouched.
     expect(doc.fileEvents).toHaveLength(MAX_SESSION_FILES + 6)
     expect(doc.fileEvents?.at(-1)).toEqual({
-      path: '/root/proj/src/after-cap.ts',
+      path: '/home/dev/work/proj/src/after-cap.ts',
       kind: 'edit',
       turn: 0,
     })
@@ -855,14 +855,14 @@ test('the file list keeps recording after the event cap is reached', async () =>
       payload: {
         type: 'custom_tool_call',
         name: 'apply_patch',
-        input: '*** Update File: /root/proj/src/hot.ts',
+        input: '*** Update File: /home/dev/work/proj/src/hot.ts',
       },
     }))
     writeJsonl(path, [
       {
         timestamp: '2026-08-02T09:00:00.000Z',
         type: 'session_meta',
-        payload: { session_id: 'codex-files-after-events', cwd: '/root/proj' },
+        payload: { session_id: 'codex-files-after-events', cwd: '/home/dev/work/proj' },
       },
       ...filling,
       {
@@ -872,9 +872,9 @@ test('the file list keeps recording after the event cap is reached', async () =>
           name: 'apply_patch',
           input: [
             '*** Begin Patch',
-            '*** Add File: /root/proj/src/late-one.ts',
-            '*** Add File: /root/proj/src/late-two.ts',
-            '*** Add File: /root/proj/src/late-three.ts',
+            '*** Add File: /home/dev/work/proj/src/late-one.ts',
+            '*** Add File: /home/dev/work/proj/src/late-two.ts',
+            '*** Add File: /home/dev/work/proj/src/late-three.ts',
             '*** End Patch',
           ].join('\n'),
         },
@@ -892,10 +892,10 @@ test('the file list keeps recording after the event cap is reached', async () =>
     // Every path of the late call reaches the file list, not just the first:
     // the full event log stops events, and nothing else.
     expect(doc.files).toEqual([
-      '/root/proj/src/hot.ts',
-      '/root/proj/src/late-one.ts',
-      '/root/proj/src/late-two.ts',
-      '/root/proj/src/late-three.ts',
+      '/home/dev/work/proj/src/hot.ts',
+      '/home/dev/work/proj/src/late-one.ts',
+      '/home/dev/work/proj/src/late-two.ts',
+      '/home/dev/work/proj/src/late-three.ts',
     ])
     // Each flag says only what it means. The file list is complete, so
     // `truncated` is false; the event log is not, so `fileEventsTruncated` is.
@@ -910,13 +910,13 @@ test('one path named under two verbs in a patch counts once against the file cap
     const path = join(root, 'codex.jsonl')
     const headers = Array.from(
       { length: MAX_SESSION_FILES - 1 },
-      (_, index) => `*** Add File: /root/proj/src/f${index}.ts`,
+      (_, index) => `*** Add File: /home/dev/work/proj/src/f${index}.ts`,
     )
     writeJsonl(path, [
       {
         timestamp: '2026-08-02T09:00:00.000Z',
         type: 'session_meta',
-        payload: { session_id: 'codex-verb-dedup', cwd: '/root/proj' },
+        payload: { session_id: 'codex-verb-dedup', cwd: '/home/dev/work/proj' },
       },
       {
         type: 'response_item',
@@ -933,8 +933,8 @@ test('one path named under two verbs in a patch counts once against the file cap
           name: 'apply_patch',
           input: [
             '*** Begin Patch',
-            '*** Add File: /root/proj/src/boundary.ts',
-            '*** Update File: /root/proj/src/boundary.ts',
+            '*** Add File: /home/dev/work/proj/src/boundary.ts',
+            '*** Update File: /home/dev/work/proj/src/boundary.ts',
             '*** End Patch',
           ].join('\n'),
         },
@@ -952,12 +952,12 @@ test('one path named under two verbs in a patch counts once against the file cap
     // The single new path is added once even though the patch names it under
     // two verbs, so it lands exactly at the cap without tripping it.
     expect(doc.files).toHaveLength(MAX_SESSION_FILES)
-    expect(doc.files).toContain('/root/proj/src/boundary.ts')
+    expect(doc.files).toContain('/home/dev/work/proj/src/boundary.ts')
     expect(doc.truncated).toBe(false)
     // Both verbs still reach the ordered log as distinct events.
     expect(doc.fileEvents?.slice(-2)).toEqual([
-      { path: '/root/proj/src/boundary.ts', kind: 'write', turn: 0 },
-      { path: '/root/proj/src/boundary.ts', kind: 'edit', turn: 0 },
+      { path: '/home/dev/work/proj/src/boundary.ts', kind: 'write', turn: 0 },
+      { path: '/home/dev/work/proj/src/boundary.ts', kind: 'edit', turn: 0 },
     ])
   })
 })
@@ -969,14 +969,14 @@ test('Codex custom patch calls refuse an oversized call body', async () => {
       {
         timestamp: '2026-08-02T09:00:00.000Z',
         type: 'session_meta',
-        payload: { session_id: 'codex-oversized-call', cwd: '/root/proj' },
+        payload: { session_id: 'codex-oversized-call', cwd: '/home/dev/work/proj' },
       },
       {
         type: 'response_item',
         payload: {
           type: 'custom_tool_call',
           name: 'apply_patch',
-          input: `*** Add File: /root/proj/src/oversized.ts\n+${'x'.repeat(1024 * 1024)}`,
+          input: `*** Add File: /home/dev/work/proj/src/oversized.ts\n+${'x'.repeat(1024 * 1024)}`,
         },
       },
       {
@@ -984,7 +984,7 @@ test('Codex custom patch calls refuse an oversized call body', async () => {
         payload: {
           type: 'custom_tool_call',
           name: 'apply_patch',
-          input: '*** Add File: /root/proj/src/bounded.ts',
+          input: '*** Add File: /home/dev/work/proj/src/bounded.ts',
         },
       },
       {
@@ -1007,7 +1007,7 @@ test('Codex custom patch calls refuse an oversized call body', async () => {
 
     // The row after it is still read, so the bound drops one call, not the rest
     // of the session.
-    expect(doc.files).toEqual(['/root/proj/src/bounded.ts'])
+    expect(doc.files).toEqual(['/home/dev/work/proj/src/bounded.ts'])
     expect(doc.prompts).toEqual(['safe prompt'])
     expect(doc.truncated).toBe(false)
   })
@@ -1019,7 +1019,7 @@ test('streaming hydration discards oversized rows and continues with later safe 
     writeFileSync(path, `${JSON.stringify({
       timestamp: '2026-08-02T09:00:00.000Z',
       type: 'session_meta',
-      payload: { session_id: 'oversized', cwd: '/root/proj' },
+      payload: { session_id: 'oversized', cwd: '/home/dev/work/proj' },
     })}\n{"type":"response_item","payload":{"type":"function_call_output","output":"OVERSIZED_SECRET`)
     appendFileSync(path, 'x'.repeat(4 * 1024 * 1024))
     appendFileSync(path, `"}}\n${JSON.stringify({
@@ -1051,7 +1051,7 @@ test('streaming hydration preserves oversized user prompts', async () => {
     writeFileSync(path, `${JSON.stringify({
       timestamp: '2026-08-02T09:00:00.000Z',
       type: 'session_meta',
-      payload: { session_id: 'oversized-user', cwd: '/root/proj' },
+      payload: { session_id: 'oversized-user', cwd: '/home/dev/work/proj' },
     })}\n{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"LARGE_USER_PROMPT`)
     appendFileSync(path, 'x'.repeat(4 * 1024 * 1024))
     appendFileSync(path, '"}]}}\n')
@@ -1077,8 +1077,8 @@ test('streaming hydration preserves oversized tool-input rows and extracts files
     writeFileSync(path, `${JSON.stringify({
       timestamp: '2026-08-02T09:00:00.000Z',
       type: 'session_meta',
-      payload: { session_id: 'oversized-tool-input', cwd: '/root/proj' },
-    })}\n{"type":"response_item","payload":{"type":"function_call","arguments":"{\\"file_path\\":\\"/root/proj/src/huge-tool.ts\\",\\"padding\\":\\"`)
+      payload: { session_id: 'oversized-tool-input', cwd: '/home/dev/work/proj' },
+    })}\n{"type":"response_item","payload":{"type":"function_call","arguments":"{\\"file_path\\":\\"/home/dev/work/proj/src/huge-tool.ts\\",\\"padding\\":\\"`)
     appendFileSync(path, 'x'.repeat(4 * 1024 * 1024))
     appendFileSync(path, '\\"}"}}\n')
     const manifest = validateManifest({
@@ -1090,7 +1090,7 @@ test('streaming hydration preserves oversized tool-input rows and extracts files
     const { refs } = await jsonlTranscript.discover(manifest, root)
     const doc = await jsonlTranscript.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
 
-    expect(doc.files).toContain('/root/proj/src/huge-tool.ts')
+    expect(doc.files).toContain('/home/dev/work/proj/src/huge-tool.ts')
     expect(doc.truncated).toBe(false)
   })
 })
@@ -1102,11 +1102,11 @@ test('streaming hydration preserves oversized Claude assistant tool-use file fac
     mkdirSync(directory, { recursive: true })
     writeFileSync(path, '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"')
     appendFileSync(path, 'x'.repeat(4 * 1024 * 1024))
-    appendFileSync(path, '"},{"type":"tool_use","input":{"file_path":"/root/proj/src/late-tool.ts"}}]}}\n')
+    appendFileSync(path, '"},{"type":"tool_use","input":{"file_path":"/home/dev/work/proj/src/late-tool.ts"}}]}}\n')
     const { refs } = await jsonlTranscript.discover(claude, root)
     const doc = await jsonlTranscript.hydrate(claude, root, refs[0]!, DEFAULT_CONFIG)
 
-    expect(doc.files).toContain('/root/proj/src/late-tool.ts')
+    expect(doc.files).toContain('/home/dev/work/proj/src/late-tool.ts')
     expect(doc.truncated).toBe(false)
   })
 })
@@ -1118,7 +1118,7 @@ test('streaming hydration discards reordered oversized Codex tool output', async
     writeFileSync(path, `${JSON.stringify({
       timestamp: '2026-08-02T09:00:00.000Z',
       type: 'session_meta',
-      payload: { session_id: 'reordered-output', cwd: '/root/proj' },
+      payload: { session_id: 'reordered-output', cwd: '/home/dev/work/proj' },
     })}\n{"type":"response_item","payload":{"output":"REORDERED_OUTPUT_SECRET`)
     appendFileSync(path, 'x'.repeat(4 * 1024 * 1024))
     appendFileSync(path, '","type":"function_call\\u005foutput"}}\n')
@@ -1195,10 +1195,10 @@ test('harness wrappers never become the title or a prompt', async () => {
   try {
     // Exactly how Claude Code records a slash command: the caveat, the command
     // block and the command's own output each arrive as separate user messages.
-    mkdirSync(join(root, 'projects', '-root-proj'), { recursive: true })
-    writeJsonl(join(root, 'projects', '-root-proj', 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl'), [
+    mkdirSync(join(root, 'projects', '-home-dev-work-proj'), { recursive: true })
+    writeJsonl(join(root, 'projects', '-home-dev-work-proj', 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl'), [
       {
-        type: 'user', timestamp: '2026-01-01T00:00:00.000Z', cwd: '/root/proj', gitBranch: 'main',
+        type: 'user', timestamp: '2026-01-01T00:00:00.000Z', cwd: '/home/dev/work/proj', gitBranch: 'main',
         message: {
           role: 'user',
           content: '<local-command-caveat>Caveat: The messages below were generated by the'
@@ -1238,11 +1238,11 @@ test('harness wrappers never become the title or a prompt', async () => {
 test('a title keeps enough text for the widest terminal', async () => {
   const root = mkdtempSync(join(tmpdir(), 'nekyia-jsonl-title-'))
   try {
-    mkdirSync(join(root, 'projects', '-root-proj'), { recursive: true })
+    mkdirSync(join(root, 'projects', '-home-dev-work-proj'), { recursive: true })
     const long = `start ${'word '.repeat(120)}end`
-    writeJsonl(join(root, 'projects', '-root-proj', 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff.jsonl'), [
+    writeJsonl(join(root, 'projects', '-home-dev-work-proj', 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff.jsonl'), [
       {
-        type: 'user', timestamp: '2026-01-01T00:00:00.000Z', cwd: '/root/proj', gitBranch: 'main',
+        type: 'user', timestamp: '2026-01-01T00:00:00.000Z', cwd: '/home/dev/work/proj', gitBranch: 'main',
         message: { role: 'user', content: long },
       },
     ])
@@ -1265,7 +1265,7 @@ test('a codex session id that could never round-trip through a uid is refused', 
     writeJsonl(path, [{
       timestamp: '2026-08-01T00:00:00.000Z',
       type: 'session_meta',
-      payload: { session_id: 'ses\u0007bad', cwd: '/root/proj' },
+      payload: { session_id: 'ses\u0007bad', cwd: '/home/dev/work/proj' },
     }])
     const manifest = validateManifest({
       ...codex,
@@ -1296,7 +1296,7 @@ test('a claude transcript whose filename cannot make a uid is refused', async ()
     const path = join(directory, 'ses\u0007bad.jsonl')
     writeJsonl(path, [{
       timestamp: '2026-08-01T00:00:00.000Z',
-      cwd: '/root/proj',
+      cwd: '/home/dev/work/proj',
       message: { role: 'user', content: 'hello' },
     }])
 
@@ -1396,7 +1396,7 @@ test('paths recovered from Claude tool calls stop at the per-session ceiling', a
           type: 'tool_use',
           input: {
             edits: Array.from({ length: 1100 }, (_unused, index) => ({
-              filePath: `/root/proj/file-${index}.ts`,
+              filePath: `/home/dev/work/proj/file-${index}.ts`,
             })),
           },
         }],
@@ -1427,7 +1427,7 @@ function codexMeta(id: string, extra: Record<string, unknown> = {}): unknown {
   return {
     timestamp: '2026-08-02T09:00:00.000Z',
     type: 'session_meta',
-    payload: { session_id: id, id, cwd: '/root/proj', ...extra },
+    payload: { session_id: id, id, cwd: '/home/dev/work/proj', ...extra },
   }
 }
 
@@ -1528,7 +1528,7 @@ test('a Codex session_meta row past the old head read is still discovered', asyn
     expect(refs).toHaveLength(1)
     expect(refs[0]).toMatchObject({
       nativeId: id,
-      cwd: '/root/proj',
+      cwd: '/home/dev/work/proj',
       title: 'rewrite the transport layer',
       startedAt: Date.parse('2026-08-02T09:00:00.000Z'),
     })
@@ -1558,7 +1558,7 @@ test('Codex reads the newer id field when a rollout carries no session_id', asyn
     writeJsonl(path, [{
       timestamp: '2026-08-02T09:00:00.000Z',
       type: 'session_meta',
-      payload: { id: 'thread-only-id', cwd: '/root/proj' },
+      payload: { id: 'thread-only-id', cwd: '/home/dev/work/proj' },
     }])
     const manifest = validateManifest({
       ...codex,
@@ -1571,7 +1571,7 @@ test('Codex reads the newer id field when a rollout carries no session_id', asyn
 
     expect(diagnostics).toEqual([])
     expect(refs).toHaveLength(1)
-    expect(refs[0]).toMatchObject({ nativeId: 'thread-only-id', cwd: '/root/proj' })
+    expect(refs[0]).toMatchObject({ nativeId: 'thread-only-id', cwd: '/home/dev/work/proj' })
   })
 })
 
@@ -1581,7 +1581,7 @@ test('a codex id field that could never round-trip through a uid is refused', as
     writeJsonl(path, [{
       timestamp: '2026-08-01T00:00:00.000Z',
       type: 'session_meta',
-      payload: { id: 'ses\u0007bad', cwd: '/root/proj' },
+      payload: { id: 'ses\u0007bad', cwd: '/home/dev/work/proj' },
     }])
     const manifest = validateManifest({
       ...codex,
@@ -1617,7 +1617,7 @@ test('a Codex rollout written without the response_item envelope is still read',
         role: 'assistant',
         content: [{ type: 'output_text', text: 'Ported it.' }],
       },
-      { type: 'function_call', arguments: JSON.stringify({ filePath: '/root/proj/src/old.ts' }) },
+      { type: 'function_call', arguments: JSON.stringify({ filePath: '/home/dev/work/proj/src/old.ts' }) },
     ])
 
     const { refs } = await jsonlTranscript.discover(codexAnyGlob, root)
@@ -1627,7 +1627,7 @@ test('a Codex rollout written without the response_item envelope is still read',
     expect(refs[0]).toMatchObject({ nativeId: id, title: 'port the old rollout' })
     expect(doc.prompts).toEqual(['port the old rollout'])
     expect(doc.prose).toEqual(['Ported it.'])
-    expect(doc.files).toEqual(['/root/proj/src/old.ts'])
+    expect(doc.files).toEqual(['/home/dev/work/proj/src/old.ts'])
   })
 })
 

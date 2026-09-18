@@ -91,11 +91,11 @@ test('handoff dry-run exports indexed context for another client without changin
   const json = run(['handoff', uid, '--to', 'codex', '--dry-run', '--json', '--max-chars', '0'], env)
   expect(json.exitCode).toBe(0)
   expect(JSON.parse(json.stdout.toString())).toEqual({
-    cmd: 'codex', args: [shown], cwd: '/root/proj', briefChars: shown.length,
+    cmd: 'codex', args: [shown], cwd: '/home/dev/work/proj', briefChars: shown.length,
   })
   const dry = run(['handoff', uid, '--to', 'codex', '--dry-run'], env)
   expect(dry.exitCode).toBe(0)
-  expect(dry.stdout.toString()).toContain('cd /root/proj && codex')
+  expect(dry.stdout.toString()).toContain('cd /home/dev/work/proj && codex')
   for (const [source, target, error] of [
     [uid, 'unknown-target', 'no adapter for unknown-target'],
     ['claude:missing', 'codex', 'no session with uid claude:missing'],
@@ -142,7 +142,7 @@ test('handoff exports an indexed Codex conversation into a fresh Claude session'
   const result = run(['handoff', uid, '--to', 'claude', '--dry-run', '--json'], env)
   expect(result.exitCode).toBe(0)
   expect(JSON.parse(result.stdout.toString())).toEqual({
-    cmd: 'claude', args: [brief], cwd: '/root/other', briefChars: brief.length,
+    cmd: 'claude', args: [brief], cwd: '/home/dev/work/other', briefChars: brief.length,
   })
 })
 
@@ -189,23 +189,23 @@ test('index then search finds a session across clients', () => {
   // transcript itself. It stays a list: a session can span several files.
   expect(Array.isArray(publicRow.sourcePaths)).toBe(true)
   expect(publicRow.sourcePaths).toEqual([
-    join(FIX, 'claude', 'projects', '-root-proj', '11111111-2222-3333-4444-555555555555.jsonl'),
+    join(FIX, 'claude', 'projects', '-home-dev-work-proj', '11111111-2222-3333-4444-555555555555.jsonl'),
   ])
   // The table stays exactly what it was: provenance is a JSON-only field.
   expect(out.stdout.toString()).not.toContain('.jsonl')
 
-  const blamed = run(['blame', '/root/proj/src/sse.ts'], env)
+  const blamed = run(['blame', '/home/dev/work/proj/src/sse.ts'], env)
   expect(blamed.exitCode).toBe(0)
   expect(blamed.stdout.toString()).toContain('sse reconnect')
 
-  const blamedJson = run(['blame', '/root/proj/src/sse.ts', '--json'], env)
+  const blamedJson = run(['blame', '/home/dev/work/proj/src/sse.ts', '--json'], env)
   expect(blamedJson.exitCode).toBe(0)
   const blamedRows = JSON.parse(blamedJson.stdout.toString())
   expect(blamedRows).toHaveLength(1)
   expect(blamedRows[0].uid).toBe('claude:11111111-2222-3333-4444-555555555555')
 
   // A path nothing touched matches nothing, and says so the way search does.
-  const empty = run(['blame', '/root/proj/src/nothing-here.ts'], env)
+  const empty = run(['blame', '/home/dev/work/proj/src/nothing-here.ts'], env)
   expect(empty.exitCode).toBe(0)
   expect(empty.stdout.toString()).toBe('')
   expect(empty.stderr.toString()).toContain('no sessions matched')
@@ -265,7 +265,7 @@ test('fixture override accepts one contained segment and rejects traversal and e
 test('rebuild preserves old searchable data on hydration failure and retries it later', async () => {
   const db = IndexDb.open(':memory:')
   const old: SessionRef = {
-    uid: 'claude:retry', client: 'claude', nativeId: 'retry', cwd: '/root/proj',
+    uid: 'claude:retry', client: 'claude', nativeId: 'retry', cwd: '/home/dev/work/proj',
     gitBranch: null, title: 'old title', startedAt: 1, endedAt: 2, turns: 1,
     parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/old'],
     fingerprint: 'old-fingerprint',
@@ -301,7 +301,7 @@ test('rebuild preserves old searchable data on hydration failure and retries it 
 test('partial rebuild discovery never destroys an unseen indexed session', async () => {
   const db = IndexDb.open(':memory:')
   const old: SessionRef = {
-    uid: 'claude:kept', client: 'claude', nativeId: 'kept', cwd: '/root/proj',
+    uid: 'claude:kept', client: 'claude', nativeId: 'kept', cwd: '/home/dev/work/proj',
     gitBranch: null, title: 'kept', startedAt: 1, endedAt: 2, turns: 1,
     parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/old'],
     fingerprint: 'old',
@@ -353,7 +353,7 @@ test('manifest construction errors abort before normal or rebuild indexing mutat
   for (const rebuild of [false, true]) {
     const db = IndexDb.open(':memory:')
     const old: SessionRef = {
-      uid: 'broken:kept', client: 'broken', nativeId: 'kept', cwd: '/root/proj',
+      uid: 'broken:kept', client: 'broken', nativeId: 'kept', cwd: '/home/dev/work/proj',
       gitBranch: null, title: 'kept', startedAt: 1, endedAt: 2, turns: 1,
       parentNativeId: null, tier: 'search', origin: 'user-manifest', sourcePaths: ['/old'],
       fingerprint: 'old-fingerprint',
@@ -527,7 +527,7 @@ test('timeline runs cleanly against an index stamped below schema version 4', ()
     raw.close()
   }
 
-  const result = run(['timeline', '--dir', '/root/proj'], env)
+  const result = run(['timeline', '--dir', '/home/dev/work/proj'], env)
   expect(result.exitCode).toBe(0)
   expect(result.stderr.toString()).toBe('')
   // Below schema version 4 the file-event tables and columns are gone, so
@@ -540,17 +540,17 @@ test('timeline runs cleanly against an index stamped below schema version 4', ()
 
 test('timeline --json prints one shape whether or not an index exists', () => {
   const env = environment()
-  const absent = run(['timeline', '--dir', '/root/proj', '--json'], env)
+  const absent = run(['timeline', '--dir', '/home/dev/work/proj', '--json'], env)
   expect(absent.exitCode).toBe(0)
   // A caller reaching `.sessions` must not have to learn first whether an
   // index exists; an array here would crash it.
   expect(JSON.parse(absent.stdout.toString())).toEqual({
-    dir: '/root/proj', since: null, git: { consulted: false }, sessions: [],
+    dir: '/home/dev/work/proj', since: null, git: { consulted: false }, sessions: [],
   })
 
   expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
   const present = JSON.parse(
-    run(['timeline', '--dir', '/root/proj', '--json'], env).stdout.toString(),
+    run(['timeline', '--dir', '/home/dev/work/proj', '--json'], env).stdout.toString(),
   ) as Record<string, unknown>
   expect(Object.keys(present).sort()).toEqual(['dir', 'git', 'sessions', 'since'])
   expect((present.sessions as unknown[]).length).toBeGreaterThan(0)
@@ -566,7 +566,7 @@ test('timeline --json prints one shape whether or not an index exists', () => {
 test('a plain index leaves migrated sessions unknown; --rebuild is what fills them in', async () => {
   const db = IndexDb.open(':memory:')
   const ref: SessionRef = {
-    uid: 'claude:stale', client: 'claude', nativeId: 'stale', cwd: '/root/proj',
+    uid: 'claude:stale', client: 'claude', nativeId: 'stale', cwd: '/home/dev/work/proj',
     gitBranch: null, title: 'before file events', startedAt: 1, endedAt: 2, turns: 1,
     parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/old'],
     fingerprint: 'unchanged',
@@ -574,7 +574,7 @@ test('a plain index leaves migrated sessions unknown; --rebuild is what fills th
   // A version 3 index held paths and nothing else, and the migration to 4 adds
   // the column at its default rather than filling it in, so every existing row
   // reads `unknown` until something re-hydrates it.
-  db.upsertHydrated({ ref, prompts: [], prose: [], files: ['/root/proj/a.ts'], truncated: false })
+  db.upsertHydrated({ ref, prompts: [], prose: [], files: ['/home/dev/work/proj/a.ts'], truncated: false })
   db.raw().query("UPDATE session SET file_detail = 'unknown' WHERE uid = ?").run(ref.uid)
   expect(db.fileDetailsFor([ref.uid]).get(ref.uid)?.detail).toBe('unknown')
 
@@ -582,8 +582,8 @@ test('a plain index leaves migrated sessions unknown; --rebuild is what fills th
     id: 'claude', manifest: {} as Adapter['manifest'], detect: () => true,
     discover: async () => ({ refs: [ref], diagnostics: [], authoritative: true }),
     hydrate: async (seen) => ({
-      ref: seen, prompts: [], prose: [], files: ['/root/proj/a.ts'],
-      fileEvents: [{ path: '/root/proj/a.ts', kind: 'edit' as const, turn: 0 }],
+      ref: seen, prompts: [], prose: [], files: ['/home/dev/work/proj/a.ts'],
+      fileEvents: [{ path: '/home/dev/work/proj/a.ts', kind: 'edit' as const, turn: 0 }],
       fileDetail: 'ordered' as const, truncated: false,
     }),
     plan: () => null,
@@ -615,7 +615,7 @@ test('a client whose hydration failed does not get its extraction policy recorde
   // ask again. The client keeps its old value and is retried instead.
   const db = IndexDb.open(':memory:')
   const ref: SessionRef = {
-    uid: 'claude:one', client: 'claude', nativeId: 'one', cwd: '/root/proj',
+    uid: 'claude:one', client: 'claude', nativeId: 'one', cwd: '/home/dev/work/proj',
     gitBranch: null, title: 'one', startedAt: 1, endedAt: 2, turns: 1,
     parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/one'],
     fingerprint: 'one:1',
@@ -845,7 +845,7 @@ test('the index summary counts what was committed, not what was attempted', asyn
   // place, so counting it as updated reports work that did not happen.
   const db = IndexDb.open(':memory:')
   const ref: SessionRef = {
-    uid: 'claude:one', client: 'claude', nativeId: 'one', cwd: '/root/proj',
+    uid: 'claude:one', client: 'claude', nativeId: 'one', cwd: '/home/dev/work/proj',
     gitBranch: null, title: 'one', startedAt: 1, endedAt: 2, turns: 1,
     parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/one'],
     fingerprint: 'one:1',
@@ -879,7 +879,7 @@ test('the index summary counts what was committed, not what was attempted', asyn
 test('a run with nothing to report says so without inventing a failure count', async () => {
   const db = IndexDb.open(':memory:')
   const ref: SessionRef = {
-    uid: 'claude:one', client: 'claude', nativeId: 'one', cwd: '/root/proj',
+    uid: 'claude:one', client: 'claude', nativeId: 'one', cwd: '/home/dev/work/proj',
     gitBranch: null, title: 'one', startedAt: 1, endedAt: 2, turns: 1,
     parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: ['/one'],
     fingerprint: 'one:1',

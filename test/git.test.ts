@@ -13,24 +13,24 @@ function io(exitCode: number, out: string): GitIo {
 }
 
 test('tracked files come back as absolute paths', async () => {
-  const result=await trackedFiles('/root/proj', io(0, 'src/sse.ts\0test/sse.test.ts\0'))
+  const result=await trackedFiles('/home/dev/work/proj', io(0, 'src/sse.ts\0test/sse.test.ts\0'))
   expect(result.consulted).toBe(true)
-  expect([...result.tracked]).toEqual(['/root/proj/src/sse.ts','/root/proj/test/sse.test.ts'])
+  expect([...result.tracked]).toEqual(['/home/dev/work/proj/src/sse.ts','/home/dev/work/proj/test/sse.test.ts'])
 })
 test('a non-zero exit means git was not consulted', async () => {
-  const result=await trackedFiles('/root/proj', io(128, ''))
+  const result=await trackedFiles('/home/dev/work/proj', io(128, ''))
   expect(result).toEqual({ consulted: false, tracked: new Set() })
 })
 test('a launcher that throws means git was not consulted', async () => {
-  const result=await trackedFiles('/root/proj', { spawn() { throw new Error('ENOENT') } })
+  const result=await trackedFiles('/home/dev/work/proj', { spawn() { throw new Error('ENOENT') } })
   expect(result).toEqual({ consulted: false, tracked: new Set() })
 })
 test('an empty repository is consulted and tracks nothing', async () => {
-  const result=await trackedFiles('/root/proj', io(0, ''))
+  const result=await trackedFiles('/home/dev/work/proj', io(0, ''))
   expect(result).toEqual({ consulted: true, tracked: new Set() })
 })
 test('a null stdout is unreadable output', async () => {
-  const result=await trackedFiles('/root/proj', {
+  const result=await trackedFiles('/home/dev/work/proj', {
     spawn() {
       return {
         stdout: null,

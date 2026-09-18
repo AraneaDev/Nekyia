@@ -53,7 +53,7 @@ test('parseSqlTime returns 0 rather than coercing junk or overflow', () => {
 })
 
 test('parseCwd unwraps a file uri array', () => {
-  expect(parseCwd(JSON.stringify(['file:///root/proj']), 'file-uri-array')).toBe('/root/proj')
+  expect(parseCwd(JSON.stringify(['file:///home/dev/work/proj']), 'file-uri-array')).toBe('/home/dev/work/proj')
   expect(parseCwd('[]', 'file-uri-array')).toBe(null)
 })
 
@@ -78,7 +78,7 @@ test('goose discover normalises all three timestamp encodings to one instant', a
   // SQL. These three rows carry the same moment in the three encodings.
   const started = new Set(Object.values(byId).map((ref) => ref.startedAt))
   expect(started.size).toBe(1)
-  expect(byId['20260218_1']!.cwd).toBe('/root/proj')
+  expect(byId['20260218_1']!.cwd).toBe('/home/dev/work/proj')
   expect(byId['20260218_1']!.title).toBe('Rework the retry budget')
   expect(byId['20260218_2']!.parentNativeId).toBe('20260218_1')
 })
@@ -106,7 +106,7 @@ test('opencode discover reads sessions with directory, title and parent', async 
   const { refs } = await sqliteStore.discover(opencode, join(FIX, 'opencode'))
   const byId = Object.fromEntries(refs.map((ref) => [ref.nativeId, ref]))
   expect(refs).toHaveLength(2)
-  expect(byId['ses_aaa']!.cwd).toBe('/root/proj')
+  expect(byId['ses_aaa']!.cwd).toBe('/home/dev/work/proj')
   expect(byId['ses_aaa']!.title).toBe('Debug event stream drops')
   expect(byId['ses_bbb']!.parentNativeId).toBe('ses_aaa')
 })
@@ -123,7 +123,7 @@ test('opencode hydrate captures tool file paths but NEVER tool output', async ()
   const { refs } = await sqliteStore.discover(opencode, join(FIX, 'opencode'))
   const ref = refs.find((candidate) => candidate.nativeId === 'ses_aaa')!
   const doc = await sqliteStore.hydrate(opencode, join(FIX, 'opencode'), ref, DEFAULT_CONFIG)
-  expect(doc.files).toContain('/root/proj/src/stream.ts')
+  expect(doc.files).toContain('/home/dev/work/proj/src/stream.ts')
   expect([...doc.prompts, ...doc.prose].join(' ')).not.toContain('SECRET_TOOL_OUTPUT')
 })
 
@@ -138,15 +138,15 @@ test('opencode hydration preserves prompts and tool facets after reaching its by
   )
   expect(doc.prompts).toEqual(['why does the event stream drop'])
   expect(doc.prose).toEqual([])
-  expect(doc.files).toContain('/root/proj/src/stream.ts')
+  expect(doc.files).toContain('/home/dev/work/proj/src/stream.ts')
   expect(doc.truncated).toBe(true)
 })
 
 test('agy discover falls back to preview when title is empty', async () => {
   const { refs } = await sqliteStore.discover(agy, join(FIX, 'agy'))
   expect(refs).toHaveLength(1)
-  expect(refs[0]!.title).toBe('Autonomous Systems Improvement Framework')
-  expect(refs[0]!.cwd).toBe('/root/proj')
+  expect(refs[0]!.title).toBe('Retry Budget Review')
+  expect(refs[0]!.cwd).toBe('/home/dev/work/proj')
   expect(refs[0]!.turns).toBe(50)
 })
 
@@ -237,7 +237,7 @@ test('discovery trims metadata, falls back from NULL cwd_uris, and preserves epo
   tempDirs.push(root)
   const db = new Database(join(root, 'sessions.db'), { create: true })
   db.exec('CREATE TABLE sessions(id TEXT, cwd_uris TEXT, cwd TEXT, title TEXT, started_at INTEGER, ended_at INTEGER)')
-  db.run("INSERT INTO sessions VALUES ('  one  ', NULL, '  /root/proj  ', '  A title  ', 0, 5)")
+  db.run("INSERT INTO sessions VALUES ('  one  ', NULL, '  /home/dev/work/proj  ', '  A title  ', 0, 5)")
   db.run("INSERT INTO sessions VALUES ('two', NULL, '/root/two', 'Two', 'junk', 7)")
   db.close()
   const manifest = validateManifest({
@@ -253,7 +253,7 @@ test('discovery trims metadata, falls back from NULL cwd_uris, and preserves epo
 
   const { refs } = await sqliteStore.discover(manifest, root)
   const byId = Object.fromEntries(refs.map((ref) => [ref.nativeId, ref]))
-  expect(byId.one?.cwd).toBe('/root/proj')
+  expect(byId.one?.cwd).toBe('/home/dev/work/proj')
   expect(byId.one?.title).toBe('A title')
   expect(byId.one?.startedAt).toBe(0)
   expect(byId.two?.startedAt).toBe(7)
@@ -311,7 +311,7 @@ test('opencode-message-json indexes safe text and tool inputs only', async () =>
       {
         type: 'tool',
         state: {
-          input: { filePath: '/root/proj/src/legacy.ts' },
+          input: { filePath: '/home/dev/work/proj/src/legacy.ts' },
           output: 'PRIVATE LEGACY TOOL OUTPUT',
         },
       },
@@ -332,7 +332,7 @@ test('opencode-message-json indexes safe text and tool inputs only', async () =>
   const doc = await sqliteStore.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
   expect(doc.prompts).toEqual(['legacy prompt'])
   expect(doc.prose).toEqual(['legacy answer'])
-  expect(doc.files).toEqual(['/root/proj/src/legacy.ts'])
+  expect(doc.files).toEqual(['/home/dev/work/proj/src/legacy.ts'])
   expect([...doc.prompts, ...doc.prose].join(' ')).not.toContain('PRIVATE')
 })
 
@@ -353,7 +353,7 @@ test('structured hydration projects a huge tool output away before rows cross in
   insertPart.run('m2', 'one', 2, JSON.stringify({
     type: 'tool',
     state: {
-      input: { filePath: '/root/proj/src/huge.ts' },
+      input: { filePath: '/home/dev/work/proj/src/huge.ts' },
       output: `PRIVATE HUGE OUTPUT ${'x'.repeat(16 * 1024 * 1024)}`,
     },
   }))
@@ -390,7 +390,7 @@ test('structured hydration projects a huge tool output away before rows cross in
   expect(hydrationSql).toContain('json_extract')
   expect(hydrationSql).toContain(`raw_source AS MATERIALIZED (${text})`)
   expect(doc!.prompts).toEqual(['first prompt', 'later prompt'])
-  expect(doc!.files).toContain('/root/proj/src/huge.ts')
+  expect(doc!.files).toContain('/home/dev/work/proj/src/huge.ts')
   expect(doc!.truncated).toBe(true)
   expect([...doc!.prompts, ...doc!.prose].join(' ')).not.toContain('PRIVATE HUGE OUTPUT')
 })
@@ -484,7 +484,7 @@ test('oversized projected tool input is nulled in SQL and marks the document tru
       type: 'tool',
       state: {
         input: {
-          filePath: '/root/proj/src/too-large.ts',
+          filePath: '/home/dev/work/proj/src/too-large.ts',
           padding: 'x'.repeat(5 * 1024 * 1024),
         },
         output: 'private',
@@ -515,7 +515,7 @@ test('oversized projected tool input is nulled in SQL and marks the document tru
   }
   expect(hydrationSql).toContain('projected_input_oversized')
   expect(hydrationSql).toContain('<= ?3')
-  expect(doc!.files).not.toContain('/root/proj/src/too-large.ts')
+  expect(doc!.files).not.toContain('/home/dev/work/proj/src/too-large.ts')
   expect(doc!.truncated).toBe(true)
 })
 
@@ -527,7 +527,7 @@ test('copilot discover reads cwd, summary as title and the recorded branch', asy
   expect(refs).toHaveLength(2)
 
   const alpha = byId['c51a6cd4-ff7c-40af-ac6b-7ef82da474ca']!
-  expect(alpha.cwd).toBe('/root/proj')
+  expect(alpha.cwd).toBe('/home/dev/work/proj')
   expect(alpha.title).toBe('Chase the duplicate listener')
   expect(alpha.gitBranch).toBe('feature/alpha')
   expect(alpha.turns).toBe(2)
@@ -551,7 +551,7 @@ test('copilot hydrate splits turns into prompts and prose in turn order', async 
 
 test('copilot resume attaches by id using the form the CLI itself prints', () => {
   expect(copilot.tier).toBe('resume')
-  expect(renderArgs(copilot.resume!.args, { id: 'abc-123', cwd: '/root/proj' }))
+  expect(renderArgs(copilot.resume!.args, { id: 'abc-123', cwd: '/home/dev/work/proj' }))
     .toEqual(['--resume=abc-123'])
 })
 
@@ -593,7 +593,7 @@ test('copilot hydrate reports the files the session touched', async () => {
 
   // Without this the session can never match `search --file`, because a plain
   // text shape carries no tool inputs to recover paths from.
-  expect(doc.files).toEqual(['/root/proj/src/listener.ts', '/root/proj/src/teardown.ts'])
+  expect(doc.files).toEqual(['/home/dev/work/proj/src/listener.ts', '/home/dev/work/proj/src/teardown.ts'])
 })
 
 test('a files query is bounded, and says so when it runs over', async () => {
@@ -603,7 +603,7 @@ test('a files query is bounded, and says so when it runs over', async () => {
   db.exec('CREATE TABLE f(session_id TEXT, path TEXT)')
   const insert = db.prepare('INSERT INTO f VALUES (?1, ?2)')
   db.exec('BEGIN')
-  for (let i = 0; i < 1100; i++) insert.run('one', `/root/proj/file-${i}.ts`)
+  for (let i = 0; i < 1100; i++) insert.run('one', `/home/dev/work/proj/file-${i}.ts`)
   db.exec('COMMIT')
   db.close()
 
@@ -627,7 +627,7 @@ test('a manifest with only a files query still hydrates', async () => {
   tempDirs.push(root)
   const db = new Database(join(root, 'store.db'), { create: true })
   db.exec('CREATE TABLE f(session_id TEXT, path TEXT)')
-  db.prepare('INSERT INTO f VALUES (?1, ?2)').run('one', '/root/proj/only.ts')
+  db.prepare('INSERT INTO f VALUES (?1, ?2)').run('one', '/home/dev/work/proj/only.ts')
   db.close()
 
   const manifest = validateManifest({
@@ -641,7 +641,7 @@ test('a manifest with only a files query still hydrates', async () => {
   const { refs } = await sqliteStore.discover(manifest, root)
   const doc = await sqliteStore.hydrate(manifest, root, refs[0]!, DEFAULT_CONFIG)
 
-  expect(doc.files).toEqual(['/root/proj/only.ts'])
+  expect(doc.files).toEqual(['/home/dev/work/proj/only.ts'])
   expect(doc.prompts).toEqual([])
 })
 
@@ -729,7 +729,7 @@ test('paths recovered from tool inputs stop at the per-session ceiling', async (
     state: {
       input: {
         edits: Array.from({ length: 1100 }, (_unused, index) => ({
-          filePath: `/root/proj/file-${index}.ts`,
+          filePath: `/home/dev/work/proj/file-${index}.ts`,
         })),
       },
     },

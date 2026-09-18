@@ -1,0 +1,4 @@
+{"role":"user","message":{"content":[{"type":"text","text":"<timestamp>Thursday, Jan 15, 2026, 10:52 AM (UTC+0)</timestamp>\n<user_query>\nscan the repo for issues\n</user_query>"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"Scanning the whole repo for issues."},{"type":"tool_use","name":"Read","input":{"path":"/home/dev/work/proj/src/app.ts"}}]}}
+{"role":"assistant","message":{"content":[{"type":"tool_use","name":"Shell","input":{"command":"SECRET_TOOL_OUTPUT_MUST_NOT_BE_INDEXED"}},{"type":"text","text":"Found two problems in app.ts."}]}}
+{"role":"user","message":{"content":[{"type":"text","text":"<timestamp>Thursday, Jan 15, 2026, 10:58 AM (UTC+0)</timestamp>\n<user_query>\nyes\n</user_query>"}]}}

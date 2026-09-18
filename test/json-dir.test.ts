@@ -93,7 +93,7 @@ test('readHeadTail normalizes negative and non-finite limits to zero', async () 
 test('discovers bounded metadata without opening log.jsonl', async () => {
   const root = tempRoot()
   const dir = putChat(root, '2026-08-03T07-48-02.374Z', undefined,
-    '{"sessionState":{"projectRoot":"/root/proj"},"traceSessionId":"safe-id"}',
+    '{"sessionState":{"projectRoot":"/home/dev/work/proj"},"traceSessionId":"safe-id"}',
     { firstPrompt: 'safe title', messageCount: 1 })
   writeFileSync(join(dir, 'log.jsonl'), 'SENTINEL PRIVATE DEBUG LOG')
   const opened: string[] = []
@@ -107,7 +107,7 @@ test('discovers bounded metadata without opening log.jsonl', async () => {
     const { refs } = await jsonDir.discover(manifest(root), root)
     expect(refs).toHaveLength(1)
     expect(refs[0]!.nativeId).toBe('safe-id')
-    expect(refs[0]!.cwd).toBe('/root/proj')
+    expect(refs[0]!.cwd).toBe('/home/dev/work/proj')
     expect(opened.some((path) => path.endsWith('run-state.json'))).toBe(true)
     expect(opened.some((path) => path.endsWith('chat-meta.json'))).toBe(true)
     expect(opened.some((path) => path.endsWith('log.jsonl'))).toBe(false)
@@ -119,7 +119,7 @@ test('discovers bounded metadata without opening log.jsonl', async () => {
 test('takes title and turns from bounded chat metadata', async () => {
   const root = join(FIX, 'codebuff')
   const { refs } = await jsonDir.discover(manifest(root), root)
-  expect(refs[0]!.title).toBe('install this MCP globally')
+  expect(refs[0]!.title).toBe('add a lint step to the build')
   expect(refs[0]!.turns).toBe(3)
 })
 
@@ -133,8 +133,8 @@ test('hydrates exact user and ai variants with content and text blocks', async (
   const root = join(FIX, 'codebuff')
   const { refs } = await jsonDir.discover(manifest(root), root)
   const doc = await jsonDir.hydrate(manifest(root), root, refs[0]!, DEFAULT_CONFIG)
-  expect(doc.prompts).toEqual(['install this MCP globally'])
-  expect(doc.prose).toEqual(['Checking package.json first.', 'Installed globally.'])
+  expect(doc.prompts).toEqual(['add a lint step to the build'])
+  expect(doc.prose).toEqual(['Looking at the build script first.', 'Added the lint step.'])
 })
 
 test('never indexes non-text blocks or private variants', async () => {
@@ -470,8 +470,8 @@ test('json-dir records the conversation in order, not only grouped by speaker', 
   const { refs } = await jsonDir.discover(manifest(root), root)
   const doc = await jsonDir.hydrate(manifest(root), root, refs[0]!, DEFAULT_CONFIG)
   expect(doc.dialogue).toEqual([
-    { role: 'user', text: 'install this MCP globally' },
-    { role: 'assistant', text: 'Checking package.json first.' },
-    { role: 'assistant', text: 'Installed globally.' },
+    { role: 'user', text: 'add a lint step to the build' },
+    { role: 'assistant', text: 'Looking at the build script first.' },
+    { role: 'assistant', text: 'Added the lint step.' },
   ])
 })

@@ -6,7 +6,7 @@ import type { FileEvent, SessionDoc, SessionRef } from '../src/types'
 
 function ref(over: Partial<SessionRef> = {}): SessionRef {
   return {
-    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/root/proj', gitBranch: 'main',
+    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/home/dev/work/proj', gitBranch: 'main',
     title: 'fix the sse race', startedAt: 1000, endedAt: 2000, turns: 4,
     parentNativeId: null, tier: 'resume', origin: 'manifest',
     sourcePaths: ['/a.jsonl'], fingerprint: '1:1', ...over,
@@ -23,24 +23,24 @@ const events: FileEvent[] = [
 test('events under the directory come back in ordinal order', () => {
   const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
   db.upsertDoc(doc(r,{ files:['src/sse.ts'], fileEvents: events, fileDetail:'ordered' }))
-  const [session]=timeline(db,{ dir:'/root/proj' })
+  const [session]=timeline(db,{ dir:'/home/dev/work/proj' })
   expect(session?.detail).toBe('ordered')
   expect(session?.entries.map(e=>[e.kind, e.resolved])).toEqual([
-    ['read','/root/proj/src/sse.ts'], ['edit','/root/proj/src/sse.ts'],
+    ['read','/home/dev/work/proj/src/sse.ts'], ['edit','/home/dev/work/proj/src/sse.ts'],
   ]); db.close()
 })
 test('an event outside the directory is left out', () => {
   const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
   db.upsertDoc(doc(r,{ files:['/etc/hosts'], fileEvents:[{ path:'/etc/hosts', kind:'read', turn:0 }], fileDetail:'ordered' }))
-  expect(timeline(db,{ dir:'/root/proj' })).toEqual([]); db.close()
+  expect(timeline(db,{ dir:'/home/dev/work/proj' })).toEqual([]); db.close()
 })
 test('a paths-only session appears with unordered entries', () => {
   const db=IndexDb.open(':memory:'); const r=ref({ uid:'copilot:b', client:'copilot' })
   db.upsertRef(r); db.upsertDoc(doc(r,{ files:['src/db.ts'] }))
-  const [session]=timeline(db,{ dir:'/root/proj' })
+  const [session]=timeline(db,{ dir:'/home/dev/work/proj' })
   expect(session?.detail).toBe('paths')
   expect(session?.entries).toEqual([
-    { ordinal:null, turn:null, kind:'unknown', path:'src/db.ts', resolved:'/root/proj/src/db.ts' },
+    { ordinal:null, turn:null, kind:'unknown', path:'src/db.ts', resolved:'/home/dev/work/proj/src/db.ts' },
   ]); db.close()
 })
 test('sessions are ordered newest first and bounded by limit', () => {
@@ -49,7 +49,7 @@ test('sessions are ordered newest first and bounded by limit', () => {
     const r=ref({ uid, nativeId:uid, endedAt })
     db.upsertRef(r); db.upsertDoc(doc(r,{ files:['x.ts'], fileEvents:[{path:'x.ts',kind:'edit',turn:0}], fileDetail:'ordered' }))
   }
-  expect(timeline(db,{ dir:'/root/proj', limit:2 }).map(s=>s.ref.uid)).toEqual(['claude:b','claude:c']); db.close()
+  expect(timeline(db,{ dir:'/home/dev/work/proj', limit:2 }).map(s=>s.ref.uid)).toEqual(['claude:b','claude:c']); db.close()
 })
 test('since filters whole sessions by end time', () => {
   const db=IndexDb.open(':memory:')
@@ -57,13 +57,13 @@ test('since filters whole sessions by end time', () => {
   for (const r of [old, recent]) {
     db.upsertRef(r); db.upsertDoc(doc(r,{ files:['x.ts'], fileEvents:[{path:'x.ts',kind:'edit',turn:0}], fileDetail:'ordered' }))
   }
-  expect(timeline(db,{ dir:'/root/proj', since:5000 }).map(s=>s.ref.uid)).toEqual(['claude:new']); db.close()
+  expect(timeline(db,{ dir:'/home/dev/work/proj', since:5000 }).map(s=>s.ref.uid)).toEqual(['claude:new']); db.close()
 })
 test('a session indexed before file events keeps unknown detail', () => {
   const db=IndexDb.open(':memory:'); const r=ref(); db.upsertRef(r)
   db.upsertDoc(doc(r,{ files:['src/sse.ts'] }))
   db.raw().query("UPDATE session SET file_detail = 'unknown' WHERE uid = ?").run('claude:a')
-  expect(timeline(db,{ dir:'/root/proj' })[0]?.detail).toBe('unknown'); db.close()
+  expect(timeline(db,{ dir:'/home/dev/work/proj' })[0]?.detail).toBe('unknown'); db.close()
 })
 test('a root directory covers everything under it', () => {
   const db=IndexDb.open(':memory:'); const r=ref()
@@ -101,10 +101,10 @@ test('capped sessions with truncated events fall back to unordered facets', () =
     fileDetail:'ordered',
     fileEventsTruncated:true
   }))
-  const [session]=timeline(db,{ dir:'/root/proj' })
+  const [session]=timeline(db,{ dir:'/home/dev/work/proj' })
   expect(session?.detail).toBe('paths')
   expect(session?.entries).toEqual([
-    { ordinal:null, turn:null, kind:'unknown', path:'src/db.ts', resolved:'/root/proj/src/db.ts' },
+    { ordinal:null, turn:null, kind:'unknown', path:'src/db.ts', resolved:'/home/dev/work/proj/src/db.ts' },
   ])
   db.close()
 })

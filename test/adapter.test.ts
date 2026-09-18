@@ -45,7 +45,7 @@ test('agy hydrate takes its text from the sidecar', async () => {
   const adapter = buildAdapter(agyManifest())
   const { refs } = await adapter.discover()
   const doc = await adapter.hydrate(refs[0]!, DEFAULT_CONFIG)
-  expect(doc.prompts).toEqual(['i want domination instead of wordworth'])
+  expect(doc.prompts).toEqual(['swap the markdown parser for a faster one'])
 })
 
 test('plan fills known placeholders and preserves unknown placeholders', async () => {
@@ -54,11 +54,11 @@ test('plan fills known placeholders and preserves unknown placeholders', async (
   expect(adapter.plan(refs[0]!)).toEqual({
     kind: 'resume', cmd: 'agy',
     args: ['--conversation', '597b1c48-7b0c-434a-83d6-14e908a699b5', '{unknown}'],
-    cwd: '/root/proj',
+    cwd: '/home/dev/work/proj',
   })
   const brief = adapter.plan(refs[0]!, 'where I left off')
   expect(brief).toEqual({
-    kind: 'brief', cmd: 'agy', args: ['where I left off'], cwd: '/root/proj',
+    kind: 'brief', cmd: 'agy', args: ['where I left off'], cwd: '/home/dev/work/proj',
     prompt: 'where I left off',
   })
   expect(adapter.plan({ ...refs[0]!, cwd: null })).toBeNull()
@@ -66,12 +66,12 @@ test('plan fills known placeholders and preserves unknown placeholders', async (
   expect(adapter.plan(refs[0]!, '')).toEqual({
     kind: 'resume', cmd: 'agy',
     args: ['--conversation', '597b1c48-7b0c-434a-83d6-14e908a699b5', '{unknown}'],
-    cwd: '/root/proj',
+    cwd: '/home/dev/work/proj',
   })
 
   const search = buildAdapter({ ...agyManifest(), tier: 'search' })
   expect(search.plan(refs[0]!)).toEqual({
-    kind: 'brief', cmd: 'agy', args: [''], cwd: '/root/proj', prompt: '',
+    kind: 'brief', cmd: 'agy', args: [''], cwd: '/home/dev/work/proj', prompt: '',
   })
 })
 
@@ -303,18 +303,18 @@ const sharedStore = buildAdapter(validateManifest({
     freebuff: { name: 'Freebuff', tier: 'resume', resume: { cmd: 'freebuff', args: ['--continue', '{id}', '--cwd', '{cwd}'], cwd: '{cwd}' } },
   },
 }))
-const chat = { nativeId: '2026-08-17T12-49-44.401Z', cwd: '/root/proj' }
+const chat = { nativeId: '2026-08-17T12-49-44.401Z', cwd: '/home/dev/work/proj' }
 
 test('a chosen resume launcher reopens the session by id', () => {
   expect(sharedStore.plan(chat, undefined, 'freebuff')).toEqual({
     kind: 'resume', cmd: 'freebuff',
-    args: ['--continue', '2026-08-17T12-49-44.401Z', '--cwd', '/root/proj'], cwd: '/root/proj',
+    args: ['--continue', '2026-08-17T12-49-44.401Z', '--cwd', '/home/dev/work/proj'], cwd: '/home/dev/work/proj',
   })
 })
 
 test('a chosen search launcher briefs', () => {
   expect(sharedStore.plan(chat, 'the brief', 'codebuff')).toEqual({
-    kind: 'brief', cmd: 'codebuff', args: ['--cwd', '/root/proj', 'the brief'], cwd: '/root/proj',
+    kind: 'brief', cmd: 'codebuff', args: ['--cwd', '/home/dev/work/proj', 'the brief'], cwd: '/home/dev/work/proj',
     prompt: 'the brief',
   })
 })
@@ -343,9 +343,9 @@ test('the built-in Codebuff store opens in either Codebuff or Freebuff', () => {
   expect(adapter.manifest.name).toBe('Codebuff / Freebuff')
   expect(adapter.plan(chat, undefined, 'freebuff')).toEqual({
     kind: 'resume', cmd: 'freebuff',
-    args: ['--continue', chat.nativeId, '--cwd', '/root/proj'], cwd: '/root/proj',
+    args: ['--continue', chat.nativeId, '--cwd', '/home/dev/work/proj'], cwd: '/home/dev/work/proj',
   })
-  expect(adapter.plan(chat, 'the brief', 'codebuff')?.args).toEqual(['--cwd', '/root/proj', 'the brief'])
+  expect(adapter.plan(chat, 'the brief', 'codebuff')?.args).toEqual(['--cwd', '/home/dev/work/proj', 'the brief'])
 })
 
 test('canResume looks inside launchers', () => {

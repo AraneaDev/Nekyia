@@ -7,7 +7,7 @@ const NOW = 1_800_000_000_000
 
 function row(over: Partial<Row> = {}): Row {
   return {
-    uid: 'codebuff:c1', client: 'codebuff', nativeId: 'c1', cwd: '/root/proj',
+    uid: 'codebuff:c1', client: 'codebuff', nativeId: 'c1', cwd: '/home/dev/work/proj',
     gitBranch: 'main', title: 'a shared chat', startedAt: 0, endedAt: NOW,
     turns: 1, parentNativeId: null, tier: 'search', origin: 'manifest',
     missing: false, score: 0, collapsed: 0,

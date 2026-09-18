@@ -12,7 +12,7 @@ function seed(db: IndexDb, over: Partial<SessionRef>, text: Partial<SessionDoc> 
     uid: 'claude:a',
     client: 'claude',
     nativeId: 'a',
-    cwd: '/root/proj',
+    cwd: '/home/dev/work/proj',
     gitBranch: 'main',
     title: 'untitled',
     startedAt: NOW,
@@ -203,12 +203,12 @@ test('punctuation-only input is safe but operational FTS failures still propagat
 
 test('cwd scope normalizes boundaries, trailing separators, dot segments, and Windows paths', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:exact', nativeId: 'exact', cwd: '/root/proj' })
-  seed(db, { uid: 'claude:in', nativeId: 'in', cwd: '/root/proj/pkg/../sub' })
-  seed(db, { uid: 'claude:sibling', nativeId: 'sibling', cwd: '/root/project-other' })
+  seed(db, { uid: 'claude:exact', nativeId: 'exact', cwd: '/home/dev/work/proj' })
+  seed(db, { uid: 'claude:in', nativeId: 'in', cwd: '/home/dev/work/proj/pkg/../sub' })
+  seed(db, { uid: 'claude:sibling', nativeId: 'sibling', cwd: '/home/dev/work/project-other' })
   seed(db, { uid: 'claude:win', nativeId: 'win', cwd: 'C:\\Work\\Repo\\sub' })
   seed(db, { uid: 'claude:win-sibling', nativeId: 'win-sibling', cwd: 'C:\\Work\\Repository' })
-  expect(query(db, DEFAULT_CONFIG, { cwd: '/root/proj/', now: NOW }).map((r) => r.uid))
+  expect(query(db, DEFAULT_CONFIG, { cwd: '/home/dev/work/proj/', now: NOW }).map((r) => r.uid))
     .toEqual(['claude:exact', 'claude:in'])
   expect(query(db, DEFAULT_CONFIG, { cwd: 'c:/work/repo\\', now: NOW }).map((r) => r.uid))
     .toEqual(['claude:win'])
@@ -390,7 +390,7 @@ test('a row that earned its own score claims no other session', () => {
 test('a presentation overlay replaces a client\'s tier and label, and nothing else', () => {
   const db = IndexDb.open(':memory:')
   const ref: SessionRef = {
-    uid: 'codebuff:c1', client: 'codebuff', nativeId: 'c1', cwd: '/root/proj', gitBranch: null,
+    uid: 'codebuff:c1', client: 'codebuff', nativeId: 'c1', cwd: '/home/dev/work/proj', gitBranch: null,
     title: 'A shared chat', startedAt: 0, endedAt: 1_800_000_000_000, turns: 1,
     parentNativeId: null, tier: 'search', origin: 'manifest', sourcePaths: [], fingerprint: '',
   }
@@ -419,7 +419,7 @@ test('the overlay carries no launcher when the presentation entry has none', () 
   // inventing one.
   const db = IndexDb.open(':memory:')
   const ref: SessionRef = {
-    uid: 'codebuff:c1', client: 'codebuff', nativeId: 'c1', cwd: '/root/proj', gitBranch: null,
+    uid: 'codebuff:c1', client: 'codebuff', nativeId: 'c1', cwd: '/home/dev/work/proj', gitBranch: null,
     title: 'A shared chat', startedAt: 0, endedAt: 1_800_000_000_000, turns: 1,
     parentNativeId: null, tier: 'search', origin: 'manifest', sourcePaths: [], fingerprint: '',
   }

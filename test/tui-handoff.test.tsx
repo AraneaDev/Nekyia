@@ -11,7 +11,7 @@ import type { ExecPlan, SessionRef } from '../src/types'
 const databases: IndexDb[] = []
 afterEach(() => { cleanup(); for (const db of databases.splice(0)) db.close() })
 const tick = () => new Promise((resolve) => setTimeout(resolve, 35))
-const opts = { cwd: '/root/proj', now: 1800000000000, clipboard: null }
+const opts = { cwd: '/home/dev/work/proj', now: 1800000000000, clipboard: null }
 const available = () => ({ ok: true })
 
 function adapter(id: string, brief = true): Adapter {

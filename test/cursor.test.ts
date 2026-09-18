@@ -20,7 +20,7 @@ const FULL = 'c0ffee00-0000-4000-8000-000000000001'
 const NO_TRANSCRIPT = 'c0ffee00-0000-4000-8000-000000000004'
 
 test('the transcript folder is the cwd with its leading slash dropped and slashes as dashes', () => {
-  expect(transcriptFolder('/root/glyphfall')).toBe('root-glyphfall')
+  expect(transcriptFolder('/home/dev/work/proj')).toBe('home-dev-work-proj')
   expect(transcriptFolder('/root')).toBe('root')
 })
 
@@ -28,7 +28,7 @@ test('discovery reads cwd, title and millisecond times from meta.json', async ()
   const { refs, diagnostics } = await cursorReader.discover(manifest, FIX)
   const full = refs.find((ref) => ref.nativeId === FULL)!
   expect(full.uid).toBe(`cursor:${FULL}`)
-  expect(full.cwd).toBe('/root/proj')
+  expect(full.cwd).toBe('/home/dev/work/proj')
   expect(full.title).toBe('Codebase Scan')
   expect(full.startedAt).toBe(1789721537974)
   expect(full.endedAt).toBe(1789722691124)
@@ -61,7 +61,7 @@ test('hydration reads both sides of the conversation and never tool output', asy
   expect(doc.prompts).toEqual(['scan the repo for issues', 'yes'])
   expect(doc.prose).toEqual(['Scanning the whole repo for issues.', 'Found two problems in app.ts.'])
   expect(doc.dialogue?.map((turn) => turn.role)).toEqual(['user', 'assistant', 'assistant', 'user'])
-  expect(doc.files).toEqual(['/root/proj/src/app.ts'])
+  expect(doc.files).toEqual(['/home/dev/work/proj/src/app.ts'])
   expect(JSON.stringify(doc)).not.toContain('SECRET_TOOL_OUTPUT')
 })
 
@@ -92,14 +92,14 @@ test('a transcript that yields no text falls back to prompt_history.json', async
   // source path would fail the containment check hydrate applies.
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'nekyia-cursor-')))
   const nativeId = 'c0ffee00-0000-4000-8000-0000000000fe'
-  const cwd = '/root/proj'
+  const cwd = '/home/dev/work/proj'
   const transcriptDir = join(root, 'projects', transcriptFolder(cwd), 'agent-transcripts', nativeId)
   mkdirSync(transcriptDir, { recursive: true })
   writeFileSync(
     join(transcriptDir, `${nativeId}.jsonl`),
-    `${JSON.stringify({ role: 'assistant', message: { content: [{ type: 'tool_use', input: { path: '/root/proj/a.ts' } }] } })}\n`,
+    `${JSON.stringify({ role: 'assistant', message: { content: [{ type: 'tool_use', input: { path: '/home/dev/work/proj/a.ts' } }] } })}\n`,
   )
-  const chatDir = join(root, 'chats', 'ef8738aabf9379365c557ced89c9e405', nativeId)
+  const chatDir = join(root, 'chats', 'ffb1fdc4c4540bda52600202cbe79505', nativeId)
   mkdirSync(chatDir, { recursive: true })
   writeFileSync(join(chatDir, 'meta.json'), '{}')
   writeFileSync(join(chatDir, 'prompt_history.json'), JSON.stringify(['explain the build']))
@@ -112,7 +112,7 @@ test('a transcript that yields no text falls back to prompt_history.json', async
   }
   const doc = await cursorReader.hydrate(manifest, root, ref, DEFAULT_CONFIG)
   expect(doc.prompts).toEqual(['explain the build'])
-  expect(doc.files).toEqual(['/root/proj/a.ts'])
+  expect(doc.files).toEqual(['/home/dev/work/proj/a.ts'])
 })
 
 test('a duplicate path arriving after the file cap does not itself mark the session truncated', async () => {
@@ -122,16 +122,16 @@ test('a duplicate path arriving after the file cap does not itself mark the sess
   // after the cap is the one that should.
   const root = mkdtempSync(join(tmpdir(), 'nekyia-cursor-'))
   const nativeId = 'c0ffee00-0000-4000-8000-0000000000ff'
-  const cwd = '/root/proj'
+  const cwd = '/home/dev/work/proj'
   const transcriptDir = join(root, 'projects', transcriptFolder(cwd), 'agent-transcripts', nativeId)
   mkdirSync(transcriptDir, { recursive: true })
 
   const blocks = Array.from({ length: MAX_SESSION_FILES }, (_, index) => (
-    { type: 'tool_use', input: { path: `/root/proj/file-${index}.ts` } }
+    { type: 'tool_use', input: { path: `/home/dev/work/proj/file-${index}.ts` } }
   ))
   // One more block reusing the very first path: the set is already full and
   // already holds this path, so this must not be counted as a drop.
-  blocks.push({ type: 'tool_use', input: { path: '/root/proj/file-0.ts' } })
+  blocks.push({ type: 'tool_use', input: { path: '/home/dev/work/proj/file-0.ts' } })
   const line = JSON.stringify({ role: 'assistant', message: { content: blocks } })
   writeFileSync(join(transcriptDir, `${nativeId}.jsonl`), `${line}\n`)
 
@@ -145,7 +145,7 @@ test('a duplicate path arriving after the file cap does not itself mark the sess
   expect(doc.truncated).toBe(false)
 
   // A genuinely new path offered after the cap is the one that should mark it.
-  blocks.push({ type: 'tool_use', input: { path: '/root/proj/file-new.ts' } })
+  blocks.push({ type: 'tool_use', input: { path: '/home/dev/work/proj/file-new.ts' } })
   writeFileSync(join(transcriptDir, `${nativeId}.jsonl`), `${JSON.stringify({ role: 'assistant', message: { content: blocks } })}\n`)
   const truncatedDoc = await cursorReader.hydrate(manifest, root, ref, DEFAULT_CONFIG)
   expect(truncatedDoc.files).toHaveLength(MAX_SESSION_FILES)
@@ -165,7 +165,7 @@ test('a brief cannot be parsed as a cursor-agent subcommand, whatever note leads
   const adapter = buildAdapter(validateManifest(cursorManifest))
   for (const note of CURSOR_SUBCOMMANDS) {
     const brief = `${note}\n\n# Handover from a previous session\n\ncontext`
-    const plan = adapter.plan({ nativeId: FULL, cwd: '/root/proj' }, brief)!
+    const plan = adapter.plan({ nativeId: FULL, cwd: '/home/dev/work/proj' }, brief)!
     expect(plan.args).toHaveLength(1)
     expect(CURSOR_SUBCOMMANDS).not.toContain(plan.args[0]!)
   }
@@ -173,7 +173,7 @@ test('a brief cannot be parsed as a cursor-agent subcommand, whatever note leads
 
 test('the built-in Cursor client resumes by chat id', () => {
   const adapter = buildAdapter(validateManifest(cursorManifest))
-  expect(adapter.plan({ nativeId: FULL, cwd: '/root/proj' })).toEqual({
-    kind: 'resume', cmd: 'cursor-agent', args: ['--resume', FULL], cwd: '/root/proj',
+  expect(adapter.plan({ nativeId: FULL, cwd: '/home/dev/work/proj' })).toEqual({
+    kind: 'resume', cmd: 'cursor-agent', args: ['--resume', FULL], cwd: '/home/dev/work/proj',
   })
 })

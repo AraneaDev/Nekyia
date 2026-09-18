@@ -63,7 +63,7 @@ function indexed(db: IndexDb, uid: string, client: string): void {
     uid,
     client,
     nativeId: parseUid(uid).nativeId,
-    cwd: '/root/proj',
+    cwd: '/home/dev/work/proj',
     gitBranch: null,
     title: null,
     startedAt: 0,

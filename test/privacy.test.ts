@@ -38,7 +38,7 @@ afterEach(() => {
   rmSync(temporary, { recursive: true, force: true })
 })
 
-function seed(db: IndexDb, uid: string, cwd = '/root/proj') {
+function seed(db: IndexDb, uid: string, cwd = '/home/dev/work/proj') {
   const separator = uid.indexOf(':')
   const ref: SessionRef = {
     uid,

@@ -9,7 +9,7 @@ import type { DialogueTurn, FileEvent, FileEventKind, SessionRef, SessionDoc } f
 function ref(over: Partial<SessionRef> = {}): SessionRef {
   return {
     uid: 'claude:abc', client: 'claude', nativeId: 'abc',
-    cwd: '/root/proj', gitBranch: 'main', title: 'Fix the SSE reconnect race',
+    cwd: '/home/dev/work/proj', gitBranch: 'main', title: 'Fix the SSE reconnect race',
     startedAt: 1000, endedAt: 2000, turns: 12,
     parentNativeId: null, tier: 'resume', origin: 'manifest',
     sourcePaths: ['/a.jsonl'], fingerprint: '111:222',
@@ -318,7 +318,7 @@ function writeV1Index(path: string): void {
         missing, truncated, hydrated
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      'claude:old', 'claude', 'old', '/root/proj', 'main', 'An indexed v1 session',
+      'claude:old', 'claude', 'old', '/home/dev/work/proj', 'main', 'An indexed v1 session',
       1000, 2000, 7, null, 'resume', 'manifest', JSON.stringify(['/a.jsonl']), 'fp-v1',
       1, 1, 1,
     )
@@ -347,7 +347,7 @@ function writeV2Index(path: string): void {
         missing, truncated, hydrated, degraded
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      'claude:two', 'claude', 'two', '/root/proj', 'main', 'An indexed v2 session',
+      'claude:two', 'claude', 'two', '/home/dev/work/proj', 'main', 'An indexed v2 session',
       1000, 2000, 9, null, 'resume', 'manifest', JSON.stringify(['/b.jsonl']), 'fp-v2',
       0, 1, 1, 1,
     )
@@ -410,7 +410,7 @@ test('a real version 1 index migrates to the current schema with every row intac
 
       const stored = db.getRef('claude:old')!
       expect(stored.title).toBe('An indexed v1 session')
-      expect(stored.cwd).toBe('/root/proj')
+      expect(stored.cwd).toBe('/home/dev/work/proj')
       expect(stored.turns).toBe(7)
       expect(stored.sourcePaths).toEqual(['/a.jsonl'])
       expect(stored.fingerprint).toBe('fp-v1')
@@ -700,7 +700,7 @@ test('uidsUnderPrefix is served by the path indices rather than scanning', () =>
   const plans = ['session_file_event', 'session_file'].map((table) => (
     db.raw().query(
       `EXPLAIN QUERY PLAN SELECT DISTINCT uid FROM ${table} WHERE path >= ? AND path < ?`,
-    ).all('/root/proj/', '/root/proj0') as Array<{ detail: string }>
+    ).all('/home/dev/work/proj/', '/home/dev/work/proj0') as Array<{ detail: string }>
   ).map((row) => row.detail).join(' '))
   // A prefix `LIKE` scanned both tables here, because SQLite only turns one
   // into a range when the column collation matches `case_sensitive_like`.

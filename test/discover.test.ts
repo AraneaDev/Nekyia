@@ -22,7 +22,7 @@ function ref(client: string, nativeId: string, over: Partial<SessionRef> = {}): 
     uid: `${client}:${nativeId}`,
     client,
     nativeId,
-    cwd: '/root/proj',
+    cwd: '/home/dev/work/proj',
     gitBranch: null,
     title: nativeId,
     startedAt: 1,
@@ -120,7 +120,7 @@ test('excluded directories never reach the index', async () => {
   const db = IndexDb.open(':memory:')
   const result = await scan(db, {
     ...DEFAULT_CONFIG,
-    exclude: ['/root/proj/**', '/root/proj'],
+    exclude: ['/home/dev/work/proj/**', '/home/dev/work/proj'],
   }, [claude])
   expect(result.refs).toEqual([])
   expect(result.changed).toEqual([])
@@ -332,11 +332,11 @@ test('sidecar entry changes affect only their matching session fingerprint', asy
   const firstId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
   const secondId = 'ffffffff-1111-2222-3333-444444444444'
   writeFileSync(join(sessions, 'first.jsonl'), [
-    JSON.stringify({ type: 'session_meta', payload: { session_id: firstId, cwd: '/root/proj' } }),
+    JSON.stringify({ type: 'session_meta', payload: { session_id: firstId, cwd: '/home/dev/work/proj' } }),
     JSON.stringify({ type: 'event_msg', payload: { type: 'user_message', message: 'from transcript' } }),
   ].join('\n'))
   writeFileSync(join(sessions, 'second.jsonl'), [
-    JSON.stringify({ type: 'session_meta', payload: { session_id: secondId, cwd: '/root/other' } }),
+    JSON.stringify({ type: 'session_meta', payload: { session_id: secondId, cwd: '/home/dev/work/other' } }),
     JSON.stringify({ type: 'event_msg', payload: { type: 'user_message', message: 'second transcript' } }),
   ].join('\n'))
   const history = join(root, 'history.jsonl')

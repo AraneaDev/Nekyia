@@ -38,7 +38,7 @@ function withAct(action: () => void): void {
 
 function row(i: number): Row {
   return {
-    uid: `claude:${i}`, client: 'claude', nativeId: String(i), cwd: '/root/proj',
+    uid: `claude:${i}`, client: 'claude', nativeId: String(i), cwd: '/home/dev/work/proj',
     gitBranch: 'main', title: `session ${i}`, startedAt: 0, endedAt: NOW,
     turns: 1, parentNativeId: null, tier: 'resume', origin: 'manifest',
     missing: false, score: 0, collapsed: 0,
@@ -203,13 +203,13 @@ test('bidi formatting controls are stripped from every untrusted display field',
 
 test('useSessions composes text, scope and client filters and resets selection', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:one', nativeId: 'one', title: 'needle', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:one', nativeId: 'one', title: 'needle', cwd: '/home/dev/work/proj' })
   seed(db, { uid: 'codex:two', client: 'codex', nativeId: 'two', title: 'needle', cwd: '/else' })
-  seed(db, { uid: 'claude:three', nativeId: 'three', title: 'other', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:three', nativeId: 'three', title: 'other', cwd: '/home/dev/work/proj' })
 
   let state: SessionsState | undefined
   function Harness() {
-    const current = useSessions(db, DEFAULT_CONFIG, '/root/proj')
+    const current = useSessions(db, DEFAULT_CONFIG, '/home/dev/work/proj')
     useEffect(() => { state = current })
     return null
   }
@@ -252,10 +252,10 @@ function mountSessions(db: IndexDb, cwd: string, cfg = DEFAULT_CONFIG) {
 
 test('the client cycle holds only clients the index has, and always offers all of them', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'opencode:one', client: 'opencode', nativeId: 'one', cwd: '/root/proj' })
-  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'opencode:one', client: 'opencode', nativeId: 'one', cwd: '/home/dev/work/proj' })
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/home/dev/work/proj' })
 
-  const { view, read } = mountSessions(db, '/root/proj')
+  const { view, read } = mountSessions(db, '/home/dev/work/proj')
   // No entry for the built-in clients this machine has never used: every step
   // lands on a filter that has something behind it.
   expect(read().clientCycle).toEqual([undefined, 'claude', 'opencode'])
@@ -276,11 +276,11 @@ test('the client cycle holds only clients the index has, and always offers all o
 
 test('a hidden client is left out of the cycle it could only ever show nothing for', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
-  seed(db, { uid: 'codex:one', client: 'codex', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/home/dev/work/proj' })
+  seed(db, { uid: 'codex:one', client: 'codex', nativeId: 'one', cwd: '/home/dev/work/proj' })
 
   const cfg = { ...DEFAULT_CONFIG, hiddenClients: ['codex'] }
-  const { view, read } = mountSessions(db, '/root/proj', cfg)
+  const { view, read } = mountSessions(db, '/home/dev/work/proj', cfg)
   expect(read().clientCycle).toEqual([undefined, 'claude'])
   view.unmount()
   db.close()
@@ -288,7 +288,7 @@ test('a hidden client is left out of the cycle it could only ever show nothing f
 
 test('an index with nothing in it still cycles instead of getting stuck', () => {
   const db = IndexDb.open(':memory:')
-  const { view, read } = mountSessions(db, '/root/proj')
+  const { view, read } = mountSessions(db, '/home/dev/work/proj')
   expect(read().clientCycle).toEqual([undefined])
   withAct(() => read().cycleClient())
   expect(read().client).toBeUndefined()
@@ -299,8 +299,8 @@ test('an index with nothing in it still cycles instead of getting stuck', () => 
 
 test('a client filter the cycle no longer holds steps back to all clients', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
-  const { view, read } = mountSessions(db, '/root/proj')
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/home/dev/work/proj' })
+  const { view, read } = mountSessions(db, '/home/dev/work/proj')
   // The state a filter is left in when the sessions behind it are removed.
   withAct(() => read().setClient('codex'))
   expect(read().rows).toEqual([])
@@ -313,10 +313,10 @@ test('a client filter the cycle no longer holds steps back to all clients', () =
 
 test('the picker opens scoped to a project it has sessions for', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/home/dev/work/proj' })
   seed(db, { uid: 'claude:two', nativeId: 'two', cwd: '/elsewhere' })
-  const { view, read } = mountSessions(db, '/root/proj')
-  expect(read().scope).toBe('/root/proj')
+  const { view, read } = mountSessions(db, '/home/dev/work/proj')
+  expect(read().scope).toBe('/home/dev/work/proj')
   expect(read().rows.map((item) => item.uid)).toEqual(['claude:one'])
   view.unmount()
   db.close()
@@ -324,9 +324,9 @@ test('the picker opens scoped to a project it has sessions for', () => {
 
 test('a subdirectory of a project it has sessions for opens scoped as well', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj/src/deep' })
-  const { view, read } = mountSessions(db, '/root/proj')
-  expect(read().scope).toBe('/root/proj')
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/home/dev/work/proj/src/deep' })
+  const { view, read } = mountSessions(db, '/home/dev/work/proj')
+  expect(read().scope).toBe('/home/dev/work/proj')
   expect(read().rows.map((item) => item.uid)).toEqual(['claude:one'])
   view.unmount()
   db.close()
@@ -336,7 +336,7 @@ test('the home directory opens on the whole index, sessions of its own or not', 
   const db = IndexDb.open(':memory:')
   const home = homedir()
   seed(db, { uid: 'claude:home', nativeId: 'home', cwd: home })
-  seed(db, { uid: 'claude:proj', nativeId: 'proj', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:proj', nativeId: 'proj', cwd: '/home/dev/work/proj' })
   // Scoping here would hide every project under it, and the home directory is
   // where the fewest sessions are actually worked on.
   const { view, read } = mountSessions(db, home)
@@ -348,7 +348,7 @@ test('the home directory opens on the whole index, sessions of its own or not', 
 
 test('a filesystem root opens on the whole index rather than on everything below it', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/home/dev/work/proj' })
   // Every session is under "/", so only the root rule can widen this one.
   const { view, read } = mountSessions(db, '/')
   expect(read().scope).toBeNull()
@@ -364,7 +364,7 @@ test('a filesystem root opens on the whole index rather than on everything below
 
 test('a directory with nothing indexed under it opens on the whole index', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/home/dev/work/proj' })
   // A fresh clone, or a project that has never been indexed: an empty picker is
   // never the useful answer.
   const { view, read } = mountSessions(db, '/root/unindexed')
@@ -373,19 +373,19 @@ test('a directory with nothing indexed under it opens on the whole index', () =>
 
   // Tab still narrows from there, to the project of the row under the cursor.
   withAct(() => read().toggleScope())
-  expect(read().scope).toBe('/root/proj')
+  expect(read().scope).toBe('/home/dev/work/proj')
   view.unmount()
   db.close()
 })
 
 test('a directory whose only sessions are hidden opens on the whole index', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'codex:one', client: 'codex', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'codex:one', client: 'codex', nativeId: 'one', cwd: '/home/dev/work/proj' })
   seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/elsewhere' })
   // The starting scope is decided by the query the list runs, so a directory
   // whose rows are all filtered out counts as having nothing indexed under it.
   const cfg = { ...DEFAULT_CONFIG, hiddenClients: ['codex'] }
-  const { view, read } = mountSessions(db, '/root/proj', cfg)
+  const { view, read } = mountSessions(db, '/home/dev/work/proj', cfg)
   expect(read().scope).toBeNull()
   view.unmount()
   db.close()
@@ -393,11 +393,11 @@ test('a directory whose only sessions are hidden opens on the whole index', () =
 
 test('useSessions clamps selection after filtering and move is stable and empty-safe', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:one', nativeId: 'one', title: 'one', cwd: '/root/proj' })
-  seed(db, { uid: 'claude:two', nativeId: 'two', title: 'two', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:one', nativeId: 'one', title: 'one', cwd: '/home/dev/work/proj' })
+  seed(db, { uid: 'claude:two', nativeId: 'two', title: 'two', cwd: '/home/dev/work/proj' })
   let state: SessionsState | undefined
   function Harness() {
-    const current = useSessions(db, DEFAULT_CONFIG, '/root/proj')
+    const current = useSessions(db, DEFAULT_CONFIG, '/home/dev/work/proj')
     useEffect(() => { state = current })
     return null
   }
@@ -428,7 +428,7 @@ test('useSessions clamps selection after filtering and move is stable and empty-
 
 test('equivalent config identities do not rerun the query', () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/root/proj' })
+  seed(db, { uid: 'claude:one', nativeId: 'one', cwd: '/home/dev/work/proj' })
   const originalSearchRefs = db.searchRefs.bind(db)
   let sessionSelects = 0
   db.searchRefs = (() => {
@@ -441,7 +441,7 @@ test('equivalent config identities do not rerun the query', () => {
   function Harness() {
     const [, setTick] = React.useState(0)
     rerender = () => setTick((tick) => tick + 1)
-    rows = useSessions(db, { ...DEFAULT_CONFIG, hiddenClients: [] }, '/root/proj').rows
+    rows = useSessions(db, { ...DEFAULT_CONFIG, hiddenClients: [] }, '/home/dev/work/proj').rows
     return null
   }
   const view = render(<Harness />)

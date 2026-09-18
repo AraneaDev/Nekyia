@@ -21,7 +21,7 @@ afterEach(() => {
 test('discovers sessions from the json tree', async () => {
   const { refs } = await discoverLegacy(m, join(FIX, 'opencode'))
   expect(refs.map((r) => r.nativeId)).toEqual(['ses_old'])
-  expect(refs[0]!.cwd).toBe('/root/legacy')
+  expect(refs[0]!.cwd).toBe('/home/dev/work/legacy')
   expect(refs[0]!.title).toBe('An older session from the json era')
   expect(refs[0]!.startedAt).toBe(1780000000000)
 })
@@ -295,7 +295,7 @@ test('legacy discovery reads time in the unit the manifest declares', async () =
   put(root, join('storage', 'session', 'proj', 'ses_seconds.json'), {
     id: 'ses_seconds',
     projectID: 'proj',
-    directory: '/root/proj',
+    directory: '/home/dev/work/proj',
     title: 'a seconds-based store',
     time: { created: 1_787_640_881, updated: 1_787_640_941 },
   })
@@ -321,7 +321,7 @@ test('a legacy session id that could never round-trip through a uid is refused',
   put(root, path, {
     id: 'ses\u202ebad',
     projectID: 'proj',
-    directory: '/root/proj',
+    directory: '/home/dev/work/proj',
     title: 'a hostile id',
     time: { created: 1, updated: 2 },
   })
@@ -342,7 +342,7 @@ test('legacy hydration stops recovering paths at the per-session ceiling', async
   put(root, join('storage', 'session', 'proj', 'ses_many.json'), {
     id: 'ses_many',
     projectID: 'proj',
-    directory: '/root/proj',
+    directory: '/home/dev/work/proj',
     title: 'many files',
     time: { created: 1, updated: 2 },
   })
@@ -357,7 +357,7 @@ test('legacy hydration stops recovering paths at the per-session ceiling', async
     state: {
       input: {
         edits: Array.from({ length: 1100 }, (_unused, index) => ({
-          filePath: `/root/proj/file-${index}.ts`,
+          filePath: `/home/dev/work/proj/file-${index}.ts`,
         })),
       },
     },
