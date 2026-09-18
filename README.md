@@ -190,9 +190,10 @@ deterministic handover, and starts a new client session with that context.
 | --- | --- |
 | type | Filter as you go; the match is lit in each title |
 | `up` / `down` | Move the cursor, or scroll the history while it is open |
-| `enter` | Resume the session, or start a briefed one once you confirm it |
+| `enter` | Resume the session, or start a briefed one once you confirm it; on a row for a store two clients share, the first Enter asks which client instead, when both are installed |
 | `ctrl+o` | Open the session's history, and close it again |
 | `ctrl+t` | Choose another client and confirm a fresh session with this session's context (`r` for a review framing, `n` for a custom note) |
+| `ctrl+l` | Choose which client opens a store that Codebuff and Freebuff share |
 | `tab` | Widen to everywhere, or narrow to the project under the cursor |
 | `ctrl+f` | Cycle the clients your index actually holds |
 | `ctrl+p` / `ctrl+y` | Copy the opening prompt, or the command that would run |
