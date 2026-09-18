@@ -193,8 +193,12 @@ export function canBrief(manifest: Manifest): boolean {
 
 /** Whether a client can reopen a session by id at all, directly or through one of its launchers. */
 export function canResume(manifest: Manifest): boolean {
-  return !!manifest.resume
-    || Object.values(manifest.launchers ?? {}).some((launcher) => !!launcher.resume)
+  // plan() picks the resume command only for a resume-tier source, so a resume
+  // block on a search-tier client is never launched and must not count here.
+  return (manifest.tier === 'resume' && !!manifest.resume)
+    || Object.values(manifest.launchers ?? {}).some(
+      (launcher) => launcher.tier === 'resume' && !!launcher.resume,
+    )
 }
 
 /**
