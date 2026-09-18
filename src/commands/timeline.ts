@@ -2,8 +2,27 @@ import { existsSync } from 'node:fs'
 import { indexPath, loadConfig } from '../config'
 import { IndexDb } from '../core/db'
 import { trackedFiles } from '../core/git'
+import { defaultOnPath, presentations, type Presentation } from '../core/launcher'
 import { timeline } from '../core/timeline'
+import { loadManifests } from '../manifests/load'
 import { formatTimeline } from '../render'
+import type { Tier } from '../types'
+
+/**
+ * Applies the client presentation overlay to a stored tier, the same way
+ * `search`'s rows are re-tiered, so a chosen Freebuff shows as `resume` here
+ * too without needing a reindex. `launcher` is set only when the overlay
+ * actually resolved one (never while asking or unavailable).
+ */
+export function presentedTier(
+  client: string,
+  storedTier: Tier,
+  presentation: Map<string, Presentation>,
+): { tier: Tier; launcher?: string } {
+  const shown = presentation.get(client)
+  if (!shown) return { tier: storedTier }
+  return { tier: shown.tier, ...(shown.launcher === undefined ? {} : { launcher: shown.launcher }) }
+}
 
 /** Everything the timeline command accepts, mirroring its flags. */
 export interface TimelineCommandOptions {
@@ -42,7 +61,7 @@ export function parseSince(value: string, now: number = Date.now()): number {
  * file-event schema landed still gets an answer instead of a crash.
  */
 export async function runTimeline(opts: TimelineCommandOptions): Promise<number> {
-  loadConfig()
+  const cfg = loadConfig()
   const path = indexPath()
   if (!existsSync(path)) {
     // The same shape as an answered run, so a caller can reach `.sessions`
@@ -69,36 +88,44 @@ export async function runTimeline(opts: TimelineCommandOptions): Promise<number>
     })
     const git = await trackedFiles(opts.dir)
     if (opts.json) {
+      const presentation = presentations(loadManifests().manifests, cfg, defaultOnPath())
       console.log(JSON.stringify({
         dir: opts.dir,
         since: opts.since ?? null,
         git: { consulted: git.consulted },
-        sessions: sessions.map((session) => ({
-          uid: session.ref.uid,
-          client: session.ref.client,
-          cwd: session.ref.cwd,
-          title: session.ref.title,
-          endedAt: session.ref.endedAt,
-          tier: session.ref.tier,
-          // Whether the transcript these events came from is still on disk.
-          // When it is not, `sourcePaths` names a file the caller cannot open,
-          // and saying so is the point in a command about lost work.
-          missing: session.ref.missing,
-          // Provenance, so a caller can open the transcript itself rather than
-          // trust the indexed summary. The index says where; the transcript
-          // says what.
-          sourcePaths: db.getRef(session.ref.uid)?.sourcePaths ?? [],
-          fileDetail: session.detail,
-          eventsTruncated: session.eventsTruncated,
-          events: session.entries.map((entry) => ({
-            ordinal: entry.ordinal,
-            turn: entry.turn,
-            kind: entry.kind,
-            path: entry.path,
-            resolved: entry.resolved,
-            tracked: git.consulted ? git.tracked.has(entry.resolved) : null,
-          })),
-        })),
+        sessions: sessions.map((session) => {
+          const presented = presentedTier(session.ref.client, session.ref.tier, presentation)
+          return {
+            uid: session.ref.uid,
+            client: session.ref.client,
+            cwd: session.ref.cwd,
+            title: session.ref.title,
+            endedAt: session.ref.endedAt,
+            tier: presented.tier,
+            // Present only when the overlay actually resolved a launcher for
+            // this client, mirroring `search`'s `publicRow` so a caller never
+            // reads a launcher name that was never chosen.
+            ...(presented.launcher === undefined ? {} : { launcher: presented.launcher }),
+            // Whether the transcript these events came from is still on disk.
+            // When it is not, `sourcePaths` names a file the caller cannot open,
+            // and saying so is the point in a command about lost work.
+            missing: session.ref.missing,
+            // Provenance, so a caller can open the transcript itself rather than
+            // trust the indexed summary. The index says where; the transcript
+            // says what.
+            sourcePaths: db.getRef(session.ref.uid)?.sourcePaths ?? [],
+            fileDetail: session.detail,
+            eventsTruncated: session.eventsTruncated,
+            events: session.entries.map((entry) => ({
+              ordinal: entry.ordinal,
+              turn: entry.turn,
+              kind: entry.kind,
+              path: entry.path,
+              resolved: entry.resolved,
+              tracked: git.consulted ? git.tracked.has(entry.resolved) : null,
+            })),
+          }
+        }),
       }, null, 2))
     } else if (sessions.length === 0) {
       console.error('no sessions touched this directory')
