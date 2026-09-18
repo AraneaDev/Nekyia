@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "id": "codebuff",
-  "name": "Codebuff",
+  "name": "Codebuff / Freebuff",
   "roots": ["~/.config/manicode"],
   "format": "json-dir",
   "tier": "search",
@@ -9,9 +9,24 @@
     "glob": "projects/*/chats/*",
     "variant": "codebuff"
   },
-  "brief": {
-    "cmd": "codebuff",
-    "args": ["--cwd", "{cwd}", "{prompt}"],
-    "cwd": "{cwd}"
+  "launchers": {
+    "codebuff": {
+      "name": "Codebuff",
+      "tier": "search",
+      "brief": {
+        "cmd": "codebuff",
+        "args": ["--cwd", "{cwd}", "{prompt}"],
+        "cwd": "{cwd}"
+      }
+    },
+    "freebuff": {
+      "name": "Freebuff",
+      "tier": "resume",
+      "resume": {
+        "cmd": "freebuff",
+        "args": ["--continue", "{id}", "--cwd", "{cwd}"],
+        "cwd": "{cwd}"
+      }
+    }
   }
 }

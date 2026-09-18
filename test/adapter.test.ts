@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
 import { buildAdapter, buildAdapters, canBrief } from '../src/core/adapter'
 import { validateManifest, type Manifest } from '../src/manifests/load'
+import codebuffManifest from '../src/manifests/builtin/codebuff.json'
 
 const FIX = join(import.meta.dir, 'fixtures')
 const tempDirs: string[] = []
@@ -329,4 +330,14 @@ test('without a prompt, a launchers manifest needs to be told which launcher', (
 
 test('canBrief looks inside launchers', () => {
   expect(canBrief(sharedStore.manifest)).toBe(true)
+})
+
+test('the built-in Codebuff store opens in either Codebuff or Freebuff', () => {
+  const adapter = buildAdapter(validateManifest(codebuffManifest))
+  expect(adapter.manifest.name).toBe('Codebuff / Freebuff')
+  expect(adapter.plan(chat, undefined, 'freebuff')).toEqual({
+    kind: 'resume', cmd: 'freebuff',
+    args: ['--continue', chat.nativeId, '--cwd', '/root/proj'], cwd: '/root/proj',
+  })
+  expect(adapter.plan(chat, 'the brief', 'codebuff')?.args).toEqual(['--cwd', '/root/proj', 'the brief'])
 })
