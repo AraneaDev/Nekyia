@@ -78,7 +78,7 @@ function executableAt(path: string): boolean {
 /**
  * Resolves a command to its absolute executable path, either directly or via the PATH environment variable.
  */
-function resolveCommand(command: string, cwd: string): string | undefined {
+export function resolveCommand(command: string, cwd: string): string | undefined {
   if (command.includes('/')) {
     const path = isAbsolute(command) ? command : resolve(cwd, command)
     return executableAt(path) ? path : undefined
