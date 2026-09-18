@@ -386,3 +386,28 @@ test('a row that earned its own score claims no other session', () => {
   expect(rows[0]!.matchedUid).toBeUndefined()
   db.close()
 })
+
+test('a presentation overlay replaces a client\'s tier and label, and nothing else', () => {
+  const db = IndexDb.open(':memory:')
+  const ref: SessionRef = {
+    uid: 'codebuff:c1', client: 'codebuff', nativeId: 'c1', cwd: '/root/proj', gitBranch: null,
+    title: 'A shared chat', startedAt: 0, endedAt: 1_800_000_000_000, turns: 1,
+    parentNativeId: null, tier: 'search', origin: 'manifest', sourcePaths: [], fingerprint: '',
+  }
+  db.upsertRef(ref)
+  db.upsertDoc({ ref, prompts: ['a prompt'], prose: [], files: [], truncated: false })
+
+  const plain = query(db, DEFAULT_CONFIG, { now: 1_800_000_000_000 })
+  expect(plain[0]!.tier).toBe('search')
+  expect(plain[0]!.clientLabel).toBeUndefined()
+
+  const shown = query(db, DEFAULT_CONFIG, {
+    now: 1_800_000_000_000,
+    presentation: new Map([['codebuff', { tier: 'resume' as const, label: 'freebuff' }]]),
+  })
+  expect(shown[0]!.tier).toBe('resume')
+  expect(shown[0]!.clientLabel).toBe('freebuff')
+  expect(shown[0]!.client).toBe('codebuff')
+  expect(shown[0]!.uid).toBe('codebuff:c1')
+  db.close()
+})
