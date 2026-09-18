@@ -403,11 +403,34 @@ test('a presentation overlay replaces a client\'s tier and label, and nothing el
 
   const shown = query(db, DEFAULT_CONFIG, {
     now: 1_800_000_000_000,
-    presentation: new Map([['codebuff', { tier: 'resume' as const, label: 'freebuff' }]]),
+    presentation: new Map([['codebuff', { tier: 'resume' as const, label: 'freebuff', launcher: 'freebuff' }]]),
   })
   expect(shown[0]!.tier).toBe('resume')
   expect(shown[0]!.clientLabel).toBe('freebuff')
+  expect(shown[0]!.launcher).toBe('freebuff')
   expect(shown[0]!.client).toBe('codebuff')
   expect(shown[0]!.uid).toBe('codebuff:c1')
+  db.close()
+})
+
+test('the overlay carries no launcher when the presentation entry has none', () => {
+  // An `ask` or `none` launcher state produces a Presentation with a display
+  // label but no `launcher`; the row must reflect that absence rather than
+  // inventing one.
+  const db = IndexDb.open(':memory:')
+  const ref: SessionRef = {
+    uid: 'codebuff:c1', client: 'codebuff', nativeId: 'c1', cwd: '/root/proj', gitBranch: null,
+    title: 'A shared chat', startedAt: 0, endedAt: 1_800_000_000_000, turns: 1,
+    parentNativeId: null, tier: 'search', origin: 'manifest', sourcePaths: [], fingerprint: '',
+  }
+  db.upsertRef(ref)
+  db.upsertDoc({ ref, prompts: ['a prompt'], prose: [], files: [], truncated: false })
+
+  const shown = query(db, DEFAULT_CONFIG, {
+    now: 1_800_000_000_000,
+    presentation: new Map([['codebuff', { tier: 'search' as const, label: 'codebuff' }]]),
+  })
+  expect(shown[0]!.clientLabel).toBe('codebuff')
+  expect(shown[0]!.launcher).toBeUndefined()
   db.close()
 })
