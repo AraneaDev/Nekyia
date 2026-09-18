@@ -4,7 +4,7 @@ import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writ
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
-import { buildAdapter, buildAdapters } from '../src/core/adapter'
+import { buildAdapter, buildAdapters, canBrief } from '../src/core/adapter'
 import { validateManifest, type Manifest } from '../src/manifests/load'
 
 const FIX = join(import.meta.dir, 'fixtures')
@@ -291,4 +291,42 @@ test('the shared prompt log is read once a run, not once per session', async () 
     spy.mockRestore()
   }
   expect(opened).toHaveLength(1)
+})
+
+const sharedStore = buildAdapter(validateManifest({
+  schema: 1, id: 'codebuff', name: 'Codebuff / Freebuff', roots: ['/nonexistent'],
+  format: 'json-dir', tier: 'search',
+  jsonDir: { glob: 'projects/*/chats/*', variant: 'codebuff' },
+  launchers: {
+    codebuff: { name: 'Codebuff', tier: 'search', brief: { cmd: 'codebuff', args: ['--cwd', '{cwd}', '{prompt}'], cwd: '{cwd}' } },
+    freebuff: { name: 'Freebuff', tier: 'resume', resume: { cmd: 'freebuff', args: ['--continue', '{id}', '--cwd', '{cwd}'], cwd: '{cwd}' } },
+  },
+}))
+const chat = { nativeId: '2026-08-17T12-49-44.401Z', cwd: '/root/proj' }
+
+test('a chosen resume launcher reopens the session by id', () => {
+  expect(sharedStore.plan(chat, undefined, 'freebuff')).toEqual({
+    kind: 'resume', cmd: 'freebuff',
+    args: ['--continue', '2026-08-17T12-49-44.401Z', '--cwd', '/root/proj'], cwd: '/root/proj',
+  })
+})
+
+test('a chosen search launcher briefs', () => {
+  expect(sharedStore.plan(chat, 'the brief', 'codebuff')).toEqual({
+    kind: 'brief', cmd: 'codebuff', args: ['--cwd', '/root/proj', 'the brief'], cwd: '/root/proj',
+    prompt: 'the brief',
+  })
+})
+
+test('a brief goes to a launcher that can take one, even when the chosen one cannot', () => {
+  expect(sharedStore.plan(chat, 'the brief', 'freebuff')?.cmd).toBe('codebuff')
+  expect(sharedStore.plan(chat, 'the brief')?.cmd).toBe('codebuff')
+})
+
+test('without a prompt, a launchers manifest needs to be told which launcher', () => {
+  expect(sharedStore.plan(chat)).toBeNull()
+})
+
+test('canBrief looks inside launchers', () => {
+  expect(canBrief(sharedStore.manifest)).toBe(true)
 })

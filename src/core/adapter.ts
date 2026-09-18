@@ -5,9 +5,9 @@ import type { Config } from '../config'
 import { discoverLegacy, hydrateLegacy } from '../formats/opencode-legacy'
 import { readSidecar, type SidecarEntry } from '../formats/prompt-sidecar'
 import { FORMAT_MODULES } from '../formats/registry'
-import type { Manifest, ManifestSource } from '../manifests/load'
+import type { CommandSpec, Manifest, ManifestSource } from '../manifests/load'
 import { expandRoot, loadManifests, renderArgs } from '../manifests/load'
-import type { Diagnostic, ExecPlan, Origin, SessionDoc, SessionRef } from '../types'
+import type { Diagnostic, ExecPlan, Origin, SessionDoc, SessionRef, Tier } from '../types'
 
 /**
  * The part of a session a launch is planned from.
@@ -31,7 +31,7 @@ export interface Adapter {
   discover(): Promise<AdapterDiscovery>
   hydrate(ref: SessionRef, cfg: Config): Promise<SessionDoc>
   /** Returns null when no plan is possible, for example a session with no cwd. */
-  plan(ref: PlanTarget, promptText?: string): ExecPlan | null
+  plan(ref: PlanTarget, promptText?: string, launcher?: string): ExecPlan | null
 }
 
 /**
@@ -160,6 +160,32 @@ function includeSidecarEntry(ref: SessionRef, path: string, entry: SidecarEntry)
     .update(JSON.stringify([entry.prompts, entry.firstTs, entry.lastTs, entry.cwd]))
     .digest('hex')
   ref.fingerprint = JSON.stringify([ref.fingerprint, digest])
+}
+
+/**
+ * Where `plan` takes its commands from: the manifest itself, or one of its named launchers.
+ */
+function commandSource(
+  manifest: Manifest,
+  promptText: string | undefined,
+  launcher: string | undefined,
+): { tier: Tier; resume?: CommandSpec; brief?: CommandSpec } | null {
+  const launchers = manifest.launchers
+  if (!launchers) return manifest
+  if (promptText) {
+    const named = launcher === undefined ? undefined : launchers[launcher]
+    if (named?.brief) return named
+    return Object.values(launchers).find((candidate) => candidate.brief) ?? null
+  }
+  return launcher === undefined ? null : launchers[launcher] ?? null
+}
+
+/**
+ * Whether a client can start a briefed session at all, directly or through one of its launchers.
+ */
+export function canBrief(manifest: Manifest): boolean {
+  return !!manifest.brief
+    || Object.values(manifest.launchers ?? {}).some((launcher) => !!launcher.brief)
 }
 
 /**
@@ -350,10 +376,12 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
     /**
      * Generates an execution plan for launching or resuming a session, based on manifest specs.
      */
-    plan(ref, promptText) {
+    plan(ref, promptText, launcher) {
       try {
-        const useResume = manifest.tier === 'resume' && !!manifest.resume && !promptText
-        const spec = useResume ? manifest.resume! : manifest.brief
+        const source = commandSource(manifest, promptText, launcher)
+        if (!source) return null
+        const useResume = source.tier === 'resume' && !!source.resume && !promptText
+        const spec = useResume ? source.resume! : source.brief
         if (!spec) return null
         const sessionCwd = ref.cwd
         // {cwd} is left unsupplied for a session that recorded no directory, so
