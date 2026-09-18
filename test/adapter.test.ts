@@ -356,7 +356,17 @@ test('canResume looks inside launchers', () => {
     jsonl: { glob: '*.jsonl', variant: 'claude' },
     resume: { cmd: 'test', args: ['--resume', '{id}'], cwd: '{cwd}' },
   })
-  expect(canResume(withTopLevel)).toBe(true)
+  // A resume command on a search-tier client is never planned: plan() follows
+  // the tier, so reporting it as resumable would promise a launch that
+  // cannot happen.
+  expect(canResume(withTopLevel)).toBe(false)
+  const resumeTier = validateManifest({
+    schema: 1, id: 'test', name: 'Test', roots: ['/nonexistent'],
+    format: 'jsonl-transcript', tier: 'resume',
+    jsonl: { glob: '*.jsonl', variant: 'claude' },
+    resume: { cmd: 'test', args: ['--resume', '{id}'], cwd: '{cwd}' },
+  })
+  expect(canResume(resumeTier)).toBe(true)
   const briefOnly = validateManifest({
     schema: 1, id: 'test', name: 'Test', roots: ['/tmp'],
     format: 'jsonl-transcript', tier: 'search',
