@@ -1,0 +1,74 @@
+import { expect, test } from 'bun:test'
+import { DEFAULT_CONFIG, type Config } from '../src/config'
+import {
+  nextLauncher, presentationFor, presentations, resolveLauncher,
+} from '../src/core/launcher'
+import { validateManifest } from '../src/manifests/load'
+
+const shared = validateManifest({
+  schema: 1, id: 'codebuff', name: 'Codebuff / Freebuff', roots: ['/nonexistent'],
+  format: 'json-dir', tier: 'search',
+  jsonDir: { glob: 'projects/*/chats/*', variant: 'codebuff' },
+  launchers: {
+    codebuff: { name: 'Codebuff', tier: 'search', brief: { cmd: 'codebuff', args: ['--cwd', '{cwd}', '{prompt}'], cwd: '{cwd}' } },
+    freebuff: { name: 'Freebuff', tier: 'resume', resume: { cmd: 'freebuff', args: ['--continue', '{id}', '--cwd', '{cwd}'], cwd: '{cwd}' } },
+  },
+})
+const single = validateManifest({
+  schema: 1, id: 'claude', name: 'Claude Code', roots: ['/nonexistent'],
+  format: 'jsonl-transcript', tier: 'resume', jsonl: { glob: '*.jsonl', variant: 'claude' },
+  resume: { cmd: 'claude', args: ['--resume', '{id}'], cwd: '{cwd}' },
+})
+const installed = (...commands: string[]) => (command: string) => commands.includes(command)
+const saved = (choice: string): Config => ({ ...DEFAULT_CONFIG, launchers: { codebuff: choice } })
+
+test('a manifest without launchers is single, and needs no overlay', () => {
+  const state = resolveLauncher(single, DEFAULT_CONFIG, installed('claude'))
+  expect(state).toEqual({ kind: 'single' })
+  expect(presentationFor(single, state)).toBeNull()
+})
+
+test('with exactly one client installed, that one is used without asking', () => {
+  const state = resolveLauncher(shared, DEFAULT_CONFIG, installed('freebuff'))
+  expect(state.kind === 'chosen' && state.name).toBe('freebuff')
+})
+
+test('with both installed and nothing saved, the user is asked', () => {
+  expect(resolveLauncher(shared, DEFAULT_CONFIG, installed('codebuff', 'freebuff')))
+    .toEqual({ kind: 'ask', options: ['codebuff', 'freebuff'] })
+})
+
+test('with both installed, a saved choice wins', () => {
+  const state = resolveLauncher(shared, saved('freebuff'), installed('codebuff', 'freebuff'))
+  expect(state.kind === 'chosen' && state.name).toBe('freebuff')
+})
+
+test('a saved choice that is no longer installed gives way to the one that is', () => {
+  const state = resolveLauncher(shared, saved('freebuff'), installed('codebuff'))
+  expect(state.kind === 'chosen' && state.name).toBe('codebuff')
+})
+
+test('with neither installed, the state says so and names both', () => {
+  expect(resolveLauncher(shared, DEFAULT_CONFIG, installed()))
+    .toEqual({ kind: 'none', options: ['codebuff', 'freebuff'] })
+})
+
+test('flipping cycles between installed launchers, and is impossible with one', () => {
+  expect(nextLauncher(shared, saved('codebuff'), installed('codebuff', 'freebuff'))).toBe('freebuff')
+  expect(nextLauncher(shared, saved('freebuff'), installed('codebuff', 'freebuff'))).toBe('codebuff')
+  expect(nextLauncher(shared, DEFAULT_CONFIG, installed('codebuff', 'freebuff'))).toBe('codebuff')
+  expect(nextLauncher(shared, DEFAULT_CONFIG, installed('codebuff'))).toBeNull()
+  expect(nextLauncher(single, DEFAULT_CONFIG, installed('claude'))).toBeNull()
+})
+
+test('rows show the chosen launcher, and the manifest defaults while undecided', () => {
+  expect(presentationFor(shared, resolveLauncher(shared, saved('freebuff'), installed('codebuff', 'freebuff'))))
+    .toEqual({ tier: 'resume', label: 'freebuff' })
+  expect(presentationFor(shared, resolveLauncher(shared, DEFAULT_CONFIG, installed('codebuff', 'freebuff'))))
+    .toEqual({ tier: 'search', label: 'codebuff' })
+})
+
+test('presentations covers only clients that have launchers', () => {
+  const map = presentations([shared, single], saved('freebuff'), installed('codebuff', 'freebuff', 'claude'))
+  expect([...map.keys()]).toEqual(['codebuff'])
+})
