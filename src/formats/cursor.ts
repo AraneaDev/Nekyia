@@ -1,10 +1,10 @@
 import { realpathSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { Glob } from 'bun'
 import type { Config } from '../config'
 import type { Manifest } from '../manifests/load'
-import { isSafeNativeId, makeUid } from '../types'
-import type { Diagnostic, SessionDoc, SessionRef } from '../types'
+import { isSafeNativeId, makeUid, MAX_SESSION_FILES } from '../types'
+import type { Diagnostic, DialogueTurn, SessionDoc, SessionRef } from '../types'
 import type { FormatModule } from './jsonl-transcript'
 import {
   containedRealPath, isObject, locateContained, readSmallJson, snapshotFile,
@@ -12,6 +12,7 @@ import {
 } from './safe-read'
 
 const META_BYTES = 64 * 1024
+const PROMPT_HISTORY_BYTES = 1024 * 1024
 
 /**
  * The folder Cursor keeps a workspace's transcripts under.
@@ -120,11 +121,88 @@ async function discover(manifest: Manifest, root: string): Promise<{ refs: Sessi
   return { refs, diagnostics }
 }
 
-/** Reads Cursor's store: one meta.json per chat under chats/<md5(cwd)>/<chatId>. */
-export const cursorReader: FormatModule = {
-  discover,
-  /** Stub: Task 12 replaces this with a reader for the agent-transcripts JSONL tree. */
-  async hydrate(_manifest: Manifest, _root: string, ref: SessionRef, _config: Config): Promise<SessionDoc> {
-    return { ref, prompts: [], prose: [], files: [], truncated: false }
-  },
+/** Cursor wraps what you typed in a timestamp and a user_query element; the index keeps only what you typed. */
+export function unwrapUserText(text: string): string {
+  const query = /<user_query>\s*([\s\S]*?)\s*<\/user_query>/.exec(text)
+  const inner = query ? query[1]! : text
+  return inner.replace(/<timestamp>[\s\S]*?<\/timestamp>/g, '').trim()
 }
+
+/** Reads a transcript up to the byte cap, dropping a line the cap cut in half. */
+async function readTranscript(path: string, cap: number): Promise<{ lines: string[]; truncated: boolean }> {
+  const file = Bun.file(path)
+  const truncated = file.size > cap
+  const text = await (truncated ? file.slice(0, cap) : file).text()
+  const lines = text.split('\n')
+  if (truncated) lines.pop()
+  return { lines: lines.filter((line) => line.trim()), truncated }
+}
+
+/**
+ * Reads the agent-transcripts JSONL for a chat, indexing user and assistant
+ * text and recording tool paths as file facets. Falls back to the chat's
+ * prompt_history.json when the derived transcript path holds nothing, so the
+ * session stays findable by what was typed even when the cwd-derived folder
+ * guess misses.
+ */
+async function hydrate(_manifest: Manifest, root: string, ref: SessionRef, config: Config): Promise<SessionDoc> {
+  const prompts: string[] = []
+  const prose: string[] = []
+  const dialogue: DialogueTurn[] = []
+  const files = new Set<string>()
+  let truncated = false
+  const rootReal = realpathSync(root)
+
+  const located = ref.cwd === null
+    ? { kind: 'absent' as const }
+    : locateContained(rootReal, transcriptPath(rootReal, ref.cwd, ref.nativeId))
+
+  if (located.kind === 'ok') {
+    const read = await readTranscript(located.path, config.maxFileBytes)
+    truncated = read.truncated
+    for (const line of read.lines) {
+      let entry: unknown
+      try { entry = JSON.parse(line) } catch { continue }
+      if (!isObject(entry) || !isObject(entry.message) || !Array.isArray(entry.message.content)) continue
+      const role = entry.role === 'user' ? 'user' : entry.role === 'assistant' ? 'assistant' : null
+      if (role === null) continue
+      const texts: string[] = []
+      for (const block of entry.message.content) {
+        if (!isObject(block)) continue
+        if (block.type === 'text' && typeof block.text === 'string') {
+          const text = role === 'user' ? unwrapUserText(block.text) : block.text.trim()
+          if (text) texts.push(text)
+        } else if (block.type === 'tool_use' && isObject(block.input) && typeof block.input.path === 'string') {
+          // The path a tool acted on is a facet; the tool's input and output are not indexed.
+          if (files.size < MAX_SESSION_FILES) files.add(block.input.path)
+          else truncated = true
+        }
+      }
+      if (!texts.length) continue
+      const text = texts.join('\n')
+      if (role === 'user') prompts.push(text)
+      else prose.push(text)
+      dialogue.push({ role, text })
+    }
+    return { ref, prompts, prose, dialogue, files: [...files], truncated }
+  }
+
+  // The folder mapping is confirmed on a handful of paths. When it misses, the
+  // session stays findable by what was typed rather than dropping out.
+  const metaPath = ref.sourcePaths[0]
+  if (metaPath) {
+    const history = locateContained(rootReal, join(dirname(metaPath), 'prompt_history.json'))
+    if (history.kind === 'ok') {
+      const read = await readSmallJson(history.path, PROMPT_HISTORY_BYTES)
+      if (read.parseError === null && Array.isArray(read.value)) {
+        for (const item of read.value) {
+          if (typeof item === 'string' && item.trim()) prompts.push(item.trim())
+        }
+      }
+    }
+  }
+  return { ref, prompts, prose, files: [], truncated }
+}
+
+/** Reads Cursor's store: one meta.json per chat under chats/<md5(cwd)>/<chatId>. */
+export const cursorReader: FormatModule = { discover, hydrate }
