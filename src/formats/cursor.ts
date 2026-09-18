@@ -141,7 +141,7 @@ async function readTranscript(path: string, cap: number): Promise<{ lines: strin
 /**
  * Reads the agent-transcripts JSONL for a chat, indexing user and assistant
  * text and recording tool paths as file facets. Falls back to the chat's
- * prompt_history.json when the derived transcript path holds nothing, so the
+ * prompt_history.json when the derived transcript path holds no text, so the
  * session stays findable by what was typed even when the cwd-derived folder
  * guess misses.
  */
@@ -194,7 +194,11 @@ async function hydrate(_manifest: Manifest, root: string, ref: SessionRef, confi
       else prose.push(text)
       dialogue.push({ role, text })
     }
-    return { ref, prompts, prose, dialogue, files: [...files], truncated }
+    if (prompts.length || prose.length) {
+      return { ref, prompts, prose, dialogue, files: [...files], truncated }
+    }
+    // A transcript that exists but carries no text leaves the session just as
+    // unsearchable as a missing one, so it takes the same fallback below.
   }
 
   // The folder mapping is confirmed on a handful of paths. When it misses, the
@@ -211,7 +215,7 @@ async function hydrate(_manifest: Manifest, root: string, ref: SessionRef, confi
       }
     }
   }
-  return { ref, prompts, prose, files: [], truncated }
+  return { ref, prompts, prose, files: [...files], truncated }
 }
 
 /** Reads Cursor's store: one meta.json per chat under chats/<md5(cwd)>/<chatId>. */
