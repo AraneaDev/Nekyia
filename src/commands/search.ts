@@ -1,7 +1,9 @@
 import { existsSync } from 'node:fs'
 import { indexPath, loadConfigChecked } from '../config'
 import { IndexDb } from '../core/db'
+import { defaultOnPath, presentations } from '../core/launcher'
 import { query } from '../core/query'
+import { loadManifests } from '../manifests/load'
 import { formatRow } from '../render'
 
 /** Everything the search command accepts, mirroring its flags. */
@@ -78,6 +80,7 @@ export async function runSearch(opts: SearchOptions = {}): Promise<number> {
       exactFile: opts.exactFile,
       sort: opts.sort,
       limit: opts.limit ?? 40,
+      presentation: presentations(loadManifests().manifests, cfg, defaultOnPath()),
     })
     if (opts.json) {
       // The search itself reads the narrow row shape, which leaves provenance

@@ -1,8 +1,11 @@
 import { expect, test } from 'bun:test'
 import { DEFAULT_CONFIG } from '../src/config'
 import { runLast, type LastDependencies } from '../src/commands/last'
+import { buildAdapter } from '../src/core/adapter'
 import type { Adapter } from '../src/core/adapter'
 import type { Row } from '../src/core/query'
+import codebuffManifest from '../src/manifests/builtin/codebuff.json'
+import { validateManifest } from '../src/manifests/load'
 import type { ExecPlan } from '../src/types'
 
 function row(over: Partial<Row> = {}): Row {
@@ -44,12 +47,48 @@ function dependencies(over: Partial<LastDependencies> = {}): LastDependencies {
     },
     buildBrief: () => 'brief',
     cwd: () => '/work/project',
+    onPath: () => true,
     checkPlan: () => ({ ok: true }),
     runPlan: async () => 0,
     error: () => {},
     ...over,
   }
 }
+
+const sharedStore = buildAdapter(validateManifest({ ...codebuffManifest, roots: ['/nonexistent'] }))
+const sharedRow = row({ uid: 'codebuff:c1', client: 'codebuff', nativeId: 'c1', tier: 'search' })
+const bothInstalled = (command: string) => command === 'codebuff' || command === 'freebuff'
+
+test('last reopens a shared-store chat in the saved client', async () => {
+  const plans: ExecPlan[] = []
+  const code = await runLast(dependencies({
+    loadConfig: () => ({ ...DEFAULT_CONFIG, launchers: { codebuff: 'freebuff' } }),
+    buildAdapters: () => ({ adapters: [sharedStore], diagnostics: [] }),
+    query: () => [sharedRow],
+    onPath: bothInstalled,
+    runPlan: async (plan) => { plans.push(plan); return 0 },
+  }))
+  expect(code).toBe(0)
+  expect(plans).toEqual([{
+    kind: 'resume', cmd: 'freebuff',
+    args: ['--continue', 'c1', '--cwd', '/work/project'], cwd: '/work/project',
+  }])
+})
+
+test('last explains how to choose when both clients are installed and none is saved', async () => {
+  const errors: string[] = []
+  const plans: ExecPlan[] = []
+  const code = await runLast(dependencies({
+    buildAdapters: () => ({ adapters: [sharedStore], diagnostics: [] }),
+    query: () => [sharedRow],
+    onPath: bothInstalled,
+    runPlan: async (plan) => { plans.push(plan); return 0 },
+    error: (message: string) => { errors.push(message) },
+  }))
+  expect(code).not.toBe(0)
+  expect(plans).toEqual([])
+  expect(errors.join('\n')).toContain('ctrl+l')
+})
 
 test('last closes SQLite before validating and launching the latest visible session', async () => {
   const order: string[] = []
