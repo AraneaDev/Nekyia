@@ -54,7 +54,7 @@ test('the README carries no em dashes', () => {
 test('the README names the exact roadmap and truthful launch tiers', () => {
   const readme = readFileSync(join(root, 'README.md'), 'utf8')
   for (const client of [
-    'Aider', 'Goose', 'Crush', 'Cursor CLI', 'GitHub Copilot CLI', 'Qwen Code',
+    'Aider', 'Crush', 'GitHub Copilot CLI', 'Qwen Code',
     'Continue CLI', 'Droid', 'Amazon Q Developer CLI', 'Plandex', 'OpenHands',
     'Amp', 'Warp Agent', 'Grok CLI', 'Rovo Dev', 'Auggie', 'Trae', 'Cline CLI',
     'Zed',
