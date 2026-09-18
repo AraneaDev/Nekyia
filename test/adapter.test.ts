@@ -319,8 +319,14 @@ test('a chosen search launcher briefs', () => {
   })
 })
 
-test('a brief goes to a launcher that can take one, even when the chosen one cannot', () => {
-  expect(sharedStore.plan(chat, 'the brief', 'freebuff')?.cmd).toBe('codebuff')
+test('a named launcher that cannot take a brief refuses rather than falling back to another launcher', () => {
+  // Freebuff was named explicitly, so a prompt for it must not be silently
+  // handed to Codebuff instead; the caller asked for a launcher that cannot
+  // do what was asked, and that is a refusal, not a substitution.
+  expect(sharedStore.plan(chat, 'the brief', 'freebuff')).toBeNull()
+})
+
+test('a brief with no launcher named goes to the first launcher that can take one', () => {
   expect(sharedStore.plan(chat, 'the brief')?.cmd).toBe('codebuff')
 })
 
