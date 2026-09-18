@@ -68,9 +68,12 @@ test('every interface shot the README points at exists and is generated', () => 
     // A missing image renders as a broken icon on the page, which is worse
     // than no image at all.
     expect(existsSync(join(root, path))).toBe(true)
-    // The shots are captured from the running picker, not drawn by hand.
-    expect(path.endsWith('.svg')).toBe(true)
+    // The shots are captured from the running picker, not drawn by hand: the
+    // stills by scripts/shots.ts, the one recording by scripts/demo-gif.ts.
+    expect(path.endsWith('.svg') || path === 'docs/media/demo.gif').toBe(true)
   }
+  // The recording opens the page, above everything but the header.
+  expect(referenced[0]).toBe('docs/media/demo.gif')
   // Every shot the script produces earns its place on the page.
   const shots = read('scripts/shots.ts')
   for (const name of [...shots.matchAll(/name: '([a-z]+)',\n\s*what:/gu)].map((m) => m[1]!)) {

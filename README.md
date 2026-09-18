@@ -4,6 +4,8 @@
 
 **Find the session. Pick up the thread.**
 
+Nekyia indexes and searches past Claude Code and CLI agent sessions locally in your terminal using Bun and SQLite FTS5.
+
 [![Release](https://img.shields.io/github/v/release/AraneaDev/Nekyia?label=release)](https://github.com/AraneaDev/Nekyia/releases)
 [![Tool page](https://img.shields.io/badge/tool%20page-aranea--development.nl-0b7285)](https://aranea-development.nl/en/tools/nekyia)
 [![CI](https://img.shields.io/github/actions/workflow/status/AraneaDev/Nekyia/ci.yml?label=CI)](https://github.com/AraneaDev/Nekyia/actions/workflows/ci.yml)
@@ -15,7 +17,13 @@
 
 </div>
 
-![The Nekyia picker: a list of sessions from several agent CLIs, and beneath it the selected session's directory, branch, prompts and touched files](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/picker.svg)
+![Launching nek, typing "retry tenant" to narrow 22 sessions down to one, then opening that session's history](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/demo.gif)
+
+```bash
+bun install -g nekyia
+```
+
+Needs [Bun](https://bun.sh/) 1.1 or newer. Then run `nek`.
 
 > **Nekyia** (Νέκυια) is the rite in the _Odyssey_ through which Odysseus calls up
 > the dead and asks them what they know. This tool does something less dramatic
@@ -156,6 +164,8 @@ it opens on the whole index instead, because a scoped list there would be empty.
 `tab` widens to every directory, and pressing it again narrows to the project of the
 row under the cursor, so you can start anywhere and end up in one project. The count
 beside the search line always names what is being searched.
+
+![The Nekyia picker: a list of sessions from several agent CLIs, and beneath it the selected session's directory, branch, prompts and touched files](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/picker.svg)
 
 Typing filters as you go, and the matching span is lit in every title, so the list
 answers each keystroke rather than only shortening.
