@@ -27,24 +27,26 @@ fi
 echo "pre-commit: typecheck"
 bun run typecheck
 
-# The README's demo GIF is recorded from this checkout, so it is re-recorded
-# whenever something it shows could have changed, and lands in the same commit.
-# The recording is deterministic: an unchanged picker stages nothing new.
-# It records the working tree, not the index, so a partially staged file is
-# recorded as it stands on disk.
-demo=$(git diff --cached --name-only --diff-filter=ACMRD -- \
-  src bin test/fixtures/demo scripts/demo-gif.ts scripts/capture-svg.ts)
+# The README's media (the demo GIF and the screenshots) is captured from this
+# checkout, so it is re-captured whenever something it shows could have
+# changed, and lands in the same commit. Capture is deterministic: an
+# unchanged picker stages nothing new. It captures the working tree, not the
+# index, so a partially staged file is captured as it stands on disk.
+media=$(git diff --cached --name-only --diff-filter=ACMRD -- \
+  src bin test/fixtures/demo scripts/demo-sandbox.ts scripts/demo-gif.ts \
+  scripts/shots.ts scripts/capture-svg.ts)
 
-if [ -n "$demo" ]; then
+if [ -n "$media" ]; then
   missing=""
   for tool in tmux rsvg-convert ffmpeg; do
     command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
   done
   if [ -n "$missing" ]; then
-    echo "pre-commit: demo gif not re-recorded, missing:$missing" >&2
+    echo "pre-commit: README media not re-captured, missing:$missing" >&2
   else
-    echo "pre-commit: demo gif"
+    echo "pre-commit: README media"
     bun run scripts/demo-gif.ts >/dev/null
-    git add docs/media/demo.gif
+    bun run scripts/shots.ts >/dev/null
+    git add docs/media
   fi
 fi
