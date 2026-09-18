@@ -1,5 +1,6 @@
 import type { Manifest } from '../manifests/load'
 import { codebuffReader } from './codebuff'
+import { cursorReader } from './cursor'
 import type { FormatModule } from './jsonl-transcript'
 
 /**
@@ -14,8 +15,7 @@ function readerFor(manifest: Manifest): FormatModule {
     case 'codebuff':
       return codebuffReader
     case 'cursor':
-      // A later change gives this variant its own reader; no built-in uses it until then.
-      throw new Error('no reader for the cursor variant yet')
+      return cursorReader
   }
 }
 
