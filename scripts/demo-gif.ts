@@ -4,29 +4,22 @@
  *   bun run scripts/demo-gif.ts          # writes docs/media/demo.gif
  *
  * Every frame is a real tmux pane, captured with scripts/capture-svg.ts, and
- * nothing is drawn. The sessions on screen are the invented transcripts in
- * test/fixtures/demo, indexed by the real indexer. HOME, both XDG directories
- * and every client root (through NEKYIA_ROOT_OVERRIDE) point into a scratch
- * directory, so no real history can reach the index, let alone a frame.
- *
- * The fixture is written as if "now" were ANCHOR. Its timestamps and file
- * times are shifted to the moment of recording, so the ages on screen, and so
- * the GIF itself, come out the same on every run. The pre-commit hook relies
- * on that to re-record without churn.
+ * nothing is drawn. The sessions on screen come from scripts/demo-sandbox.ts,
+ * which also keeps real history out and makes the GIF the same on every run.
+ * The pre-commit hook relies on that to re-record without churn.
  *
  * Frames are captured after each keystroke and given a display time here, so
  * the loop plays at reading speed however long the capture itself took.
  *
  * Needs tmux, rsvg-convert and ffmpeg.
  */
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { prepareSandbox, shellSetup } from './demo-sandbox'
 
 const root = join(import.meta.dir, '..')
 const out = join(root, 'docs', 'media', 'demo.gif')
-const fixture = join(root, 'test', 'fixtures', 'demo')
 const work = '/tmp/nekyia-gif'
-const ANCHOR = Date.parse('2026-01-15T12:00:00.000Z')
 const SESSION = 'nekyia-gif'
 const COLUMNS = 132
 const ROWS = 30
@@ -111,57 +104,17 @@ for (const tool of ['tmux', 'rsvg-convert', 'ffmpeg']) {
   }
 }
 
-/** Moves every timestamp in the copied fixture from ANCHOR to now. */
-function shiftToNow(dir: string, delta: number): void {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) { shiftToNow(path, delta); continue }
-    let latest = 0
-    const text = readFileSync(path, 'utf8').replace(
-      /"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)"/gu,
-      (_match, stamp: string) => {
-        const moved = Date.parse(stamp) + delta
-        latest = Math.max(latest, moved)
-        return `"${new Date(moved).toISOString()}"`
-      },
-    )
-    writeFileSync(path, text)
-    // A transcript's age is its file time, so that moves with the content.
-    if (latest) utimesSync(path, latest / 1000, latest / 1000)
-  }
-}
-
 rmSync(work, { recursive: true, force: true })
-mkdirSync(join(work, 'frames'), { recursive: true })
-const sandbox = {
-  HOME: join(work, 'home'),
-  XDG_DATA_HOME: join(work, 'data'),
-  XDG_CONFIG_HOME: join(work, 'config'),
-  NEKYIA_ROOT_OVERRIDE: join(work, 'roots'),
-}
-for (const dir of Object.values(sandbox)) mkdirSync(dir, { recursive: true })
-cpSync(fixture, sandbox.NEKYIA_ROOT_OVERRIDE, { recursive: true })
-shiftToNow(sandbox.NEKYIA_ROOT_OVERRIDE, Date.now() - ANCHOR)
-
-const nekyia = join(root, 'bin', 'nekyia.mjs')
 console.log('indexing the demo fixture')
-const indexed = Bun.spawnSync(['bun', nekyia, 'index', '--yes', '--quiet'], {
-  env: { ...process.env, ...sandbox },
-})
-if (!indexed.success) throw new Error(`index failed: ${indexed.stderr.toString().trim()}`)
+const sandbox = prepareSandbox(join(work, 'sandbox'))
+mkdirSync(join(work, 'frames'), { recursive: true })
 
 Bun.spawnSync(['tmux', 'kill-session', '-t', SESSION])
 run([
   'tmux', 'new-session', '-d', '-s', SESSION,
   '-x', String(COLUMNS), '-y', String(ROWS), '-c', '/home',
 ])
-// `nek` runs this checkout, so the recording never depends on, or changes, a
-// global install.
-const exports = Object.entries(sandbox).map(([key, value]) => `${key}=${value}`).join(' ')
-run([
-  'tmux', 'send-keys', '-t', SESSION,
-  `export ${exports} PS1='$ '; nek() { bun ${nekyia} "$@"; }; clear`, 'Enter',
-])
+run(['tmux', 'send-keys', '-t', SESSION, shellSetup(sandbox), 'Enter'])
 Bun.sleepSync(800)
 frame(0.4)
 

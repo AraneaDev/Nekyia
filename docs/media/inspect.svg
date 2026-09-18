@@ -18,7 +18,7 @@
 <text x="284.8" y="88.0" fill="#c9d1d9" textLength="512.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">a retried charge can double bill when the webhook lands twice</text>
 <line x1="20.2" y1="93.0" x2="20.2" y2="102.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="102.0" x2="20.2" y2="111.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="32.8" y="106.0" fill="#56b6c2" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
+<text x="32.8" y="106.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
 <text x="133.6" y="106.0" fill="#c9d1d9" font-weight="600" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">6h</text>
 <text x="158.8" y="106.0" fill="#61afef" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway</text>
 <text x="284.8" y="106.0" fill="#c9d1d9" textLength="462.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">add structured logging around the upstream timeout path</text>

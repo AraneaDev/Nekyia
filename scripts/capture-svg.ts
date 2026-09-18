@@ -4,7 +4,7 @@
  *
  *   bun run scripts/capture-svg.ts <tmux-session> docs/media/picker.svg
  *
- * Pair it with scripts/demo-index.ts: seed an index of invented sessions, point
+ * Pair it with scripts/demo-sandbox.ts: index the invented demo fixture, point
  * the picker at it, then capture. No real history is ever on screen.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
