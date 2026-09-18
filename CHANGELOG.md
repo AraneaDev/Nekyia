@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1](https://github.com/AraneaDev/Nekyia/compare/v1.1.0...v1.1.1) (2026-09-18)
+
+
+### Fixes
+
+* **codex:** re-read only Codex sessions for the branch change ([db17049](https://github.com/AraneaDev/Nekyia/commit/db170493bd5986362b4764e26753d2ae5eb17992))
+* **codex:** read the branch Codex records for each session ([5460ecb](https://github.com/AraneaDev/Nekyia/commit/5460ecba1bf5452a49ff77215a8bbdc032d3ae81))
+
 ## [1.1.0](https://github.com/AraneaDev/Nekyia/compare/v1.0.2...v1.1.0) (2026-09-18)
 
 
