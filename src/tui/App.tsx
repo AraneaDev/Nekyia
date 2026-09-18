@@ -9,7 +9,7 @@ import {
   defaultOnPath, nextLauncher, presentations, resolveLauncher, type OnPath,
 } from '../core/launcher'
 import { checkPlan, shellQuote } from '../core/resume'
-import type { ExecPlan } from '../types'
+import type { ExecPlan, Tier } from '../types'
 import { List } from './List'
 import { boundedDisplayText, boundedPathTail, MAX_DISPLAY_COLUMNS, prefixByCodeUnits, wrappedDisplayLines } from './text'
 import { projectName, relTime } from '../render'
@@ -527,6 +527,44 @@ export function App({
   }
 
   /**
+   * What to act on for a row's client: a settled launcher (undefined for a
+   * client with no `launchers` of its own) and the tier to treat it as, a
+   * question that still needs asking, or a refusal to explain instead.
+   *
+   * Both `activate` and `copyCommand` plan a launch for the selected row, and
+   * both need the same answer to "which client, and does that change the
+   * tier": `copyCommand` used to skip this and plan with no launcher at all,
+   * which planned nothing once a resume-tier launcher was the active choice.
+   */
+  type RowLauncher =
+    | { kind: 'resolved'; launcher: string | undefined; tier: Tier }
+    | { kind: 'ask'; options: string[] }
+    | { kind: 'unavailable'; message: string }
+
+  /**
+   * Resolves which launcher opens `row`'s store, mirroring `resolveLauncher`
+   * for clients that have one and passing single-launcher clients through
+   * unchanged.
+   *
+   * `chosen` is a launcher just picked from the ask overlay, honoured ahead of
+   * `liveCfg` so the same keypress that answers the question can also act on
+   * it without waiting on the state update `chooseLauncher` also triggers.
+   */
+  function resolveRowLauncher(adapter: Adapter, row: NonNullable<typeof selectedRow>, chosen?: string): RowLauncher {
+    const launchers = adapter.manifest.launchers
+    if (!launchers) return { kind: 'resolved', launcher: undefined, tier: row.tier }
+    const state = chosen !== undefined && launchers[chosen]
+      ? { kind: 'chosen' as const, name: chosen, spec: launchers[chosen]! }
+      : resolveLauncher(adapter.manifest, liveCfg, pathCheck)
+    if (state.kind === 'none') return { kind: 'unavailable', message: `none of ${state.options.join(', ')} is on PATH` }
+    if (state.kind === 'ask') return { kind: 'ask', options: state.options }
+    if (state.kind === 'chosen') return { kind: 'resolved', launcher: state.name, tier: state.spec.tier }
+    // Unreachable: resolveLauncher only answers 'single' when manifest.launchers
+    // is absent, and this line is reached only when it is present.
+    return { kind: 'resolved', launcher: undefined, tier: row.tier }
+  }
+
+  /**
    * Initiates a resume or brief plan based on the currently selected row, confirming if necessary.
    *
    * `chosen` is the launcher just picked from the ask overlay, applied to this
@@ -539,17 +577,10 @@ export function App({
     const adapter = adapterFor(row.client)
     if (!adapter) { announce(`no adapter for ${boundedDisplayText(row.client, 32)}`); return }
 
-    let launcher: string | undefined
-    let tier = row.tier
-    const launchers = adapter.manifest.launchers
-    if (launchers) {
-      const state = chosen !== undefined && launchers[chosen]
-        ? { kind: 'chosen' as const, name: chosen, spec: launchers[chosen]! }
-        : resolveLauncher(adapter.manifest, liveCfg, pathCheck)
-      if (state.kind === 'none') { announce(`none of ${state.options.join(', ')} is on PATH`); return }
-      if (state.kind === 'ask') { setLauncherAsk({ client: adapter.id, options: state.options, index: 0 }); return }
-      if (state.kind === 'chosen') { launcher = state.name; tier = state.spec.tier }
-    }
+    const resolved = resolveRowLauncher(adapter, row, chosen)
+    if (resolved.kind === 'unavailable') { announce(resolved.message); return }
+    if (resolved.kind === 'ask') { setLauncherAsk({ client: adapter.id, options: resolved.options, index: 0 }); return }
+    const { launcher, tier } = resolved
 
     if (tier === 'resume') {
       const { plan, failed } = planSafely(adapter, row, undefined, launcher)
@@ -694,10 +725,14 @@ export function App({
   function copyCommand(): void {
     const row = selectedRow
     if (!row) return
-    if (row.tier !== 'resume') { announce('no resume command for this client'); return }
     const adapter = adapterFor(row.client)
     if (!adapter) { announce('no resume command for this client'); return }
-    const { plan } = planSafely(adapter, row)
+    const resolved = resolveRowLauncher(adapter, row)
+    if (resolved.kind === 'unavailable') { announce(resolved.message); return }
+    if (resolved.kind === 'ask') { announce('press enter or ctrl+l to choose which client opens this'); return }
+    const { launcher, tier } = resolved
+    if (tier !== 'resume') { announce('no resume command for this client'); return }
+    const { plan } = planSafely(adapter, row, undefined, launcher)
     try {
       if (!plan || plan.kind !== 'resume') { announce('no resume command for this client'); return }
     } catch {
