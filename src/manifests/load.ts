@@ -398,7 +398,10 @@ function validateLaunchers(value: unknown): Record<string, LauncherSpec> {
   if (entries.length < 2 || entries.length > MAX_LAUNCHERS) {
     throw new Error(`launchers must name between 2 and ${MAX_LAUNCHERS} clients`)
   }
-  const launchers: Record<string, LauncherSpec> = {}
+  // No prototype: a launcher named __proto__ is an own key in the parsed
+  // JSON, and assigning it onto an ordinary object would replace the
+  // prototype rather than add the launcher.
+  const launchers: Record<string, LauncherSpec> = Object.create(null)
   for (const [key, raw] of entries) {
     if (!isSafeClientId(key)) throw new Error(`launcher name is not a safe client id: ${key}`)
     if (!isRecord(raw)) throw new Error(`launcher ${key} must be an object`)
