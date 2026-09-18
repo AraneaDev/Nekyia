@@ -75,15 +75,15 @@ test('the README follows the project house style and documents the npm install',
   expect(readme).toStartWith('<div align="center">\n\n# Nekyia')
   expect(readme).toContain('github/v/release/AraneaDev/Nekyia')
   expect(readme).toContain('actions/workflow/status/AraneaDev/Nekyia/ci.yml')
-  // Nothing about npm appears while the package is unresolvable: not the
-  // badges, which shields renders as broken red boxes, and not an install
-  // command that 404s.
-  expect(readme).not.toContain('img.shields.io/npm/')
-  expect(readme).not.toContain('bun install -g nekyia')
-  expect(readme).not.toContain('npmjs.com/package/nekyia')
-  // Say where it does come from, so the absence above reads as a stage
-  // rather than as an omission.
-  expect(readme).toContain('Install it from a GitHub release or from source')
+  // The package resolves on the registry now, so the badge renders and the
+  // install command works. This exact command was run against the published
+  // 1.0.1 artifact before it was written back into the README.
+  expect(readme).toContain('img.shields.io/npm/v/nekyia')
+  expect(readme).toContain('bun install -g nekyia')
+  expect(readme).toContain('npmjs.com/package/nekyia')
+  // npm leads, because it is the path most readers will take.
+  expect(readme.indexOf('### From npm')).toBeLessThan(readme.indexOf('### From a release'))
+  expect(readme).not.toContain('A registry package is coming')
   expect(readme).toContain('> **Nekyia**')
   expect(readme).toContain('git clone https://github.com/AraneaDev/Nekyia.git')
   // The pre-release hedges are gone now that the package is on the registry.
