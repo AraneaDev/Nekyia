@@ -233,3 +233,56 @@ test('a generic jsonl manifest may declare the unit of its timestamps', () => {
   })
   expect(silent.jsonl?.generic).not.toHaveProperty('tsUnit')
 })
+
+const launcherBase = {
+  schema: 1, id: 'store', name: 'Store', roots: ['/nonexistent'],
+  format: 'json-dir', tier: 'search',
+  jsonDir: { glob: 'projects/*/chats/*', variant: 'codebuff' as const },
+}
+const twoLaunchers = {
+  one: { name: 'One', tier: 'search' as const, brief: { cmd: 'one', args: ['{prompt}'], cwd: '{cwd}' } },
+  two: { name: 'Two', tier: 'resume' as const, resume: { cmd: 'two', args: ['--continue', '{id}'], cwd: '{cwd}' } },
+}
+
+test('a manifest may name launchers, each carrying its own tier and commands', () => {
+  const manifest = validateManifest({ ...launcherBase, launchers: twoLaunchers })
+  expect(Object.keys(manifest.launchers!)).toEqual(['one', 'two'])
+  expect(manifest.launchers!.two!.tier).toBe('resume')
+  expect(manifest.brief).toBeUndefined()
+})
+
+test('launchers keep their commands inside them, never also at the top level', () => {
+  expect(() => validateManifest({
+    ...launcherBase, launchers: twoLaunchers,
+    brief: { cmd: 'one', args: ['{prompt}'], cwd: '{cwd}' },
+  })).toThrow('keeps its commands inside them')
+})
+
+test('a manifest with launchers declares the search tier; each launcher declares its own', () => {
+  expect(() => validateManifest({ ...launcherBase, tier: 'resume' as const, launchers: twoLaunchers }))
+    .toThrow('must declare tier "search"')
+})
+
+test('a launcher claiming the resume tier needs a resume command', () => {
+  expect(() => validateManifest({
+    ...launcherBase,
+    launchers: { ...twoLaunchers, two: { name: 'Two', tier: 'resume' as const, brief: { cmd: 'two', args: ['{prompt}'] } } },
+  })).toThrow('requires a resume command')
+})
+
+test('a single launcher is just a manifest, so launchers must name at least two', () => {
+  expect(() => validateManifest({ ...launcherBase, launchers: { one: twoLaunchers.one } }))
+    .toThrow('between 2 and 8')
+})
+
+test('launcher names are held to the same rule as client ids', () => {
+  expect(() => validateManifest({ ...launcherBase, launchers: { ...twoLaunchers, 'bad:name': twoLaunchers.one } }))
+    .toThrow('not a safe client id')
+})
+
+test('json-dir accepts the cursor variant and still rejects unknown ones', () => {
+  const cursor = validateManifest({ ...launcherBase, jsonDir: { glob: 'chats/*/*', variant: 'cursor' as const } })
+  expect(cursor.format === 'json-dir' && cursor.jsonDir.variant).toBe('cursor')
+  expect(() => validateManifest({ ...launcherBase, jsonDir: { glob: 'x', variant: 'other' as any } }))
+    .toThrow('jsonDir.variant must be "codebuff" or "cursor"')
+})

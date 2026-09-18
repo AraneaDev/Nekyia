@@ -13,6 +13,9 @@ function readerFor(manifest: Manifest): FormatModule {
   switch (manifest.jsonDir.variant) {
     case 'codebuff':
       return codebuffReader
+    case 'cursor':
+      // A later change gives this variant its own reader; no built-in uses it until then.
+      throw new Error('no reader for the cursor variant yet')
   }
 }
 
