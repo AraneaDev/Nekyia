@@ -84,6 +84,34 @@ test('a store that vanishes between discovery and hydration comes back degraded,
   expect(doc.truncated).toBe(false)
 })
 
+test('a transcript that yields no text falls back to prompt_history.json', async () => {
+  // The file exists at the derived path but holds nothing indexable (here,
+  // only a tool call). The session must stay findable by what was typed.
+  const root = mkdtempSync(join(tmpdir(), 'nekyia-cursor-'))
+  const nativeId = 'c0ffee00-0000-4000-8000-0000000000fe'
+  const cwd = '/root/proj'
+  const transcriptDir = join(root, 'projects', transcriptFolder(cwd), 'agent-transcripts', nativeId)
+  mkdirSync(transcriptDir, { recursive: true })
+  writeFileSync(
+    join(transcriptDir, `${nativeId}.jsonl`),
+    `${JSON.stringify({ role: 'assistant', message: { content: [{ type: 'tool_use', input: { path: '/root/proj/a.ts' } }] } })}\n`,
+  )
+  const chatDir = join(root, 'chats', 'ef8738aabf9379365c557ced89c9e405', nativeId)
+  mkdirSync(chatDir, { recursive: true })
+  writeFileSync(join(chatDir, 'meta.json'), '{}')
+  writeFileSync(join(chatDir, 'prompt_history.json'), JSON.stringify(['explain the build']))
+
+  const ref = {
+    uid: `cursor:${nativeId}`, client: 'cursor', nativeId, cwd, gitBranch: null,
+    title: null, startedAt: 0, endedAt: 0, turns: null, parentNativeId: null,
+    tier: 'resume' as const, origin: 'manifest' as const,
+    sourcePaths: [join(chatDir, 'meta.json')], fingerprint: '',
+  }
+  const doc = await cursorReader.hydrate(manifest, root, ref, DEFAULT_CONFIG)
+  expect(doc.prompts).toEqual(['explain the build'])
+  expect(doc.files).toEqual(['/root/proj/a.ts'])
+})
+
 test('a duplicate path arriving after the file cap does not itself mark the session truncated', async () => {
   // Filling the cap exactly, then reoffering one of those same paths, must not
   // flip `truncated`: that path was never going to grow the set further, so
