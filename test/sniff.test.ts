@@ -30,8 +30,8 @@ function tmpFile(name: string, content: string): string {
 }
 
 function sessionLines(extra = ''): string {
-  return JSON.stringify({ ts: 1_785_661_200_000, cwd: '/root/proj', role: 'user', text: `secret-user${extra}` }) + '\n'
-    + JSON.stringify({ ts: 1_785_661_300_000, cwd: '/root/proj', role: 'assistant', text: `secret-assistant${extra}` }) + '\n'
+  return JSON.stringify({ ts: 1_785_661_200_000, cwd: '/home/dev/work/proj', role: 'user', text: `secret-user${extra}` }) + '\n'
+    + JSON.stringify({ ts: 1_785_661_300_000, cwd: '/home/dev/work/proj', role: 'assistant', text: `secret-assistant${extra}` }) + '\n'
 }
 
 afterEach(() => {
@@ -54,7 +54,7 @@ test('claims JSONL only when complete evidence occurs in each of two records', (
 
 test('does not merge evidence split across unrelated JSONL records', () => {
   const path = tmpFile('mixed.jsonl', [
-    { ts: 1_785_661_200_000, cwd: '/root/proj' },
+    { ts: 1_785_661_200_000, cwd: '/home/dev/work/proj' },
     { role: 'user', text: 'a secret' },
     { role: 'assistant', text: 'another secret' },
   ].map((record) => JSON.stringify(record)).join('\n'))
@@ -71,23 +71,23 @@ test('refuses JSONL logs, package metadata, implausible cwd and arbitrary roles'
     + '{"ts":1785661300000,"cwd":"GET /api","role":"assistant","text":"y"}\n',
   ))).toBeNull()
   expect(sniffJsonl(tmpFile('events.jsonl',
-    '{"ts":1785661200000,"cwd":"/root/proj","role":"worker","text":"x"}\n'
-    + '{"ts":1785661300000,"cwd":"/root/proj","role":"server","text":"y"}\n',
+    '{"ts":1785661200000,"cwd":"/home/dev/work/proj","role":"worker","text":"x"}\n'
+    + '{"ts":1785661300000,"cwd":"/home/dev/work/proj","role":"server","text":"y"}\n',
   ))).toBeNull()
 })
 
 test('requires timestamps and at least two qualifying records', () => {
   expect(sniffJsonl(tmpFile('untimed.jsonl',
-    '{"cwd":"/root/proj","role":"user","text":"x"}\n'
-    + '{"cwd":"/root/proj","role":"assistant","text":"y"}\n',
+    '{"cwd":"/home/dev/work/proj","role":"user","text":"x"}\n'
+    + '{"cwd":"/home/dev/work/proj","role":"assistant","text":"y"}\n',
   ))).toBeNull()
   expect(sniffJsonl(tmpFile('one.jsonl',
-    '{"ts":1785661200000,"cwd":"/root/proj","role":"user","text":"x"}\n',
+    '{"ts":1785661200000,"cwd":"/home/dev/work/proj","role":"user","text":"x"}\n',
   ))).toBeNull()
 })
 
 test('bounds JSONL reads, ignores a huge line, and localizes malformed records', () => {
-  const huge = JSON.stringify({ ts: 1_785_661_100_000, cwd: '/root/proj', role: 'user', text: 'x'.repeat(70_000) })
+  const huge = JSON.stringify({ ts: 1_785_661_100_000, cwd: '/home/dev/work/proj', role: 'user', text: 'x'.repeat(70_000) })
   expect(sniffJsonl(tmpFile('huge.jsonl', `${huge}\n${sessionLines()}`))).toBeNull()
   const path = tmpFile('localized.jsonl', `{broken\n${sessionLines()}${'x'.repeat(70_000)}`)
   expect(sniffJsonl(path)?.kind).toBe('jsonl')
@@ -131,7 +131,7 @@ test('claims a plausible session SQLite table and emits valid quoted SQL', () =>
   const path = makeSqlite(
     'CREATE TABLE conversation(id TEXT, directory TEXT, title TEXT, created_at INTEGER)',
     (db) => db.query('INSERT INTO conversation VALUES (?,?,?,?)')
-      .run('c1', '/root/proj', 'A chat', 1_785_661_200_000),
+      .run('c1', '/home/dev/work/proj', 'A chat', 1_785_661_200_000),
   )
   const result = sniffSqlite(path)!
   expect(result.kind).toBe('sqlite')
@@ -147,7 +147,7 @@ test('recognizes conservative timestamp variants and prefers semantic columns', 
     'CREATE TABLE sessions(account_id TEXT, session_id TEXT, directory TEXT, runtime INTEGER, '
       + 'updated_at INTEGER, username TEXT, name TEXT, title TEXT)',
     (db) => db.query('INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?)')
-      .run('account-secret', 'session-good', '/root/proj', 123, 1_785_661_200_000, 'person', 'Generic', 'Chat'),
+      .run('account-secret', 'session-good', '/home/dev/work/proj', 123, 1_785_661_200_000, 'person', 'Generic', 'Chat'),
   )
   const sql = sniffSqlite(path)!.suggested.sqlite!.sessions
   expect(sql).toContain('"session_id" AS id')
@@ -161,14 +161,14 @@ test('recognizes conservative timestamp variants and prefers semantic columns', 
   const created = makeSqlite(
     'CREATE TABLE conversation(id TEXT, cwd TEXT, time_created INTEGER)',
     (db) => db.query('INSERT INTO conversation VALUES (?,?,?)')
-      .run('c1', '/root/proj', 1_785_661_200_000),
+      .run('c1', '/home/dev/work/proj', 1_785_661_200_000),
   )
   expect(sniffSqlite(created)?.suggested.sqlite?.sessions).toContain('"time_created" AS ended_at')
 
   const contained = makeSqlite(
     'CREATE TABLE conversation(id TEXT, cwd TEXT, eventtimestamp INTEGER)',
     (db) => db.query('INSERT INTO conversation VALUES (?,?,?)')
-      .run('c1', '/root/proj', 1_785_661_200_000),
+      .run('c1', '/home/dev/work/proj', 1_785_661_200_000),
   )
   expect(sniffSqlite(contained)?.suggested.sqlite?.sessions).toContain('"eventtimestamp" AS ended_at')
 })
@@ -193,7 +193,7 @@ test('refuses empty/cache-shaped or implausible SQLite databases', () => {
   expect(sniffSqlite(makeSqlite('CREATE TABLE kv(key TEXT, value BLOB)'))).toBeNull()
   expect(sniffSqlite(makeSqlite(
     'CREATE TABLE cache(id TEXT, cwd TEXT, created_at INTEGER)',
-    (db) => db.query('INSERT INTO cache VALUES (?,?,?)').run('x', '/root/proj', 1_785_661_200_000),
+    (db) => db.query('INSERT INTO cache VALUES (?,?,?)').run('x', '/home/dev/work/proj', 1_785_661_200_000),
   ))).toBeNull()
   expect(sniffSqlite(makeSqlite(
     'CREATE TABLE conversation(id TEXT, directory TEXT, created_at INTEGER)',
@@ -206,7 +206,7 @@ test('SQLite samples contain schema only, and reject symlinks without creating f
   const path = makeSqlite(
     'CREATE TABLE sessions(id TEXT, cwd TEXT, created_at INTEGER, content TEXT)',
     (db) => db.query('INSERT INTO sessions VALUES (?,?,?,?)')
-      .run('x', '/root/proj', 1_785_661_200_000, secret),
+      .run('x', '/home/dev/work/proj', 1_785_661_200_000, secret),
   )
   const result = sniffSqlite(path)!
   expect(result.sample.join('\n')).not.toContain(secret)
@@ -233,7 +233,7 @@ test('SQLite inspection rejects oversized schema and projects oversized cells aw
     (db) => {
       const table = db.query("SELECT name FROM sqlite_master WHERE type='table'").get() as { name: string }
       db.query(`INSERT INTO "${table.name.replaceAll('"', '""')}" VALUES (?,?,?)`)
-        .run('c1', '/root/proj', 1_785_661_200_000)
+        .run('c1', '/home/dev/work/proj', 1_785_661_200_000)
     },
   )
   expect(sniffSqlite(schemaPath)).toBeNull()
@@ -299,8 +299,8 @@ test('a JSONL draft declares the unit its timestamps are actually written in', (
   // plausibleTime already decides a small number can only be seconds. Emitting
   // that decision keeps the drafted manifest from dating every session to 1970.
   const path = tmpFile('seconds.jsonl',
-    JSON.stringify({ ts: 1_787_640_881, cwd: '/root/proj', role: 'user', text: 'secret-user' }) + '\n'
-    + JSON.stringify({ ts: 1_787_640_941, cwd: '/root/proj', role: 'assistant', text: 'secret-assistant' }) + '\n')
+    JSON.stringify({ ts: 1_787_640_881, cwd: '/home/dev/work/proj', role: 'user', text: 'secret-user' }) + '\n'
+    + JSON.stringify({ ts: 1_787_640_941, cwd: '/home/dev/work/proj', role: 'assistant', text: 'secret-assistant' }) + '\n')
 
   const result = sniffJsonl(path)!
 
@@ -312,8 +312,8 @@ test('a JSONL draft declares the unit its timestamps are actually written in', (
 
 test('a JSONL draft declares an ISO timestamp field as iso', () => {
   const path = tmpFile('iso.jsonl',
-    JSON.stringify({ ts: '2026-08-01T10:00:00.000Z', cwd: '/root/proj', role: 'user', text: 'secret-user' }) + '\n'
-    + JSON.stringify({ ts: '2026-08-01T11:00:00.000Z', cwd: '/root/proj', role: 'assistant', text: 'secret-assistant' }) + '\n')
+    JSON.stringify({ ts: '2026-08-01T10:00:00.000Z', cwd: '/home/dev/work/proj', role: 'user', text: 'secret-user' }) + '\n'
+    + JSON.stringify({ ts: '2026-08-01T11:00:00.000Z', cwd: '/home/dev/work/proj', role: 'assistant', text: 'secret-assistant' }) + '\n')
 
   expect(sniffJsonl(path)!.suggested.jsonl?.generic?.tsUnit).toBe('iso')
 })

@@ -12,7 +12,7 @@ function seed(
   lost: { truncated?: boolean; degraded?: boolean } = {},
 ) {
   const ref: SessionRef = {
-    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/root/proj', gitBranch: 'main',
+    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/home/dev/work/proj', gitBranch: 'main',
     title: 'Fix the SSE reconnect race', startedAt: 1_800_000_000_000,
     endedAt: 1_800_003_600_000, turns: 4, parentNativeId: null, tier: 'resume',
     origin: 'manifest', sourcePaths: ['/x'], fingerprint: 'f', ...over,
@@ -36,7 +36,7 @@ test('the brief carries title, directory, branch, files and every prompt', () =>
   seed(db, ['fix the sse reconnect', 'now add a test'], ['I guarded the subscribe call'], ['src/sse.ts'])
   const brief = buildBrief(db, 'claude:a')!
   expect(brief).toContain('Fix the SSE reconnect race')
-  expect(brief).toContain('/root/proj')
+  expect(brief).toContain('/home/dev/work/proj')
   expect(brief).toContain('main')
   expect(brief).toContain('fix the sse reconnect')
   expect(brief).toContain('now add a test')
@@ -72,14 +72,14 @@ test('the preamble is never dropped, and files trim further to keep the total un
   // files and nothing more. If the preamble were appended after budget
   // trimming instead of counted as part of the mandatory body, adding it here
   // would push the result past this budget.
-  const withoutPreamble = buildBrief(db, 'claude:a', { maxChars: 376 })!
-  expect(withoutPreamble.length).toBe(376)
+  const withoutPreamble = buildBrief(db, 'claude:a', { maxChars: 385 })!
+  expect(withoutPreamble.length).toBe(385)
   expect(withoutPreamble).toContain('a/three.ts')
 
-  const brief = buildBrief(db, 'claude:a', { maxChars: 376, preamble })!
+  const brief = buildBrief(db, 'claude:a', { maxChars: 385, preamble })!
   expect(brief).toContain(preamble)
   expect(brief).toContain('keep me')
-  expect(brief.length).toBeLessThanOrEqual(376)
+  expect(brief.length).toBeLessThanOrEqual(385)
   expect(brief).not.toContain('a/three.ts')
   db.close()
 })
@@ -381,7 +381,7 @@ test('the disclosure lines are priced into the mandatory body, not paid for by t
 /** Seeds a session that also carries the ordered dialogue its facets were built from. */
 function seedWithTurns(db: IndexDb, prompts: string[], prose: string[]) {
   const ref: SessionRef = {
-    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/root/proj', gitBranch: 'main',
+    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/home/dev/work/proj', gitBranch: 'main',
     title: 'Fix the SSE reconnect race', startedAt: 1_800_000_000_000,
     endedAt: 1_800_003_600_000, turns: prompts.length + prose.length, parentNativeId: null,
     tier: 'resume', origin: 'manifest', sourcePaths: ['/x'], fingerprint: 'f',

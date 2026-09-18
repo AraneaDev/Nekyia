@@ -23,7 +23,7 @@ const NOW = 1_800_000_000_000
 
 function seed(db: IndexDb, over: Partial<SessionRef> = {}): SessionRef {
   const ref: SessionRef = {
-    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/root/proj', gitBranch: 'main',
+    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/home/dev/work/proj', gitBranch: 'main',
     title: 'Fix the SSE reconnect race', startedAt: 0, endedAt: NOW, turns: 3,
     parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: [], fingerprint: '',
     ...over,
@@ -44,7 +44,7 @@ const adapters = [buildAdapter(validateManifest({
   brief: { cmd: 'claude', args: ['{prompt}'], cwd: '{cwd}' },
 }))]
 
-const opts = { cwd: '/root/proj', now: NOW }
+const opts = { cwd: '/home/dev/work/proj', now: NOW }
 const tick = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** Everything below the rule that separates the list from the preview. */
@@ -70,7 +70,7 @@ test('the picker never renders taller than the terminal', async () => {
     ref: heavy,
     prompts: ['a first prompt line'],
     prose: [],
-    files: Array.from({ length: 6 }, (_, i) => `/root/proj/src/deeply/nested/module/file-${i}.ts`),
+    files: Array.from({ length: 6 }, (_, i) => `/home/dev/work/proj/src/deeply/nested/module/file-${i}.ts`),
     truncated: false,
   })
 
@@ -401,7 +401,7 @@ test('row tier and adapter plan kind must agree in both directions', async () =>
     seed(db, { tier })
     const wrong: Adapter = {
       ...adapters[0]!,
-      plan: () => ({ kind: wrongKind, cmd: 'claude', args: [], cwd: '/root/proj' }),
+      plan: () => ({ kind: wrongKind, cmd: 'claude', args: [], cwd: '/home/dev/work/proj' }),
     }
     const plans: ExecPlan[] = []
     const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[wrong]}
@@ -418,10 +418,10 @@ test('row tier and adapter plan kind must agree in both directions', async () =>
 
 test('unsafe or oversized resume commands are rejected before the clipboard backend', async () => {
   const badPlans: ExecPlan[] = [
-    { kind: 'resume', cmd: 'claude\u001b[31m', args: ['--resume', 'a'], cwd: '/root/proj' },
-    { kind: 'resume', cmd: 'claude', args: ['--resume', 'id\nnext'], cwd: '/root/proj' },
+    { kind: 'resume', cmd: 'claude\u001b[31m', args: ['--resume', 'a'], cwd: '/home/dev/work/proj' },
+    { kind: 'resume', cmd: 'claude', args: ['--resume', 'id\nnext'], cwd: '/home/dev/work/proj' },
     { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/root/\u202eevil' },
-    { kind: 'resume', cmd: 'claude', args: ['x'.repeat(20_000)], cwd: '/root/proj' },
+    { kind: 'resume', cmd: 'claude', args: ['x'.repeat(20_000)], cwd: '/home/dev/work/proj' },
   ]
   for (const plan of badPlans) {
     const db = IndexDb.open(':memory:')
@@ -442,9 +442,9 @@ test('unsafe or oversized resume commands are rejected before the clipboard back
 test('25 MiB native-id, cwd and arg values are rejected before bounded control scans', async () => {
   const huge = 'x'.repeat(25 * 1024 * 1024)
   const cases: ExecPlan[] = [
-    { kind: 'resume', cmd: 'claude', args: ['--resume', huge], cwd: '/root/proj' },
+    { kind: 'resume', cmd: 'claude', args: ['--resume', huge], cwd: '/home/dev/work/proj' },
     { kind: 'resume', cmd: 'claude', args: [], cwd: `/root/${huge}` },
-    { kind: 'resume', cmd: 'claude', args: ['--flag', huge], cwd: '/root/proj' },
+    { kind: 'resume', cmd: 'claude', args: ['--flag', huge], cwd: '/home/dev/work/proj' },
   ]
   for (const plan of cases) {
     const work: CommandCopyWork = { scannedCodeUnits: 0 }
@@ -572,7 +572,7 @@ test('arrow keys move the preview selection and ctrl-c never executes a row', as
 
 test('runPick tears Ink and the database down before checking and running the plan', async () => {
   const events: string[] = []
-  const plan: ExecPlan = { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/root/proj' }
+  const plan: ExecPlan = { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/home/dev/work/proj' }
   const db = {
     close: () => { events.push('close') },
   } as unknown as IndexDb
@@ -585,7 +585,7 @@ test('runPick tears Ink and the database down before checking and running the pl
     loadConfig: () => DEFAULT_CONFIG,
     buildAdapters: () => ({ adapters, diagnostics: [] }),
     openDb: () => db,
-    cwd: () => '/root/proj',
+    cwd: () => '/home/dev/work/proj',
     now: () => NOW,
     mount: (props) => {
       props.onExec(plan)
@@ -625,7 +625,7 @@ test('runPick reindexes and reopens the index when the picker asks for it, then 
     loadConfig: () => DEFAULT_CONFIG,
     buildAdapters: () => ({ adapters, diagnostics: [] }),
     openDb: () => { events.push('open'); return db },
-    cwd: () => '/root/proj',
+    cwd: () => '/home/dev/work/proj',
     now: () => NOW,
     mount: (props) => {
       mounts += 1
@@ -665,7 +665,7 @@ test('a manual reindex that changes nothing on disk still reads as fresh on the 
     loadConfig: () => DEFAULT_CONFIG,
     buildAdapters: () => ({ adapters, diagnostics: [] }),
     openDb: () => db,
-    cwd: () => '/root/proj',
+    cwd: () => '/home/dev/work/proj',
     now: () => NOW,
     mount: (props) => {
       mounts += 1
@@ -697,7 +697,7 @@ test('a failed manual reindex is reported and stops the picker rather than loopi
     loadConfig: () => DEFAULT_CONFIG,
     buildAdapters: () => ({ adapters, diagnostics: [] }),
     openDb: () => db,
-    cwd: () => '/root/proj',
+    cwd: () => '/home/dev/work/proj',
     now: () => NOW,
     mount: (props) => ({
       waitUntilExit: async () => { props.onReindex?.() },
@@ -762,7 +762,7 @@ test('runPick closes the database and never checks a plan when Ink exit fails', 
     loadConfig: () => DEFAULT_CONFIG,
     buildAdapters: () => ({ adapters, diagnostics: [] }),
     mount: (props) => {
-      props.onExec({ kind: 'resume', cmd: 'claude', args: [], cwd: '/root/proj' })
+      props.onExec({ kind: 'resume', cmd: 'claude', args: [], cwd: '/home/dev/work/proj' })
       return {
         waitUntilExit: async () => { events.push('wait'); throw new Error('Ink failed\n\u001b[2J') },
         unmount: () => { events.push('unmount') },
@@ -1463,7 +1463,7 @@ test('ctrl+r does nothing when the index is fresh and no offer is shown', async 
  * for shows up as a thrown error rather than a silently different exit code.
  */
 function launchingDeps(overrides: Partial<PickDependencies> = {}): PickDependencies {
-  const plan: ExecPlan = { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/root/proj' }
+  const plan: ExecPlan = { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/home/dev/work/proj' }
   return {
     isTTY: () => true,
     needsConsent: () => false,
@@ -1473,7 +1473,7 @@ function launchingDeps(overrides: Partial<PickDependencies> = {}): PickDependenc
     loadConfig: () => DEFAULT_CONFIG,
     buildAdapters: () => ({ adapters, diagnostics: [] }),
     openDb: () => ({ close: () => {} }) as unknown as IndexDb,
-    cwd: () => '/root/proj',
+    cwd: () => '/home/dev/work/proj',
     now: () => NOW,
     mount: (props) => {
       props.onExec(plan)
@@ -1502,13 +1502,13 @@ test('runPick reports a launch it could not validate rather than launching it', 
 test('runPick refuses a plan the check rejected, and passes on the reason given', async () => {
   const errors: string[] = []
   const code = await runPick(launchingDeps({
-    checkPlan: () => ({ ok: false, reason: 'the directory /root/proj no longer exists' }),
+    checkPlan: () => ({ ok: false, reason: 'the directory /home/dev/work/proj no longer exists' }),
     runPlan: async () => { throw new Error('must not launch a rejected plan') },
     error: (text) => { errors.push(text) },
   }))
 
   expect(code).toBe(1)
-  expect(errors).toEqual(['the directory /root/proj no longer exists'])
+  expect(errors).toEqual(['the directory /home/dev/work/proj no longer exists'])
 })
 
 test('runPick still says something when the check rejects without a reason', async () => {
@@ -1642,7 +1642,7 @@ test('a short terminal spends its rows on the list rather than on decoration', a
     expect(frame.split('\n').length).toBeLessThanOrEqual(rows)
     // Whatever else is dropped, the preview stays: this line is drawn nowhere
     // but the pane under the list.
-    expect(frame).toContain('/root/proj · main · just now')
+    expect(frame).toContain('/home/dev/work/proj · main · just now')
     // The rule is decoration, so it is the first thing a short terminal loses.
     const hasRule = frame.split('\n').some((line) => /^─+$/u.test(line.trim()))
     expect(hasRule).toBe(rows >= 16)
@@ -1772,7 +1772,7 @@ test('runPick settles a copy still in flight before the client takes the termina
   const copy = new Promise<void>((resolve) => {
     finishCopy = () => { events.push('copied'); resolve() }
   })
-  const plan: ExecPlan = { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/root/proj' }
+  const plan: ExecPlan = { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/home/dev/work/proj' }
   const code = await runPick(launchingDeps({
     mount: (props) => {
       props.onExec(plan, copy)
@@ -1801,7 +1801,7 @@ test('a clipboard helper that never returns delays the launch rather than blocki
   const code = await runPick(launchingDeps({
     mount: (props) => {
       props.onExec(
-        { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/root/proj' },
+        { kind: 'resume', cmd: 'claude', args: ['--resume', 'a'], cwd: '/home/dev/work/proj' },
         new Promise<void>(() => {}),
       )
       return { waitUntilExit: async () => {}, unmount: () => { events.push('unmount') } }
@@ -1988,7 +1988,7 @@ test('with both clients installed and no choice saved, Enter asks which one', as
   view.stdin.write('\r')
   await tick()
   expect(saves).toEqual([['codebuff', 'freebuff']])
-  expect(plans[0]).toMatchObject({ kind: 'resume', cmd: 'freebuff', args: ['--continue', 'c1', '--cwd', '/root/proj'] })
+  expect(plans[0]).toMatchObject({ kind: 'resume', cmd: 'freebuff', args: ['--continue', 'c1', '--cwd', '/home/dev/work/proj'] })
   view.unmount()
   db.close()
 })

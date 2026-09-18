@@ -35,7 +35,7 @@ function seed(hydrated = true) {
   const db = IndexDb.open(':memory:')
   databases.push(db)
   const ref: SessionRef = {
-    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/root/proj', gitBranch: 'main',
+    uid: 'claude:a', client: 'claude', nativeId: 'a', cwd: '/home/dev/work/proj', gitBranch: 'main',
     title: 'Fix reconnect', startedAt: 0, endedAt: 1800000000000, turns: 2,
     parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: [], fingerprint: 'f',
   }
@@ -83,7 +83,7 @@ test('handoff starts fresh in the source directory for both cross-client and sam
     const brief = buildBrief(db, 'claude:a')!
     expect(result).toEqual({
       ok: true, briefChars: brief.length,
-      plan: { kind: 'brief', cmd: id, args: [brief], prompt: brief, cwd: '/root/proj' },
+      plan: { kind: 'brief', cmd: id, args: [brief], prompt: brief, cwd: '/home/dev/work/proj' },
     })
   }
 })
@@ -114,7 +114,7 @@ test('handoff reports absent source, unknown target, and unhydrated source', () 
 test('handoff rejects absent brief templates, unusable cwd, and a target returning native resume', () => {
   const db = seed()
   for (const target of [adapter('codex', false), {
-    ...adapter(), plan: () => ({ kind: 'resume' as const, cmd: 'codex', args: ['resume', 'a'], cwd: '/root/proj' }),
+    ...adapter(), plan: () => ({ kind: 'resume' as const, cmd: 'codex', args: ['resume', 'a'], cwd: '/home/dev/work/proj' }),
   }]) {
     expect(buildHandoffPlan(db, 'claude:a', 'codex', [target]))
       .toEqual({ ok: false, reason: 'this session cannot be launched' })

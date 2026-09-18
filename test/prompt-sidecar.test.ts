@@ -21,8 +21,8 @@ test('reads agy history and captures the workspace as cwd', () => {
     tsField: 'timestamp', tsUnit: 'ms', cwdField: 'workspace',
   })
   const e = m.get('597b1c48-7b0c-434a-83d6-14e908a699b5')!
-  expect(e.prompts).toEqual(['i want domination instead of wordworth'])
-  expect(e.cwd).toBe('/root/proj')
+  expect(e.prompts).toEqual(['swap the markdown parser for a faster one'])
+  expect(e.cwd).toBe('/home/dev/work/proj')
 })
 
 test('skips lines with no session id rather than inventing one', () => {

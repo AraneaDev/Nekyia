@@ -20,7 +20,7 @@ opencode.exec(`
 `)
 opencode.run(
   'INSERT INTO project VALUES (?1, ?2, ?3, ?4)',
-  ['p1', '/root/proj', 'git', null],
+  ['p1', '/home/dev/work/proj', 'git', null],
 )
 const insertOpenCodeSession = opencode.prepare(
   'INSERT INTO session VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)',
@@ -30,7 +30,7 @@ insertOpenCodeSession.run(
   'p1',
   null,
   'witty-nebula',
-  '/root/proj',
+  '/home/dev/work/proj',
   'Debug event stream drops',
   '1.1.19',
   1785657600000,
@@ -41,7 +41,7 @@ insertOpenCodeSession.run(
   'p1',
   'ses_aaa',
   'brave-comet',
-  '/root/proj',
+  '/home/dev/work/proj',
   'Debug event stream drops, continued',
   '1.1.19',
   1785661300000,
@@ -94,7 +94,7 @@ insertOpenCodePart.run(
     tool: 'read',
     state: {
       status: 'completed',
-      input: { filePath: '/root/proj/src/stream.ts' },
+      input: { filePath: '/home/dev/work/proj/src/stream.ts' },
       output: 'SECRET_TOOL_OUTPUT_MUST_NOT_BE_INDEXED',
     },
   }),
@@ -114,7 +114,7 @@ kilo.run(
     'p1',
     null,
     'lucky-moon',
-    '/root/proj',
+    '/home/dev/work/proj',
     'Kilo session',
     '1.0.0',
     1785657600000,
@@ -161,10 +161,10 @@ agy.run(
   [
     '597b1c48-7b0c-434a-83d6-14e908a699b5',
     '',
-    'Autonomous Systems Improvement Framework',
+    'Retry Budget Review',
     50,
     '2026-08-04 19:38:58.830144583+00:00',
-    JSON.stringify(['file:///root/proj']),
+    JSON.stringify(['file:///home/dev/work/proj']),
     '',
   ],
 )
@@ -205,8 +205,8 @@ const insertCopilotSession = copilot.prepare(
 )
 insertCopilotSession.run(
   'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca',
-  '/root/proj',
-  'AraneaDev/probe-alpha',
+  '/home/dev/work/proj',
+  'example-org/probe-alpha',
   'github',
   'feature/alpha',
   'Chase the duplicate listener',
@@ -216,7 +216,7 @@ insertCopilotSession.run(
 // A session outside a repository: Copilot leaves branch and repository null.
 insertCopilotSession.run(
   '222fe270-df55-4a9a-8afd-2821ed25322d',
-  '/root/other',
+  '/home/dev/work/other',
   null,
   null,
   null,
@@ -253,10 +253,10 @@ const insertCopilotFile = copilot.prepare(
   'INSERT INTO session_files(session_id, file_path, tool_name, turn_index) VALUES (?1, ?2, ?3, ?4)',
 )
 insertCopilotFile.run(
-  'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca', '/root/proj/src/listener.ts', 'edit', 0,
+  'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca', '/home/dev/work/proj/src/listener.ts', 'edit', 0,
 )
 insertCopilotFile.run(
-  'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca', '/root/proj/src/teardown.ts', 'create', 1,
+  'c51a6cd4-ff7c-40af-ac6b-7ef82da474ca', '/home/dev/work/proj/src/teardown.ts', 'create', 1,
 )
 // A blank path: the store is the client's, so it is not assumed to be clean.
 insertCopilotFile.run('c51a6cd4-ff7c-40af-ac6b-7ef82da474ca', '   ', 'edit', 1)
@@ -278,15 +278,15 @@ const insertGooseSession = goose.prepare(
 // three to milliseconds in SQL, so each one needs a row to normalise.
 insertGooseSession.run(
   '20260218_1', 'daily', 'Rework the retry budget', 'user',
-  '/root/proj', null, '2026-02-18T09:20:00Z', '2026-02-18T10:05:00Z',
+  '/home/dev/work/proj', null, '2026-02-18T09:20:00Z', '2026-02-18T10:05:00Z',
 )
 insertGooseSession.run(
   '20260218_2', 'seconds', 'Session timed in unix seconds', 'user',
-  '/root/proj', '20260218_1', '1771406400', '1771410000',
+  '/home/dev/work/proj', '20260218_1', '1771406400', '1771410000',
 )
 insertGooseSession.run(
   '20260218_3', 'millis', 'Session timed in unix milliseconds', 'user',
-  '/root/other', null, '1771406400000', '1771410000000',
+  '/home/dev/work/other', null, '1771406400000', '1771410000000',
 )
 const insertGooseMessage = goose.prepare(
   'INSERT INTO messages VALUES (?1, ?2, ?3, ?4, ?5, ?6)',

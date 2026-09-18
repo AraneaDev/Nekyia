@@ -173,13 +173,13 @@ test('compiled exclusions are never served stale, even when the array is mutated
   const exclude = ['/root/secret/**']
   const c = { ...DEFAULT_CONFIG, exclude }
   expect(isExcluded('/root/secret/thing', c)).toBe(true)
-  exclude[0] = '/root/other/**'
+  exclude[0] = '/home/dev/work/other/**'
   expect(isExcluded('/root/secret/thing', c)).toBe(false)
-  expect(isExcluded('/root/other/thing', c)).toBe(true)
+  expect(isExcluded('/home/dev/work/other/thing', c)).toBe(true)
   exclude.push('/root/secret/**')
   expect(isExcluded('/root/secret/thing', c)).toBe(true)
   exclude.length = 0
-  expect(isExcluded('/root/other/thing', c)).toBe(false)
+  expect(isExcluded('/home/dev/work/other/thing', c)).toBe(false)
 })
 
 test('isExcluded is false for a null cwd', () => {

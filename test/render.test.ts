@@ -39,10 +39,10 @@ test('row rendering is compact and includes tier and collapsed-count facets', ()
 test('harness wrappers are unwrapped into what was actually asked', () => {
   // A slash command carries its intent in the arguments, so both are kept.
   expect(userPromptText(
-    '<command-message>blog-ideas</command-message>\n'
-    + '<command-name>/blog-ideas</command-name>\n'
-    + '<command-args>fresh news, but i want it to be a tutorial</command-args>',
-  )).toBe('/blog-ideas fresh news, but i want it to be a tutorial')
+    '<command-message>release-notes</command-message>\n'
+    + '<command-name>/release-notes</command-name>\n'
+    + '<command-args>for the last tag, grouped by area</command-args>',
+  )).toBe('/release-notes for the last tag, grouped by area')
 
   // A command with no arguments still says which command it was.
   expect(userPromptText(
@@ -57,7 +57,7 @@ test('harness wrappers are unwrapped into what was actually asked', () => {
   )).toBe('')
   expect(userPromptText('<local-command-stdout>Bye!</local-command-stdout>')).toBe('')
   expect(userPromptText(
-    'Base directory for this skill: /root/x/.claude/skills/blog-ideas\n\n# Blog Ideas\n\nScan discourse.',
+    'Base directory for this skill: /home/dev/.claude/skills/release-notes\n\n# Release Notes\n\nGroup the commits by area.',
   )).toBe('')
 
   // A caveat wrapped around a real prompt leaves the prompt behind.
@@ -73,7 +73,7 @@ test('harness wrappers are unwrapped into what was actually asked', () => {
 
 test('a title carrying an escape sequence or a bidi override is neutralised', () => {
   const row = {
-    uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/root/nekyia',
+    uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/home/dev/work/proj',
     gitBranch: null, title: '\u001b[2J\u001b[Hwiped\u202edesrever', startedAt: NOW,
     endedAt: NOW - 5 * MIN, turns: 1, parentNativeId: null, tier: 'resume',
     origin: 'manifest', missing: false,
@@ -111,7 +111,7 @@ test('a wide project name still occupies exactly sixteen terminal columns', () =
 
 test('an unbounded title is cut to the title column', () => {
   const row = {
-    uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/root/nekyia',
+    uid: 'claude:id', client: 'claude', nativeId: 'id', cwd: '/home/dev/work/proj',
     gitBranch: null, title: 'a'.repeat(5_000), startedAt: NOW, endedAt: NOW - 5 * MIN,
     turns: 1, parentNativeId: null, tier: 'resume', origin: 'manifest',
     missing: false, score: 3, collapsed: 0,
@@ -122,41 +122,41 @@ test('an unbounded title is cut to the title column', () => {
 
 test('a timeline groups events under their session', () => {
   const lines=formatTimeline([{
-    ref: { uid:'claude:a', client:'claude', nativeId:'a', cwd:'/root/proj', gitBranch:'main',
+    ref: { uid:'claude:a', client:'claude', nativeId:'a', cwd:'/home/dev/work/proj', gitBranch:'main',
       title:'fix the sse race', startedAt:1000, endedAt:2000, turns:4, parentNativeId:null,
       tier:'resume', origin:'manifest', missing:false },
     detail:'ordered', eventsTruncated:false,
     entries:[
-      { ordinal:0, turn:3, kind:'edit', path:'src/sse.ts', resolved:'/root/proj/src/sse.ts' },
-      { ordinal:1, turn:9, kind:'delete', path:'scratch.ts', resolved:'/root/proj/scratch.ts' },
+      { ordinal:0, turn:3, kind:'edit', path:'src/sse.ts', resolved:'/home/dev/work/proj/src/sse.ts' },
+      { ordinal:1, turn:9, kind:'delete', path:'scratch.ts', resolved:'/home/dev/work/proj/scratch.ts' },
     ],
-  }], { dir:'/root/proj', git:{ consulted:true, tracked:new Set(['/root/proj/src/sse.ts']) }, now:2000 })
+  }], { dir:'/home/dev/work/proj', git:{ consulted:true, tracked:new Set(['/home/dev/work/proj/src/sse.ts']) }, now:2000 })
   expect(lines.join('\n')).toContain('3  edit    src/sse.ts')
   expect(lines.join('\n')).toContain('9  delete  scratch.ts')
   expect(lines.join('\n')).toContain('untracked')
 })
 test('a paths-only session says so instead of showing an order', () => {
   const lines=formatTimeline([{
-    ref: { uid:'copilot:b', client:'copilot', nativeId:'b', cwd:'/root/proj', gitBranch:null,
+    ref: { uid:'copilot:b', client:'copilot', nativeId:'b', cwd:'/home/dev/work/proj', gitBranch:null,
       title:null, startedAt:1000, endedAt:2000, turns:0, parentNativeId:null,
       tier:'search', origin:'manifest', missing:false },
     detail:'paths', eventsTruncated:false,
-    entries:[{ ordinal:null, turn:null, kind:'unknown', path:'src/db.ts', resolved:'/root/proj/src/db.ts' }],
-  }], { dir:'/root/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
+    entries:[{ ordinal:null, turn:null, kind:'unknown', path:'src/db.ts', resolved:'/home/dev/work/proj/src/db.ts' }],
+  }], { dir:'/home/dev/work/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
   expect(lines.join('\n')).toContain('this client records file names only')
   expect(lines.join('\n')).not.toContain('untracked')
 })
 test('a timeline path reaches the terminal sanitized', () => {
   const lines=formatTimeline([{
-    ref: { uid:'claude:d', client:'claude', nativeId:'d', cwd:'/root/proj', gitBranch:null,
+    ref: { uid:'claude:d', client:'claude', nativeId:'d', cwd:'/home/dev/work/proj', gitBranch:null,
       title:null, startedAt:1000, endedAt:2000, turns:0, parentNativeId:null,
       tier:'resume', origin:'manifest', missing:false },
     detail:'ordered', eventsTruncated:false,
     entries:[{
       ordinal:0, turn:1, kind:'edit', path:'\u001b[2K\u202eevil.ts',
-      resolved:'/root/proj/\u001b[2K\u202eevil.ts',
+      resolved:'/home/dev/work/proj/\u001b[2K\u202eevil.ts',
     }],
-  }], { dir:'/root/proj', git:{ consulted:true, tracked:new Set() }, now:2000 })
+  }], { dir:'/home/dev/work/proj', git:{ consulted:true, tracked:new Set() }, now:2000 })
   const text = lines.join('\n')
   // A path came out of a transcript like every other display field, so the
   // escape that would clear the screen and the override that would reverse the
@@ -168,35 +168,35 @@ test('a timeline path reaches the terminal sanitized', () => {
 })
 test('an ordinary timeline path is printed unchanged', () => {
   const lines=formatTimeline([{
-    ref: { uid:'claude:e', client:'claude', nativeId:'e', cwd:'/root/proj', gitBranch:null,
+    ref: { uid:'claude:e', client:'claude', nativeId:'e', cwd:'/home/dev/work/proj', gitBranch:null,
       title:null, startedAt:1000, endedAt:2000, turns:0, parentNativeId:null,
       tier:'resume', origin:'manifest', missing:false },
     detail:'ordered', eventsTruncated:false,
     entries:[{
       ordinal:0, turn:2, kind:'write', path:'src/core/db.ts',
-      resolved:'/root/proj/src/core/db.ts',
+      resolved:'/home/dev/work/proj/src/core/db.ts',
     }],
-  }], { dir:'/root/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
+  }], { dir:'/home/dev/work/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
   expect(lines.join('\n')).toContain('2  write   src/core/db.ts')
 })
 test('a session whose transcript is gone says so', () => {
   const lines=formatTimeline([{
-    ref: { uid:'claude:f', client:'claude', nativeId:'f', cwd:'/root/proj', gitBranch:null,
+    ref: { uid:'claude:f', client:'claude', nativeId:'f', cwd:'/home/dev/work/proj', gitBranch:null,
       title:null, startedAt:1000, endedAt:2000, turns:0, parentNativeId:null,
       tier:'resume', origin:'manifest', missing:true },
     detail:'ordered', eventsTruncated:false,
-    entries:[{ ordinal:0, turn:0, kind:'read', path:'a.ts', resolved:'/root/proj/a.ts' }],
-  }], { dir:'/root/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
+    entries:[{ ordinal:0, turn:0, kind:'read', path:'a.ts', resolved:'/home/dev/work/proj/a.ts' }],
+  }], { dir:'/home/dev/work/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
   expect(lines.join('\n')).toContain('source missing')
 })
 test('sessions indexed before file events are counted in the header', () => {
   const lines=formatTimeline([{
-    ref: { uid:'claude:c', client:'claude', nativeId:'c', cwd:'/root/proj', gitBranch:null,
+    ref: { uid:'claude:c', client:'claude', nativeId:'c', cwd:'/home/dev/work/proj', gitBranch:null,
       title:null, startedAt:1000, endedAt:2000, turns:0, parentNativeId:null,
       tier:'resume', origin:'manifest', missing:false },
     detail:'unknown', eventsTruncated:false,
-    entries:[{ ordinal:null, turn:null, kind:'unknown', path:'x.ts', resolved:'/root/proj/x.ts' }],
-  }], { dir:'/root/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
+    entries:[{ ordinal:null, turn:null, kind:'unknown', path:'x.ts', resolved:'/home/dev/work/proj/x.ts' }],
+  }], { dir:'/home/dev/work/proj', git:{ consulted:false, tracked:new Set() }, now:2000 })
   // A plain `nekyia index` re-hydrates only what changed, so it leaves an
   // upgraded index exactly as unknown as it found it. `--rebuild` is the one
   // that fills the detail in.
