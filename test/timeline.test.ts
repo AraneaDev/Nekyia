@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { presentedTier } from '../src/commands/timeline'
 import { IndexDb } from '../src/core/db'
 import { timeline } from '../src/core/timeline'
 import type { FileEvent, SessionDoc, SessionRef } from '../src/types'
@@ -79,6 +80,17 @@ test('a session with no directory of its own is found under a root prefix', () =
   db.upsertRef(r)
   db.upsertDoc(doc(r,{ files:['/srv/app/main.ts'], fileEvents:[{ path:'/srv/app/main.ts', kind:'edit', turn:0 }], fileDetail:'ordered' }))
   expect(timeline(db,{ dir:'/' }).map(s=>s.ref.uid)).toEqual(['claude:elsewhere']); db.close()
+})
+test('presentedTier keeps the stored tier when a client has no overlay', () => {
+  expect(presentedTier('claude', 'resume', new Map())).toEqual({ tier: 'resume' })
+})
+test('presentedTier follows a chosen launcher, naming it', () => {
+  const presentation = new Map([['codebuff', { tier: 'resume' as const, label: 'freebuff', launcher: 'freebuff' }]])
+  expect(presentedTier('codebuff', 'search', presentation)).toEqual({ tier: 'resume', launcher: 'freebuff' })
+})
+test('presentedTier shows a default tier and label while undecided, naming no launcher', () => {
+  const presentation = new Map([['codebuff', { tier: 'search' as const, label: 'codebuff' }]])
+  expect(presentedTier('codebuff', 'search', presentation)).toEqual({ tier: 'search' })
 })
 test('capped sessions with truncated events fall back to unordered facets', () => {
   const db=IndexDb.open(':memory:'); const r=ref()
