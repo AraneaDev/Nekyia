@@ -38,6 +38,13 @@ export interface Config {
    * age is always at least zero.
    */
   autoReindexAfterHours?: number
+  /**
+   * Which launcher opens a store that more than one client writes, by manifest id.
+   *
+   * Absent until the user chooses. Only consulted when both clients are on PATH;
+   * with one installed there is nothing to choose.
+   */
+  launchers?: Record<string, string>
 }
 
 /** The settings used when no config file exists, or when the one on disk cannot be trusted. */
@@ -53,7 +60,7 @@ const MAX_CONFIG_BYTES = 1024 * 1024
 export const MAX_CONFIG_ITEMS = 256
 const MAX_CONFIG_STRING = 4096
 const CONFIG_FIELDS = new Set([
-  'exclude', 'halfLifeDays', 'maxFileBytes', 'hiddenClients', 'autoReindexAfterHours',
+  'exclude', 'halfLifeDays', 'maxFileBytes', 'hiddenClients', 'autoReindexAfterHours', 'launchers',
 ])
 /**
  * Fields Nekyia no longer honours but still accepts on disk.
@@ -178,6 +185,16 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+/** A bounded map of non-empty, bounded strings. */
+function isLauncherChoices(value: unknown): value is Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const entries = Object.entries(value as Record<string, unknown>)
+  return entries.length <= MAX_CONFIG_ITEMS && entries.every(([key, choice]) => (
+    key.length > 0 && key.length <= MAX_CONFIG_STRING
+    && typeof choice === 'string' && choice.length > 0 && choice.length <= MAX_CONFIG_STRING
+  ))
+}
+
 /**
  * Parses a raw configuration string, optionally throwing errors on unknown or invalid fields.
  */
@@ -217,6 +234,7 @@ function parseConfig(raw: string, strict: boolean, dropped?: string[]): Config {
   assign('maxFileBytes', isFiniteNumber, (value) => value)
   assign('hiddenClients', isStringArray, (value) => [...value])
   assign('autoReindexAfterHours', isFiniteNumber, (value) => value)
+  assign('launchers', isLauncherChoices, (value) => ({ ...value }))
   return config
 }
 
@@ -228,7 +246,8 @@ function configBytes(config: Config): Buffer {
     || !isFiniteNumber(config.halfLifeDays)
     || !isFiniteNumber(config.maxFileBytes)
     || !isStringArray(config.hiddenClients)
-    || (config.autoReindexAfterHours !== undefined && !isFiniteNumber(config.autoReindexAfterHours))) {
+    || (config.autoReindexAfterHours !== undefined && !isFiniteNumber(config.autoReindexAfterHours))
+    || (config.launchers !== undefined && !isLauncherChoices(config.launchers))) {
     throw new Error('config exceeds limits or contains invalid values')
   }
   const bytes = Buffer.from(`${JSON.stringify(config, null, 2)}\n`)
@@ -735,6 +754,14 @@ export async function updateConfig(
   } finally {
     await releaseConfigLock(lock)
   }
+}
+
+/** Saves which launcher opens a shared store, keeping every other setting as it is. */
+export async function saveLauncherChoice(clientId: string, launcher: string): Promise<void> {
+  await updateConfig((current) => ({
+    ...current,
+    launchers: { ...(current.launchers ?? {}), [clientId]: launcher },
+  }))
 }
 
 const compiledExcludes = new WeakMap<string[], { patterns: string[]; globs: Glob[] }>()
