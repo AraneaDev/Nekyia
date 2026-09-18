@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_CONFIG } from '../src/config'
@@ -485,4 +485,31 @@ test('an index that never recorded an extraction is left alone rather than re-re
 
   expect((await scan(db, DEFAULT_CONFIG, [adapter])).changed).toEqual([])
   db.close()
+})
+
+test('a reader change re-reads only the sessions that reader produced', () => {
+  // The fingerprint every built-in client was indexed under before Codex
+  // learned to read its branch. Any other value here re-reads that client's
+  // whole history on the next index, for a change it does not depend on.
+  const unchanged: Record<string, string> = {
+    agy: '193270a4512140593f92d7fdbf9acccc77829973ba0c66ee5c83084f9eb39d14',
+    claude: '193734f9650a5629517a47ff29beccdd3d5ed2ba69dbafd9ff115a18932665aa',
+    codebuff: 'c5734bcac2e7e0fcf5af7ff9adfd04898fa65149afd862bf0ec6c6bddc4ac413',
+    copilot: '547eab08b75a76687ebed2ae90e32e8b872cf6df901d6f08e40c5850233d8df4',
+    cursor: '37f82d7cfcd9bac607892d0dce3b5f6d742fb43440c043ac7caa635962269419',
+    goose: '8c92442655233f9d22413c1f9928be4fdd62c54293ddd6a6b7991e81b5c27bae',
+    kilo: '8f9a486785cae8f4a57d4ea2ba28d14ea5c75eff0031bc9b9ac2f69ee5667b61',
+    opencode: '119016222fd10b32cb6a46b8771aaa4bcf318e7674ef81d7f8f939c08029426d',
+  }
+  const codexBefore = '5db559810a04205a74955d07fe8e5d0260d20f7f50412da98778368ac43c95fe'
+
+  const builtin = join(import.meta.dir, '..', 'src', 'manifests', 'builtin')
+  const now = Object.fromEntries(readdirSync(builtin).map((name) => {
+    const manifest = validateManifest(JSON.parse(readFileSync(join(builtin, name), 'utf8')))
+    return [manifest.id, extractionFingerprint(manifest, DEFAULT_CONFIG)]
+  }))
+
+  const { codex, ...others } = now
+  expect(others).toEqual(unchanged)
+  expect(codex).not.toBe(codexBefore)
 })
