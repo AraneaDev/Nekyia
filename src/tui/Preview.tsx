@@ -286,7 +286,7 @@ export function buildPreviewLines(
     head.push({
       text: safe(
         undecided
-          ? 'enter asks which client opens this store'
+          ? 'no client chosen for this store yet'
           : `${client} cannot resume by id · enter starts a new briefed session`,
         headWidth,
       ),
