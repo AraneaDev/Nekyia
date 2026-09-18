@@ -15,14 +15,17 @@ function row(over: Partial<Row> = {}): Row {
   }
 }
 
-test('an undecided shared store tells the reader Enter will ask, not that this client cannot resume', () => {
+test('an undecided shared store says no client is chosen, not that this client cannot resume', () => {
   const db = IndexDb.open(':memory:')
   // clientLabel set (ask/none default) but no launcher resolved: the picker
   // has not decided which client would open this store, so the preview must
   // not claim a specific client "cannot resume by id".
   const lines = buildPreviewLines(db, row({ clientLabel: 'codebuff' }), { now: NOW })
   const warning = lines.find((line) => line.color === 'yellow')
-  expect(warning?.text).toContain('enter asks which client opens this store')
+  expect(warning?.text).toContain('no client chosen for this store yet')
+  // Neither installed is the same undecided state, so the text must not
+  // promise that Enter will ask.
+  expect(warning?.text).not.toContain('enter asks')
   expect(warning?.text).not.toContain('cannot resume by id')
   db.close()
 })
