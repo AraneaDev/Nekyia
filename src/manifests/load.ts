@@ -87,7 +87,7 @@ export interface SqliteSpec {
 /** Locates a directory tree holding one JSON document per session. */
 export interface JsonDirSpec {
   glob: string
-  variant: 'codebuff'
+  variant: 'codebuff' | 'cursor'
 }
 
 /**
@@ -106,6 +106,20 @@ export interface SidecarSpec {
 }
 
 /**
+ * One of several clients that can open the same store.
+ *
+ * Some stores are written by more than one client, with nothing on disk saying
+ * which wrote a given session. The manifest then names each client that can
+ * open it, with its own tier and commands, and the user picks one.
+ */
+export interface LauncherSpec {
+  name: string
+  tier: Tier
+  resume?: CommandSpec
+  brief?: CommandSpec
+}
+
+/**
  * Common fields shared across all manifest formats.
  */
 interface ManifestCommon {
@@ -117,6 +131,7 @@ interface ManifestCommon {
   sidecar?: SidecarSpec
   resume?: CommandSpec
   brief?: CommandSpec
+  launchers?: Record<string, LauncherSpec>
 }
 
 /**
@@ -208,7 +223,7 @@ function expectOptionalString(value: unknown, field: string): string | undefined
 /**
  * Validates that an untrusted object correctly implements CommandSpec.
  */
-function validateCommand(value: unknown, field: 'resume' | 'brief'): CommandSpec {
+function validateCommand(value: unknown, field: string): CommandSpec {
   const command = expectRecord(value, field)
   const cmd = expectString(command.cmd, `${field}.cmd`)
   if (!Array.isArray(command.args) || !command.args.every((arg) => typeof arg === 'string')) {
@@ -352,8 +367,8 @@ function validateSqlite(value: unknown): SqliteSpec {
 function validateJsonDir(value: unknown): JsonDirSpec {
   const jsonDir = expectRecord(value, 'jsonDir')
   const glob = expectString(jsonDir.glob, 'jsonDir.glob')
-  if (jsonDir.variant !== 'codebuff') {
-    throw new Error('jsonDir.variant must be "codebuff"')
+  if (jsonDir.variant !== 'codebuff' && jsonDir.variant !== 'cursor') {
+    throw new Error('jsonDir.variant must be "codebuff" or "cursor"')
   }
   return { glob, variant: jsonDir.variant }
 }
@@ -372,6 +387,41 @@ export function renderArgs(
   return args.map((arg) => arg.replace(/\{(\w+)\}/g, (placeholder, key: string) => (
     Object.hasOwn(values, key) ? values[key]! : placeholder
   )))
+}
+
+const MAX_LAUNCHERS = 8
+
+/** Validates a manifest's named launchers. A single launcher would just be the manifest itself. */
+function validateLaunchers(value: unknown): Record<string, LauncherSpec> {
+  if (!isRecord(value)) throw new Error('launchers must be an object')
+  const entries = Object.entries(value)
+  if (entries.length < 2 || entries.length > MAX_LAUNCHERS) {
+    throw new Error(`launchers must name between 2 and ${MAX_LAUNCHERS} clients`)
+  }
+  const launchers: Record<string, LauncherSpec> = {}
+  for (const [key, raw] of entries) {
+    if (!isSafeClientId(key)) throw new Error(`launcher name is not a safe client id: ${key}`)
+    if (!isRecord(raw)) throw new Error(`launcher ${key} must be an object`)
+    if (typeof raw.name !== 'string' || !raw.name) throw new Error(`launcher ${key} needs a name`)
+    if (typeof raw.tier !== 'string' || !TIERS.includes(raw.tier as Tier)) {
+      throw new Error(`launcher ${key} has an unknown tier`)
+    }
+    const resume = raw.resume === undefined ? undefined : validateCommand(raw.resume, `launchers.${key}.resume`)
+    const brief = raw.brief === undefined ? undefined : validateCommand(raw.brief, `launchers.${key}.brief`)
+    if (raw.tier === 'resume' && resume === undefined) {
+      throw new Error(`launcher ${key}: tier "resume" requires a resume command`)
+    }
+    if (resume === undefined && brief === undefined) {
+      throw new Error(`launcher ${key} needs a resume or a brief command`)
+    }
+    launchers[key] = {
+      name: raw.name,
+      tier: raw.tier as Tier,
+      ...(resume === undefined ? {} : { resume }),
+      ...(brief === undefined ? {} : { brief }),
+    }
+  }
+  return launchers
 }
 
 /**
@@ -400,6 +450,13 @@ export function validateManifest(value: unknown): Manifest {
   const sidecar = value.sidecar === undefined ? undefined : validateSidecar(value.sidecar)
   const resume = value.resume === undefined ? undefined : validateCommand(value.resume, 'resume')
   const brief = value.brief === undefined ? undefined : validateCommand(value.brief, 'brief')
+  const launchers = value.launchers === undefined ? undefined : validateLaunchers(value.launchers)
+  if (launchers !== undefined && (resume !== undefined || brief !== undefined)) {
+    throw new Error('a manifest with launchers keeps its commands inside them, not at the top level')
+  }
+  if (launchers !== undefined && value.tier !== 'search') {
+    throw new Error('a manifest with launchers must declare tier "search"; each launcher declares its own')
+  }
   if (value.tier === 'resume' && resume === undefined) {
     throw new Error('tier "resume" requires a resume command')
   }
@@ -413,6 +470,7 @@ export function validateManifest(value: unknown): Manifest {
     ...(sidecar === undefined ? {} : { sidecar }),
     ...(resume === undefined ? {} : { resume }),
     ...(brief === undefined ? {} : { brief }),
+    ...(launchers === undefined ? {} : { launchers }),
   }
 
   switch (value.format) {
