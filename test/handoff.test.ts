@@ -17,15 +17,16 @@ test('every built-in brief template delivers context using its interactive promp
   const expected: Record<string, string[]> = {
     claude: [prompt], codex: [prompt], agy: ['--prompt-interactive', prompt],
     copilot: ['--interactive', prompt], opencode: ['--prompt', prompt],
-    kilo: ['--prompt', prompt], codebuff: ['--cwd', cwd, prompt],
+    kilo: ['--prompt', prompt], codebuff: ['--cwd', cwd, prompt], cursor: [prompt],
     goose: ['run', '-t', prompt, '-s'],
   }
+  const commands: Record<string, string> = { cursor: 'cursor-agent' }
   const directory = join(import.meta.dir, '../src/manifests/builtin')
   for (const file of readdirSync(directory).filter((name) => name.endsWith('.json'))) {
     const manifest = validateManifest(JSON.parse(readFileSync(join(directory, file), 'utf8')))
     const target = buildAdapter(manifest)
     expect(target.plan({ nativeId: 'source-id', cwd }, prompt)).toEqual({
-      kind: 'brief', cmd: manifest.id, args: expected[manifest.id], cwd, prompt,
+      kind: 'brief', cmd: commands[manifest.id] ?? manifest.id, args: expected[manifest.id], cwd, prompt,
     })
   }
 })

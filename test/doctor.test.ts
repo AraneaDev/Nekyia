@@ -68,7 +68,7 @@ test('doctor names every built-in client, provenance, paths, and override', () =
   const result = run(['doctor'], setup.env)
   expect(result.exitCode).toBe(0)
   const out = result.stdout.toString()
-  for (const client of ['claude', 'codex', 'opencode', 'kilo', 'codebuff', 'agy', 'goose']) {
+  for (const client of ['claude', 'codex', 'opencode', 'kilo', 'codebuff', 'agy', 'cursor', 'goose']) {
     expect(out).toContain(client)
   }
   expect(out).toContain('built-in')
@@ -185,7 +185,7 @@ test('doctor reports every bounded loaded manifest without a second silent cap',
   const report = JSON.parse(result.stdout.toString())
   const reported = new Set(report.clients.map((client: any) => client.client))
   for (const id of ids) expect(reported.has(id)).toBe(true)
-  const builtins = ['agy', 'claude', 'codebuff', 'codex', 'copilot', 'goose', 'kilo', 'opencode']
+  const builtins = ['agy', 'claude', 'codebuff', 'codex', 'copilot', 'cursor', 'goose', 'kilo', 'opencode']
   for (const id of builtins) expect(reported.has(id)).toBe(true)
   // Derived from the two lists above rather than written out: a hardcoded total
   // goes stale the moment a built-in client is added, and it fails somewhere

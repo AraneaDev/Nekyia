@@ -176,6 +176,7 @@ test('loads all built-in manifests without errors', () => {
     'codebuff',
     'codex',
     'copilot',
+    'cursor',
     'goose',
     'kilo',
     'opencode',
