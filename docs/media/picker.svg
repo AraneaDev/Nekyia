@@ -5,23 +5,23 @@
 <text x="940.0" y="16.0" fill="#98c379" opacity="0.62" textLength="184.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">· index just refreshed</text>
 <text x="16.0" y="34.0" fill="#56b6c2" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▸</text>
 <text x="32.8" y="34.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">type to search</text>
-<line x1="20.2" y1="57.0" x2="20.2" y2="66.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<line x1="20.2" y1="66.0" x2="20.2" y2="75.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="16.0" y="70.0" fill="#c678dd" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▌</text>
 <text x="32.8" y="70.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
 <text x="125.2" y="70.0" fill="#c9d1d9" font-weight="600" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">22m</text>
 <text x="158.8" y="70.0" fill="#61afef" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway</text>
-<text x="284.8" y="70.0" fill="#c9d1d9" textLength="554.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the retry budget is shared across tenants, it should be per tenant</text>
+<text x="284.8" y="70.0" fill="#c9d1d9" font-weight="600" textLength="554.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the retry budget is shared across tenants, it should be per tenant</text>
 <line x1="20.2" y1="75.0" x2="20.2" y2="84.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="84.0" x2="20.2" y2="93.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <text x="32.8" y="88.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
 <text x="133.6" y="88.0" fill="#c9d1d9" font-weight="600" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">3h</text>
 <text x="158.8" y="88.0" fill="#c678dd" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">billing-svc</text>
 <text x="284.8" y="88.0" fill="#c9d1d9" textLength="512.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">a retried charge can double bill when the webhook lands twice</text>
-<text x="16.0" y="106.0" fill="#56b6c2" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▌</text>
-<text x="32.8" y="106.0" fill="#56b6c2" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
+<line x1="20.2" y1="93.0" x2="20.2" y2="102.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<line x1="20.2" y1="102.0" x2="20.2" y2="111.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
+<text x="32.8" y="106.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
 <text x="133.6" y="106.0" fill="#c9d1d9" font-weight="600" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">6h</text>
 <text x="158.8" y="106.0" fill="#61afef" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">api-gateway</text>
-<text x="284.8" y="106.0" fill="#c9d1d9" font-weight="600" textLength="462.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">add structured logging around the upstream timeout path</text>
+<text x="284.8" y="106.0" fill="#c9d1d9" textLength="462.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">add structured logging around the upstream timeout path</text>
 <line x1="20.2" y1="111.0" x2="20.2" y2="120.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="120.0" x2="20.2" y2="129.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <text x="32.8" y="124.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
@@ -30,7 +30,7 @@
 <text x="284.8" y="124.0" fill="#c9d1d9" textLength="453.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the saved filter chips lose their order after a reload</text>
 <line x1="20.2" y1="129.0" x2="20.2" y2="138.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="138.0" x2="20.2" y2="147.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="32.8" y="142.0" fill="#98c379" opacity="0.62" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">opencode</text>
+<text x="32.8" y="142.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
 <text x="125.2" y="142.0" fill="#c9d1d9" font-weight="600" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">14h</text>
 <text x="158.8" y="142.0" fill="#c678dd" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">billing-svc</text>
 <text x="284.8" y="142.0" fill="#c9d1d9" textLength="436.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">port the invoice numbering to the new sequence table</text>
@@ -42,7 +42,7 @@
 <text x="284.8" y="160.0" fill="#c9d1d9" textLength="621.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the nightly restore drill fails whenever the snapshot is older than a week</text>
 <line x1="20.2" y1="165.0" x2="20.2" y2="174.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="174.0" x2="20.2" y2="183.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="32.8" y="178.0" fill="#61afef" opacity="0.62" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codebuff</text>
+<text x="32.8" y="178.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
 <text x="133.6" y="178.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1d</text>
 <text x="158.8" y="178.0" fill="#61afef" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">search-svc</text>
 <text x="284.8" y="178.0" fill="#c9d1d9" textLength="445.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">stemming is applied twice for german, so plurals miss</text>
@@ -54,7 +54,7 @@
 <text x="284.8" y="196.0" fill="#c9d1d9" textLength="571.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">make the empty state say what to do next instead of just being empty</text>
 <line x1="20.2" y1="201.0" x2="20.2" y2="210.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="210.0" x2="20.2" y2="219.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="32.8" y="214.0" fill="#e5c07b" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">kilo</text>
+<text x="32.8" y="214.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
 <text x="133.6" y="214.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2d</text>
 <text x="158.8" y="214.0" fill="#61afef" textLength="84.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">search-svc</text>
 <text x="284.8" y="214.0" fill="#c9d1d9" textLength="453.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">sketch a relevance scoring change and argue against it</text>
@@ -66,7 +66,7 @@
 <text x="284.8" y="232.0" fill="#c9d1d9" textLength="562.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">hedged requests are firing even when the first response already won</text>
 <line x1="20.2" y1="237.0" x2="20.2" y2="246.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="246.0" x2="20.2" y2="255.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="32.8" y="250.0" fill="#e06c75" opacity="0.62" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">agy</text>
+<text x="32.8" y="250.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
 <text x="133.6" y="250.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">3d</text>
 <text x="158.8" y="250.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">infra</text>
 <text x="284.8" y="250.0" fill="#c9d1d9" textLength="436.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">draft the incident review for the certificate expiry</text>
@@ -78,7 +78,7 @@
 <text x="284.8" y="268.0" fill="#c9d1d9" textLength="529.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">refunds past ninety days should fail loudly, not silently no-op</text>
 <line x1="20.2" y1="273.0" x2="20.2" y2="282.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="282.0" x2="20.2" y2="291.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="32.8" y="286.0" fill="#56b6c2" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
+<text x="32.8" y="286.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
 <text x="133.6" y="286.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">5d</text>
 <text x="158.8" y="286.0" fill="#e5c07b" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console</text>
 <text x="284.8" y="286.0" fill="#c9d1d9" textLength="436.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">convert the settings page to the new form primitives</text>
@@ -90,7 +90,7 @@
 <text x="284.8" y="304.0" fill="#c9d1d9" textLength="478.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">segment merges stall the write path for seconds at a time</text>
 <line x1="20.2" y1="309.0" x2="20.2" y2="318.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="318.0" x2="20.2" y2="327.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="32.8" y="322.0" fill="#98c379" opacity="0.62" textLength="67.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">opencode</text>
+<text x="32.8" y="322.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
 <text x="133.6" y="322.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">1w</text>
 <text x="158.8" y="322.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">infra</text>
 <text x="284.8" y="322.0" fill="#c9d1d9" textLength="487.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">pin the runner image so builds stop drifting between weeks</text>
@@ -364,23 +364,31 @@
 <line x1="1112.2" y1="372.0" x2="1116.4" y2="372.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="1116.4" y1="372.0" x2="1120.6" y2="372.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="1120.6" y1="372.0" x2="1124.8" y2="372.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="16.0" y="394.0" fill="#c9d1d9" font-weight="600" textLength="462.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">add structured logging around the upstream timeout path</text>
-<text x="16.0" y="412.0" fill="#c9d1d9" opacity="0.62" textLength="445.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">/home/dev/work/api-gateway · main · 6h ago · 12 turns</text>
-<text x="16.0" y="430.0" fill="#e5c07b" textLength="520.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex cannot resume by id · enter starts a new briefed session</text>
-<text x="16.0" y="448.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">touched</text>
-<text x="91.6" y="448.0" fill="#c9d1d9" textLength="184.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">src/gateway/logging.ts</text>
+<text x="16.0" y="394.0" fill="#c9d1d9" font-weight="600" textLength="554.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the retry budget is shared across tenants, it should be per tenant</text>
+<text x="16.0" y="412.0" fill="#c9d1d9" opacity="0.62" textLength="453.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">/home/dev/work/api-gateway · main · 22m ago · 25 turns</text>
+<text x="16.0" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">asked</text>
+<text x="91.6" y="430.0" fill="#c9d1d9" textLength="394.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">walk me through where the budget is decremented</text>
+<text x="91.6" y="448.0" fill="#c9d1d9" textLength="268.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">why is it keyed by route at all?</text>
+<text x="16.0" y="466.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">replied</text>
+<text x="91.6" y="466.0" fill="#c9d1d9" opacity="0.62" textLength="638.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">The budget lives on the client, so every tenant draws from the same counter.</text>
+<text x="91.6" y="484.0" fill="#c9d1d9" opacity="0.62" textLength="747.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Decremented in retry-budget.ts before the hedge fires, keyed by route rather than tenant.</text>
+<text x="16.0" y="502.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">touched</text>
+<text x="91.6" y="502.0" fill="#c9d1d9" textLength="159.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">docs/rate-limits.md</text>
+<text x="91.6" y="520.0" fill="#c9d1d9" textLength="226.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">src/gateway/retry-budget.ts</text>
 <text x="16.0" y="610.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">enter</text>
-<text x="66.4" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">brief</text>
-<text x="133.6" y="610.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+o</text>
-<text x="192.4" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">history</text>
-<text x="276.4" y="610.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+p</text>
-<text x="335.2" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">prompt</text>
-<text x="410.8" y="610.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+y</text>
-<text x="469.6" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">command</text>
-<text x="553.6" y="610.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+f</text>
-<text x="612.4" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">client</text>
-<text x="688.0" y="610.0" fill="#c9d1d9" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">tab</text>
-<text x="721.6" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">scope</text>
-<text x="788.8" y="610.0" fill="#c9d1d9" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">esc</text>
-<text x="822.4" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">quit</text>
+<text x="66.4" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">resume</text>
+<text x="142.0" y="610.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+o</text>
+<text x="200.8" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">history</text>
+<text x="284.8" y="610.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+t</text>
+<text x="343.6" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">handoff</text>
+<text x="427.6" y="610.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+p</text>
+<text x="486.4" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">prompt</text>
+<text x="562.0" y="610.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+y</text>
+<text x="620.8" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">command</text>
+<text x="704.8" y="610.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+f</text>
+<text x="763.6" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">client</text>
+<text x="839.2" y="610.0" fill="#c9d1d9" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">tab</text>
+<text x="872.8" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">scope</text>
+<text x="940.0" y="610.0" fill="#c9d1d9" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">esc</text>
+<text x="973.6" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">quit</text>
 </svg>

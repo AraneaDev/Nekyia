@@ -18,7 +18,7 @@
 <text x="284.8" y="88.0" fill="#c9d1d9" textLength="571.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">make the empty state say what to do next instead of just being empty</text>
 <line x1="20.2" y1="93.0" x2="20.2" y2="102.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="102.0" x2="20.2" y2="111.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="32.8" y="106.0" fill="#56b6c2" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
+<text x="32.8" y="106.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
 <text x="133.6" y="106.0" fill="#c9d1d9" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">5d</text>
 <text x="158.8" y="106.0" fill="#e5c07b" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console</text>
 <text x="284.8" y="106.0" fill="#c9d1d9" textLength="436.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">convert the settings page to the new form primitives</text>
@@ -30,7 +30,7 @@
 <text x="284.8" y="124.0" fill="#c9d1d9" textLength="504.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the table header detaches from the body on a narrow viewport</text>
 <line x1="20.2" y1="129.0" x2="20.2" y2="138.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="20.2" y1="138.0" x2="20.2" y2="147.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
-<text x="32.8" y="142.0" fill="#e5c07b" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">kilo</text>
+<text x="32.8" y="142.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">codex</text>
 <text x="133.6" y="142.0" fill="#c9d1d9" opacity="0.62" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">2w</text>
 <text x="158.8" y="142.0" fill="#e5c07b" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">web-console</text>
 <text x="284.8" y="142.0" fill="#c9d1d9" textLength="369.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">compare two approaches to optimistic updates</text>
@@ -299,23 +299,27 @@
 <line x1="1116.4" y1="246.0" x2="1120.6" y2="246.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="1120.6" y1="246.0" x2="1124.8" y2="246.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <text x="16.0" y="268.0" fill="#c9d1d9" font-weight="600" textLength="453.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the saved filter chips lose their order after a reload</text>
-<text x="16.0" y="286.0" fill="#c9d1d9" opacity="0.62" textLength="512.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">/home/dev/work/web-console · feat/filters · 9h ago · 63 turns</text>
-<text x="16.0" y="304.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">touched</text>
-<text x="91.6" y="304.0" fill="#c9d1d9" textLength="176.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">app/filters/Chips.tsx</text>
-<text x="91.6" y="322.0" fill="#c9d1d9" textLength="184.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">app/filters/persist.ts</text>
-<text x="91.6" y="340.0" fill="#c9d1d9" textLength="168.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">app/filters/store.ts</text>
+<text x="16.0" y="286.0" fill="#c9d1d9" opacity="0.62" textLength="504.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">/home/dev/work/web-console · feat/filters · 9h ago · 2 turns</text>
+<text x="16.0" y="304.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">replied</text>
+<text x="91.6" y="304.0" fill="#c9d1d9" opacity="0.62" textLength="705.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Changed store.ts, Chips.tsx, persist.ts. The diff is small enough to read in one go.</text>
+<text x="16.0" y="322.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">touched</text>
+<text x="91.6" y="322.0" fill="#c9d1d9" textLength="176.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">app/filters/Chips.tsx</text>
+<text x="91.6" y="340.0" fill="#c9d1d9" textLength="184.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">app/filters/persist.ts</text>
+<text x="91.6" y="358.0" fill="#c9d1d9" textLength="168.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">app/filters/store.ts</text>
 <text x="16.0" y="430.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">enter</text>
 <text x="66.4" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">resume</text>
 <text x="142.0" y="430.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+o</text>
 <text x="200.8" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">history</text>
-<text x="284.8" y="430.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+p</text>
-<text x="343.6" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">prompt</text>
-<text x="419.2" y="430.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+y</text>
-<text x="478.0" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">command</text>
-<text x="562.0" y="430.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+f</text>
-<text x="620.8" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">client</text>
-<text x="696.4" y="430.0" fill="#c9d1d9" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">tab</text>
-<text x="730.0" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">scope</text>
-<text x="797.2" y="430.0" fill="#c9d1d9" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">esc</text>
-<text x="830.8" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">quit</text>
+<text x="284.8" y="430.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+t</text>
+<text x="343.6" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">handoff</text>
+<text x="427.6" y="430.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+p</text>
+<text x="486.4" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">prompt</text>
+<text x="562.0" y="430.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+y</text>
+<text x="620.8" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">command</text>
+<text x="704.8" y="430.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+f</text>
+<text x="763.6" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">client</text>
+<text x="839.2" y="430.0" fill="#c9d1d9" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">tab</text>
+<text x="872.8" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">scope</text>
+<text x="940.0" y="430.0" fill="#c9d1d9" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">esc</text>
+<text x="973.6" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">quit</text>
 </svg>

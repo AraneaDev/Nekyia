@@ -9,16 +9,18 @@
  * crisp at any zoom and costs a fraction of a raster. WebP is there for places
  * that will not render SVG.
  *
- * The picker runs against a seeded index of invented sessions, so no real
- * history is ever on screen. Re-run this after any interface change; the shots
+ * The picker runs in the sandbox from scripts/demo-sandbox.ts: the invented
+ * transcripts in test/fixtures/demo, indexed by the real indexer, with no way
+ * to reach real history. Re-run this after any interface change; the shots
  * in the README are generated, not drawn.
  */
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { prepareSandbox, shellSetup, type Sandbox } from './demo-sandbox'
 
 const root = join(import.meta.dir, '..')
 const media = join(root, 'docs', 'media')
-const demo = '/tmp/nekyia-shots'
+const work = '/tmp/nekyia-shots'
 const SESSION = 'nekyia-shots'
 
 interface Shot {
@@ -37,7 +39,9 @@ const SHOTS: Shot[] = [
     name: 'picker',
     what: 'browsing every session',
     columns: 132, rows: 34,
-    keys: ['Tab', 'Down', 'Down'],
+    // The first row is the one session with several prompts and a branch, which
+    // is everything the preview has to show.
+    keys: ['Tab'],
   },
   {
     name: 'search',
@@ -100,17 +104,13 @@ function waitFor(text: string, what: string, timeoutMs = 60_000): void {
   throw new Error(`timed out waiting for ${what}\n--- pane ---\n${pane()}`)
 }
 
-function capture(shot: Shot): void {
+function capture(shot: Shot, sandbox: Sandbox): void {
   Bun.spawnSync(['tmux', 'kill-session', '-t', SESSION])
   run([
     'tmux', 'new-session', '-d', '-s', SESSION,
     '-x', String(shot.columns), '-y', String(shot.rows), '-c', '/home',
   ])
-  const env = `XDG_DATA_HOME=${demo} XDG_CONFIG_HOME=${demo}`
-  run([
-    'tmux', 'send-keys', '-t', SESSION,
-    `clear; export PATH="$(bun pm bin -g):$PATH" ${env}; nekyia`, 'Enter',
-  ])
+  run(['tmux', 'send-keys', '-t', SESSION, `${shellSetup(sandbox)}; nek`, 'Enter'])
   waitFor('type to search', `${shot.name}: the picker to start`)
 
   for (const key of shot.keys) {
@@ -149,11 +149,8 @@ if (!Bun.spawnSync(['which', 'tmux']).success) {
 }
 
 mkdirSync(media, { recursive: true })
-console.log('seeding the demo index')
-run(['bun', 'run', join(root, 'scripts', 'demo-index.ts'), demo])
-console.log('installing the working tree so the shots match this checkout')
-Bun.spawnSync(['bun', 'remove', '-g', 'nekyia'])
-run(['bun', 'install', '-g', root])
+console.log('indexing the demo fixture')
+const sandbox = prepareSandbox(work)
 
-for (const shot of chosen) capture(shot)
+for (const shot of chosen) capture(shot, sandbox)
 console.log(`\nwrote ${chosen.length} shot(s) to docs/media`)
