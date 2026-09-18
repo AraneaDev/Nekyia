@@ -11,6 +11,8 @@ const CLIENT_COLOR: Record<string, string> = {
   kilo: 'yellow',
   codebuff: 'blue',
   agy: 'red',
+  freebuff: 'blueBright',
+  cursor: 'whiteBright',
 }
 
 /** The fixed hue for a known client, so the same client reads the same everywhere. */
@@ -165,7 +167,7 @@ export function titleColumns(columns: number): number {
  * The standard renderer for a single session row in the picker list, displaying client, project, title, and age.
  */
 function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowProps) {
-  const client = boundedDisplayText(row.client, 9) || '?'
+  const client = boundedDisplayText(row.clientLabel ?? row.client, 9) || '?'
   const project = boundedProjectName(row.cwd)
   const title = boundedDisplayText(row.title ?? '(no title)', titleColumns(columns))
   const hue = clientColor(client)

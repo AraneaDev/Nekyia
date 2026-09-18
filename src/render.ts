@@ -57,7 +57,7 @@ export function formatRow(row: Row, now: number = Date.now()): string {
   const title = boundedDisplayText(row.title ?? '(no title)', TITLE_COLUMNS)
   return [
     tierGlyph(row.tier),
-    row.client.padEnd(9),
+    (row.clientLabel ?? row.client).padEnd(9),
     relTime(row.endedAt, now).padStart(4),
     padColumns(project, PROJECT_COLUMNS),
     title + suffix,

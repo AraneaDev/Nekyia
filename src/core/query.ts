@@ -1,5 +1,6 @@
 import type { Config } from '../config'
 import type { IndexDb, SearchRef } from './db'
+import type { Presentation } from './launcher'
 
 /** Everything a search can be narrowed or sorted by. Omitted fields mean no constraint. */
 export interface QueryOpts {
@@ -12,6 +13,13 @@ export interface QueryOpts {
   sort?: 'auto' | 'recent' | 'relevance'
   limit?: number
   includeMissing?: boolean
+  /**
+   * Tier and label overrides for clients whose store more than one client opens.
+   *
+   * Applied here, where every caller's rows come from, so the index keeps the
+   * tier it was written with and a flip never needs a reindex.
+   */
+  presentation?: Map<string, Presentation>
   /** Injectable for deterministic tests. */
   now?: number
 }
@@ -37,6 +45,8 @@ export interface Row extends SearchRef {
    * without being told. Absent when the row earned its own score.
    */
   matchedUid?: string
+  /** The client a row opens in, when that differs from the client id that wrote it. */
+  clientLabel?: string
 }
 
 const DAY = 86_400_000
@@ -401,6 +411,7 @@ function search(
   const cwd = typeof unsafeOpts.cwd === 'string' && unsafeOpts.cwd.trim() ? unsafeOpts.cwd : null
   const client = typeof unsafeOpts.client === 'string' && unsafeOpts.client ? unsafeOpts.client : null
   const includeMissing = unsafeOpts.includeMissing === true
+  const presentation = unsafeOpts.presentation instanceof Map ? unsafeOpts.presentation : null
 
   const kept = allRows.filter((row) => {
     if (!includeMissing && row.missing) return false
@@ -420,7 +431,13 @@ function search(
       : sort === 'relevance'
         ? relevance
         : relevance * recencyDecay(endedAt, now, halfLifeDays)
-    return { ...row, score: finite(score), collapsed: 0 }
+    const shown = presentation?.get(row.client)
+    return {
+      ...row,
+      score: finite(score),
+      collapsed: 0,
+      ...(shown ? { tier: shown.tier, clientLabel: shown.label } : {}),
+    }
   })
 
   const collapsed = collapseChains(scored, allRows, components)
