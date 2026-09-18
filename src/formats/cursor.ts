@@ -151,7 +151,14 @@ async function hydrate(_manifest: Manifest, root: string, ref: SessionRef, confi
   const dialogue: DialogueTurn[] = []
   const files = new Set<string>()
   let truncated = false
-  const rootReal = realpathSync(root)
+  let rootReal: string
+  try {
+    rootReal = realpathSync(root)
+  } catch {
+    // The store vanished between discovery and hydration. That is the
+    // caller's business to report, not this reader's to throw over.
+    return { ref, prompts: [], prose: [], files: [], truncated: false, degraded: true }
+  }
 
   const located = ref.cwd === null
     ? { kind: 'absent' as const }
