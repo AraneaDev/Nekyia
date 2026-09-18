@@ -423,7 +423,7 @@ Releases use Conventional Commits and Release Please.
 ## Roadmap
 
 These clients still need hands-on testing before I ship a built-in manifest: Aider,
-Goose, Crush, Cursor CLI, Qwen Code, Continue CLI, Droid, Amazon Q Developer CLI,
+Crush, Qwen Code, Continue CLI, Droid, Amazon Q Developer CLI,
 Plandex, OpenHands, Amp, Warp Agent, Grok CLI, Rovo Dev, Auggie, Trae, Cline CLI,
 and Zed.
 
