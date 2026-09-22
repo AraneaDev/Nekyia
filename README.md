@@ -114,8 +114,9 @@ Search defaults to the current directory. Pass `--all` to search everywhere,
 `nek blame <path>` resolves the path from the current directory, then searches
 globally and newest-first for that exact normalized file. "Touched" means the path
 appeared in indexed tool input; it does not prove that the session modified the file.
-`--json` adds `sourcePaths` to every row, so an agent can read the raw transcript
-itself instead of trusting the indexed summary.
+`--json` returns a versioned agent contract with `sourcePaths`, launch capability,
+quality state, and explicit limitation codes, so an agent can decide whether to
+trust the indexed summary or inspect the source itself.
 
 `nek timeline` covers a directory rather than one file. Ordering inside a session is
 exact; between sessions it is by end time, which the index knows coarsely, so events stay
@@ -258,6 +259,15 @@ nek handoff claude:<session-id> --to codex --dry-run --json
 nek handoff claude:<session-id> --to codex --intent review
 nek handoff claude:<session-id> --to codex --note "focus on the retry logic"
 ```
+
+Agents can export structured indexed context without parsing Markdown:
+
+```bash
+nek show claude:<session-id> --json --max-chars 12000
+```
+
+See [agent integration notes](docs/agent-integration.md) for the JSON contract,
+quality signals, bounded errors, and privacy boundary.
 
 Handoff starts a fresh session using the target's brief command and the source's
 recorded directory (unless a custom manifest overrides it). It uses the last indexed

@@ -273,7 +273,11 @@ test('manifest emission is private under hostile umask and JSON mode is rejected
   const rejected = join(setup.tmp, 'rejected.json')
   const both = run(['doctor', '--json', '--sniff', '--emit-manifest', rejected], setup.env)
   expect(both.exitCode).toBe(2)
-  expect(both.stderr.toString()).toContain('--json cannot be combined')
+  expect(JSON.parse(both.stdout.toString())).toMatchObject({
+    version: 1,
+    error: { code: 'invalid-arguments', message: '--json cannot be combined with --emit-manifest' },
+  })
+  expect(both.stderr.toString()).toBe('')
   expect(existsSync(rejected)).toBe(false)
 })
 

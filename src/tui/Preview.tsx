@@ -247,6 +247,8 @@ export function buildPreviewLines(
   const { files, prompts, prose, dialogue, dialogueTruncated, fileEvents } = previewData(
     db, row.uid, full, maxLines,
   )
+  const stored = db.getRef(row.uid)
+  const fileDetails = db.fileDetailsFor([row.uid]).get(row.uid)
   const title = safe(row.title, TITLE_COLUMNS) || '(no title)'
   // The opening prompt usually is the title, so showing both spends a line
   // restating what is already on screen. Compare raw: the two are bounded to
@@ -295,6 +297,18 @@ export function buildPreviewLines(
   }
   if (row.missing) {
     head.push({ text: 'source transcript no longer on disk', color: 'red' })
+  }
+  if (stored?.truncated) {
+    head.push({ text: 'content was too large to index completely', color: 'yellow' })
+  }
+  if (stored?.degraded) {
+    head.push({ text: 'source could not be read completely', color: 'yellow' })
+  }
+  if (fileDetails && fileDetails.detail !== 'ordered') {
+    head.push({ text: 'file operation order unavailable', color: 'yellow' })
+  }
+  if (fileDetails?.eventsTruncated) {
+    head.push({ text: 'file operation log was capped', color: 'yellow' })
   }
   if (full && dialogueTruncated) {
     head.push({ text: 'history display capped; indexed dialogue continues', color: 'yellow' })

@@ -248,6 +248,31 @@ test('search without an index is clean and does not create a database', () => {
   expect(existsSync(dbPath)).toBe(false)
 })
 
+test('json runtime failures are parseable and stay on stdout', () => {
+  const env = environment()
+  const search = run(['search', 'retry', '--json'], env)
+  expect(search.exitCode).toBe(0)
+  expect(JSON.parse(search.stdout.toString())).toEqual([])
+
+  const show = run(['show', 'claude:missing', '--json'], env)
+  expect(show.exitCode).toBe(1)
+  expect(JSON.parse(show.stdout.toString())).toMatchObject({
+    version: 1,
+    error: { code: 'index-not-found' },
+  })
+  expect(show.stderr.toString()).toBe('')
+})
+
+test('json argument failures are parseable with status two', () => {
+  const result = run(['show', 'not-a-uid', '--json'])
+  expect(result.exitCode).toBe(2)
+  expect(JSON.parse(result.stdout.toString())).toMatchObject({
+    version: 1,
+    error: { code: 'invalid-uid' },
+  })
+  expect(result.stderr.toString()).toBe('')
+})
+
 test('fixture override accepts one contained segment and rejects traversal and escaping symlinks', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'nekyia-root-'))
   temporaries.push(tmp)
@@ -441,6 +466,18 @@ test('show prints an indexed handover and accepts a character budget', () => {
   expect(result.exitCode).toBe(0)
   expect(result.stdout.toString()).toContain('Handover from a previous session')
   expect(result.stdout.toString()).toContain('fix the sse reconnect race')
+})
+
+test('show json prints structured indexed context', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const result = run(['show', 'claude:11111111-2222-3333-4444-555555555555', '--json'], env)
+  expect(result.exitCode).toBe(0)
+  const context = JSON.parse(result.stdout.toString()) as Record<string, unknown>
+  expect(context.contractVersion).toBe(1)
+  expect(context.uid).toBe('claude:11111111-2222-3333-4444-555555555555')
+  expect(Array.isArray(context.prompts)).toBe(true)
+  expect(Array.isArray(context.limitations)).toBe(true)
 })
 
 test('show without an index is non-creating and unknown sessions are reported', () => {
@@ -730,6 +767,12 @@ test('planCli passes show a uid and a character budget, including zero', () => {
   expect(planCli(['show'])).toEqual({ kind: 'show', options: {} })
 })
 
+test('planCli passes show json mode through', () => {
+  expect(planCli(['show', 'claude:a', '--json'])).toEqual({
+    kind: 'show', options: { uid: 'claude:a', maxChars: undefined, json: true },
+  })
+})
+
 test('planCli reads the flags of the commands that take no query', () => {
   expect(planCli(['index', '--rebuild', '--yes', '--quiet'])).toEqual({
     kind: 'index',
@@ -780,7 +823,6 @@ const REJECTED: [string[], string][] = [
   [['show', 'malformed'], 'malformed uid: malformed'],
   [['show', ':empty-client'], 'malformed uid: :empty-client'],
   [['show', 'empty-native:'], 'malformed uid: empty-native:'],
-  [['show', 'claude:a', '--json'], 'only --max-chars can be used with show'],
   // A bare negative is intercepted by parseArgs before the rule can fire, so
   // the reachable form of the rule is the joined one.
   [['show', 'claude:a', '--max-chars', '-1'], "Option '--max-chars' argument is ambiguous"],
@@ -799,7 +841,7 @@ const REJECTED: [string[], string][] = [
   [['search', 'x', '--ids', '--json'], '--ids cannot be combined with --json'],
   [['blame', 'one.ts', '--ids', '--json'], '--ids cannot be combined with --json'],
   [['doctor', '--ids'], 'only --json, --sniff, and --emit-manifest can be used with doctor'],
-  [['show', 'claude:a', '--ids'], 'only --max-chars can be used with show'],
+  [['show', 'claude:a', '--ids'], 'only --max-chars and --json can be used with show'],
   [['index', '--ids'], 'search options cannot be used with index'],
   [['timeline', '--ids'], 'only --dir, --since, --client, --limit, and --json can be used with timeline'],
 ]
@@ -1043,7 +1085,11 @@ test('--ids prints one addressable uid per line, ready to pass to show or forget
 test('--ids and --json are different answers to the same question, not both at once', () => {
   const result = run(['search', 'x', '--ids', '--json'])
   expect(result.exitCode).toBe(2)
-  expect(result.stderr.toString()).toContain('error:')
+  expect(JSON.parse(result.stdout.toString())).toMatchObject({
+    version: 1,
+    error: { code: 'invalid-arguments' },
+  })
+  expect(result.stderr.toString()).toBe('')
 })
 
 test('the default table is left exactly as it was', () => {
