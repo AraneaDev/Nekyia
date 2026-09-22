@@ -33,3 +33,28 @@ test('publicRow has no launcher key for a row with a display label but no chosen
   expect(shown.client).toBe('codebuff')
   expect('launcher' in shown).toBe(false)
 })
+
+test('publicRow exposes indexed quality state for agents', () => {
+  const shown = publicRow(row({
+    missing: true,
+    truncated: true,
+    degraded: true,
+    fileDetail: 'paths',
+    eventsTruncated: true,
+  } as Row & {
+    truncated: boolean
+    degraded: boolean
+    fileDetail: 'paths'
+    eventsTruncated: boolean
+  }), ['/tmp/session.jsonl'])
+
+  expect(shown.contractVersion).toBe(1)
+  expect(shown.quality).toEqual({
+    missing: true,
+    truncated: true,
+    degraded: true,
+    fileDetail: 'paths',
+    eventsTruncated: true,
+  })
+  expect(shown.sourcePaths).toEqual(['/tmp/session.jsonl'])
+})

@@ -5,6 +5,7 @@ import { defaultOnPath, presentations } from '../core/launcher'
 import { query } from '../core/query'
 import { loadManifests } from '../manifests/load'
 import { formatRow } from '../render'
+import { serializeSearchRow } from '../agent-contract'
 
 /** Everything the search command accepts, mirroring its flags. */
 export interface SearchOptions {
@@ -34,32 +35,17 @@ export interface SearchOptions {
  * was resolved, because rewriting `client` to the launcher's name would lose
  * which store the row actually came from. `launcher` carries that name instead.
  */
-export function publicRow(row: ReturnType<typeof query>[number], sourcePaths: string[]) {
-  return {
-    uid: row.uid,
-    client: row.client,
-    nativeId: row.nativeId,
-    cwd: row.cwd,
-    gitBranch: row.gitBranch,
-    title: row.title,
-    startedAt: row.startedAt,
-    endedAt: row.endedAt,
-    turns: row.turns,
-    parentNativeId: row.parentNativeId,
-    tier: row.tier,
-    origin: row.origin,
-    score: row.score,
-    collapsed: row.collapsed,
-    // Present only when the chain's score was earned by a different session
-    // than the one named here, so `score` is never read as this row's own.
-    ...(row.matchedUid === undefined ? {} : { matchedUid: row.matchedUid }),
-    // Present only when the presentation overlay actually resolved a launcher
-    // for this client (never merely while asking or unavailable), so a caller
-    // never reads a launcher name that was never chosen and cannot open
-    // anything.
-    ...(row.launcher === undefined ? {} : { launcher: row.launcher }),
-    sourcePaths,
-  }
+export function publicRow(
+  row: ReturnType<typeof query>[number],
+  sourcePaths: string[],
+  quality: Partial<{
+    truncated: boolean
+    degraded: boolean
+    fileDetail: 'unknown' | 'paths' | 'ordered'
+    eventsTruncated: boolean
+  }> = {},
+) {
+  return serializeSearchRow({ ...row, ...quality }, sourcePaths)
 }
 
 /** Searches from the terminal, printing a table or machine-readable JSON. */
@@ -98,7 +84,17 @@ export async function runSearch(opts: SearchOptions = {}): Promise<number> {
       // which a one-shot call bounded by `--limit` can afford and the picker,
       // scanning every row per keystroke, could not.
       console.log(JSON.stringify(
-        rows.map((row) => publicRow(row, db.getRef(row.uid)?.sourcePaths ?? [])),
+        rows.map((row) => {
+          const ref = db.getRef(row.uid)
+          const detail = db.fileDetailsFor([row.uid]).get(row.uid)
+          return publicRow(row, ref?.sourcePaths ?? [], {
+            ...(ref ?? {}),
+            ...(detail ? {
+              fileDetail: detail.detail as 'unknown' | 'paths' | 'ordered',
+              eventsTruncated: detail.eventsTruncated,
+            } : {}),
+          })
+        }),
         null,
         2,
       ))

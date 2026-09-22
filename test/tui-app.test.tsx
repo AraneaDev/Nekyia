@@ -1697,6 +1697,29 @@ test('a session whose transcript has gone says so instead of vanishing', async (
   db.close()
 })
 
+test('preview explains incomplete indexed context', () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:partial', nativeId: 'partial', title: 'partial context' })
+  db.upsertDoc({
+    ref,
+    prompts: ['question'],
+    prose: ['answer'],
+    files: ['src/partial.ts'],
+    fileDetail: 'paths',
+    fileEventsTruncated: true,
+    truncated: true,
+    degraded: true,
+  })
+
+  const lines = buildPreviewLines(db, previewRow(db, ref.uid), { maxLines: 12 })
+  const text = lines.map((line) => line.text).join('\n')
+  expect(text).toContain('content was too large to index completely')
+  expect(text).toContain('source could not be read completely')
+  expect(text).toContain('file operation order unavailable')
+  expect(text).toContain('file operation log was capped')
+  db.close()
+})
+
 test('a count past the query limit is reported as such, and one session is one', async () => {
   const empty = IndexDb.open(':memory:')
   const none = render(

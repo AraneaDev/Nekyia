@@ -11,6 +11,7 @@ import type { DoctorOptions } from './commands/doctor'
 import type { PruneOptions } from './commands/privacy'
 import { isSafeClientId, parseUid, UNSAFE_UID_TEXT } from './types'
 import { boundedDisplayText } from './tui/text'
+import { emitAgentError } from './agent-contract'
 
 /** The help text, and the single source of truth for the command surface. */
 export const USAGE = `nekyia - search every agent CLI session on your machine and resume the right one
@@ -22,7 +23,7 @@ usage:
   nekyia timeline [--dir <p>]   what happened to files in a directory, in order
   nekyia last                   resume or re-brief the latest session here
   nekyia index [--rebuild]      refresh the index
-  nekyia show <uid>             print a deterministic handover as markdown
+  nekyia show <uid>             print a deterministic handover as markdown or JSON
   nekyia handoff <uid> --to <client>  start a fresh client with indexed context
   nekyia doctor                 report what was found and what could not be read
   nekyia forget <uid>           remove one session from the index
@@ -270,12 +271,16 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
     } catch {
       throw new CliError(`malformed uid: ${positionals[0]}`)
     }
-    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'ids', 'rebuild', 'yes', 'quiet', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
-      throw new CliError('only --max-chars can be used with show')
+    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'ids', 'rebuild', 'yes', 'quiet', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
+      throw new CliError('only --max-chars and --json can be used with show')
     }
     return {
       kind: 'show',
-      options: { uid: positionals[0], maxChars: nonNegative(values['max-chars']) },
+      options: {
+        uid: positionals[0],
+        maxChars: nonNegative(values['max-chars']),
+        ...(values.json === true ? { json: true } : {}),
+      },
     }
   }
   if (subcommand === 'timeline') {
@@ -462,11 +467,19 @@ export async function main(argv: string[]): Promise<number> {
   try {
     return await dispatch(argv)
   } catch (error) {
+    const jsonCommands = new Set(['search', 'blame', 'show', 'handoff', 'timeline', 'doctor'])
+    const json = jsonCommands.has(argv[0] ?? '') && argv.some((arg) => arg === '--json')
     if (error instanceof CliError) {
-      console.error(`error: ${error.message}`)
+      if (json) {
+        const code = /malformed uid|control characters/.test(error.message)
+          ? 'invalid-uid'
+          : 'invalid-arguments'
+        emitAgentError(code, error.message)
+      } else console.error(`error: ${error.message}`)
       return 2
     }
-    console.error(`error: ${error instanceof Error ? error.message : String(error)}`)
+    if (json) emitAgentError('runtime-error', error instanceof Error ? error.message : String(error))
+    else console.error(`error: ${error instanceof Error ? error.message : String(error)}`)
     return 1
   }
 }

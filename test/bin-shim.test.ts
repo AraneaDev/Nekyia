@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { resolveBun } from '../bin/resolve-bun.mjs'
@@ -126,13 +126,22 @@ test('the launcher forwards the CLI exit code through both branches', () => {
 test('the launcher explains itself when no Bun is on PATH', () => {
   const node = resolveNode()
   if (!node) return
-  const result = spawnSync(node, [LAUNCHER, '--help'], {
+  const emptyPath = makeTemp('nekyia-empty-path-')
+  const stderrPath = join(emptyPath, 'stderr')
+  // Start through an absolute shell path and redirect stderr to a file because
+  // Bun's spawnSync does not reliably capture stderr from a Node child when
+  // PATH omits system bins.
+  const result = spawnSync('/bin/sh', ['-c', 'exec "$1" "$2" --help 2>"$3"', 'launcher-test', node, LAUNCHER, stderrPath], {
     encoding: 'utf8',
-    env: { ...process.env, PATH: '', Path: '' },
+    // Use a real empty directory rather than PATH=''. Bun 1.4 suppresses the
+    // child Node process's stderr when its own spawnSync receives an empty
+    // PATH, which would test the runtime rather than the launcher.
+    env: { ...process.env, PATH: emptyPath, Path: emptyPath },
   })
   expect(result.status).toBe(1)
-  expect(result.stderr).toContain('https://bun.sh')
-  expect(result.stderr).toContain('PATH')
+  const stderr = readFileSync(stderrPath, 'utf8')
+  expect(stderr).toContain('https://bun.sh')
+  expect(stderr).toContain('PATH')
   // The failure this replaces. If it reappears, the guard stopped working.
-  expect(result.stderr).not.toContain("Cannot find module 'bun:sqlite'")
+  expect(stderr).not.toContain("Cannot find module 'bun:sqlite'")
 })
