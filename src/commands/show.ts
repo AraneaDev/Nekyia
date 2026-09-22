@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { indexPath } from '../config'
 import { buildBrief } from '../core/brief'
-import { buildContext } from '../core/context'
+import { buildContext, ContextBudgetError } from '../core/context'
 import { IndexDb } from '../core/db'
 import { parseUid } from '../types'
 import { emitAgentError } from '../agent-contract'
@@ -56,7 +56,16 @@ export async function runShow(opts: ShowOptions): Promise<number> {
   const db = IndexDb.openReadonly(path)
   try {
     if (opts.json) {
-      const context = buildContext(db, opts.uid, { maxChars: opts.maxChars })
+      let context
+      try {
+        context = buildContext(db, opts.uid, { maxChars: opts.maxChars })
+      } catch (error) {
+        if (error instanceof ContextBudgetError) {
+          emitAgentError(error.code, error.message)
+          return 1
+        }
+        throw error
+      }
       if (!context) {
         emitAgentError('session-not-found', `no session with uid ${opts.uid}`)
         return 1

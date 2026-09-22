@@ -54,10 +54,20 @@ test('context export preserves prompts and reports omitted replies under a budge
   const session = ref()
   db.upsertHydrated(doc(session, { dialogue: undefined, prose: ['reply '.repeat(200)] }))
 
-  const context = buildContext(db, session.uid, { maxChars: 160 })!
+  const context = buildContext(db, session.uid, { maxChars: 600 })!
   expect(context.prompts).toEqual(['first prompt', 'second prompt'])
   expect(context.assistantProse).toEqual([])
   expect(context.limitations).toContain('budget-trimmed')
+  expect(JSON.stringify(context).length).toBeLessThanOrEqual(600)
+  db.close()
+})
+
+test('context export rejects a budget too small for mandatory metadata and prompts', () => {
+  const db = IndexDb.open(':memory:')
+  const session = ref()
+  db.upsertHydrated(doc(session))
+
+  expect(() => buildContext(db, session.uid, { maxChars: 1 })).toThrow('maxChars')
   db.close()
 })
 

@@ -261,7 +261,9 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
   if (subcommand === 'show') {
     // A bare `show` is not rejected here: the command prints its own usage,
     // which is the message a user missing an argument should see.
-    if (!positionals[0]) return { kind: 'show', options: {} }
+    if (!positionals[0]) {
+      return { kind: 'show', options: values.json === true ? { json: true } : {} }
+    }
     if (positionals.length !== 1) throw new CliError('show accepts exactly one uid')
     if (/[\u0000-\u001f\u007f-\u009f]/u.test(positionals[0])) {
       throw new CliError('uid must not contain control characters')
