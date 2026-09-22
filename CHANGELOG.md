@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0](https://github.com/AraneaDev/Nekyia/compare/v1.1.1...v1.2.0) (2026-09-22)
+
+
+### Features
+
+* add agent-friendly context exports ([fd504fc](https://github.com/AraneaDev/Nekyia/commit/fd504fc44c49de7c031207eb2300cf5384839281))
+
+
+### Fixes
+
+* address agent context review findings ([1a06f9d](https://github.com/AraneaDev/Nekyia/commit/1a06f9d7cb3b8662b2212119ac68d19db1894fbb))
+* support modern ffmpeg media capture ([e046089](https://github.com/AraneaDev/Nekyia/commit/e0460891ac2b93488d431d0c104bbd22b97ab580))
+
 ## [1.1.1](https://github.com/AraneaDev/Nekyia/compare/v1.1.0...v1.1.1) (2026-09-18)
 
 

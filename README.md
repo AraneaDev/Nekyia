@@ -68,7 +68,7 @@ bun install -g nekyia
 
 <!-- x-release-please-start-version -->
 ```bash
-bun install -g github:AraneaDev/Nekyia#v1.1.1
+bun install -g github:AraneaDev/Nekyia#v1.2.0
 ```
 <!-- x-release-please-end -->
 
