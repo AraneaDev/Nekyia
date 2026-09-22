@@ -148,7 +148,7 @@ run([
   'ffmpeg', '-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0',
   '-i', join(work, 'frames.txt'),
   '-vf', `${scale},split[a][b];[a]palettegen=max_colors=64:stats_mode=full[p];[b][p]paletteuse=dither=none`,
-  '-vsync', 'vfr', '-loop', '0', out,
+  '-fps_mode', 'vfr', '-loop', '0', out,
 ])
 const kb = Math.round(Bun.file(out).size / 1024)
 console.log(`wrote ${out} (${shown.length} frames, ${kb} KB)`)
