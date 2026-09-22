@@ -81,6 +81,12 @@ test('every interface shot the README points at exists and is generated', () => 
   }
 })
 
+test('README media uses the current FFmpeg frame-rate option', () => {
+  const script = read('scripts/demo-gif.ts')
+  expect(script).toContain("'-fps_mode', 'vfr'")
+  expect(script).not.toContain("'-vsync', 'vfr'")
+})
+
 test('the release config states the post-1.0 bump policy by omission', () => {
   const config = JSON.parse(read('release-please-config.json')) as {
     packages: Record<string, Record<string, unknown>>
