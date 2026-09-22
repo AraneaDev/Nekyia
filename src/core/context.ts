@@ -15,6 +15,17 @@ interface StoredTurn {
 
 const DEFAULT_MAX_CHARS = 40_000
 
+/** Signals that mandatory context cannot fit inside the requested budget. */
+export class ContextBudgetError extends Error {
+  readonly code = 'budget-too-small'
+
+  /** Creates the stable error surfaced by JSON context exports. */
+  constructor() {
+    super('maxChars is too small for the indexed context metadata and prompts')
+    this.name = 'ContextBudgetError'
+  }
+}
+
 /** Validates the structured export character budget. */
 function budgetOf(value: number | undefined): number {
   if (value === undefined) return DEFAULT_MAX_CHARS
@@ -103,8 +114,11 @@ export function buildContext(
   if (JSON.stringify(context).length <= budget) return context
 
   context.assistantProse = []
-  context.dialogue = context.dialogue.filter((turn) => turn.role === 'user')
+  context.dialogue = []
   context.limitations = [...context.limitations, 'budget-trimmed']
-  while (context.files.length > 0 && JSON.stringify(context).length > budget) context.files.pop()
+  context.files = []
+  context.events = []
+  context.sourcePaths = []
+  if (JSON.stringify(context).length > budget) throw new ContextBudgetError()
   return context
 }

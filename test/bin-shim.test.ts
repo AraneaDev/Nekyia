@@ -124,6 +124,7 @@ test('the launcher forwards the CLI exit code through both branches', () => {
 })
 
 test('the launcher explains itself when no Bun is on PATH', () => {
+  if (process.platform === 'win32') return
   const node = resolveNode()
   if (!node) return
   const emptyPath = makeTemp('nekyia-empty-path-')

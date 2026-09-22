@@ -480,6 +480,22 @@ test('show json prints structured indexed context', () => {
   expect(Array.isArray(context.limitations)).toBe(true)
 })
 
+test('show json reports a budget that cannot fit mandatory context', () => {
+  const env = environment()
+  expect(run(['index', '--yes', '--quiet'], env).exitCode).toBe(0)
+  const result = run([
+    'show', 'claude:11111111-2222-3333-4444-555555555555', '--json', '--max-chars', '1',
+  ], env)
+  expect(result.exitCode).toBe(1)
+  expect(JSON.parse(result.stdout.toString())).toEqual({
+    version: 1,
+    error: {
+      code: 'budget-too-small',
+      message: 'maxChars is too small for the indexed context metadata and prompts',
+    },
+  })
+})
+
 test('show without an index is non-creating and unknown sessions are reported', () => {
   const env = environment()
   const dbPath = join(env.XDG_DATA_HOME, 'nekyia', 'index.db')
@@ -770,6 +786,9 @@ test('planCli passes show a uid and a character budget, including zero', () => {
 test('planCli passes show json mode through', () => {
   expect(planCli(['show', 'claude:a', '--json'])).toEqual({
     kind: 'show', options: { uid: 'claude:a', maxChars: undefined, json: true },
+  })
+  expect(planCli(['show', '--json'])).toEqual({
+    kind: 'show', options: { json: true },
   })
 })
 
