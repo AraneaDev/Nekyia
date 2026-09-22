@@ -2,7 +2,9 @@
 
 Nekyia can provide historical context to another coding agent without making a
 model call itself. The recommended workflow is search, inspect, then hand off
-only after checking the result's quality state.
+only after checking the result's quality state. This document describes the
+stable, versioned machine-readable interface; for the human-facing CLI workflow,
+see the handoff section in the [README](../README.md).
 
 ## Search
 

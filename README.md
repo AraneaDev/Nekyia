@@ -4,7 +4,7 @@
 
 **Find the session. Pick up the thread.**
 
-Nekyia indexes and searches past Claude Code and CLI agent sessions locally in your terminal using Bun and SQLite FTS5.
+Nekyia indexes and searches past CLI agent sessions locally in your terminal using Bun and SQLite FTS5.
 
 [![Release](https://img.shields.io/github/v/release/AraneaDev/Nekyia?label=release)](https://github.com/AraneaDev/Nekyia/releases)
 [![Tool page](https://img.shields.io/badge/tool%20page-aranea--development.nl-0b7285)](https://aranea-development.nl/en/tools/nekyia)
@@ -266,7 +266,7 @@ Agents can export structured indexed context without parsing Markdown:
 nek show claude:<session-id> --json --max-chars 12000
 ```
 
-See [agent integration notes](docs/agent-integration.md) for the JSON contract,
+See [agent integration notes](docs/agent-integration.md) for the versioned JSON contract,
 quality signals, bounded errors, and privacy boundary.
 
 Handoff starts a fresh session using the target's brief command and the source's
@@ -336,10 +336,6 @@ command verification. opencode and Codebuff were exercised against real local ID
 the result did not prove attachment to the requested context. I do not call any of those
 three resumable. Search-tier clients always start fresh briefed sessions. They never claim
 to recover tool state or file snapshots, and sending a handover can cost tokens.
-
-Fresh handoff commands and the scope of their verification are documented in
-[cross-client handoff notes](docs/cross-client-handoff.md). The Codebuff handoff
-template invokes `codebuff`; current Freebuff does not accept an initial prompt.
 
 ## How it works
 
@@ -453,6 +449,8 @@ I also plan compiled standalone binaries through `bun build --compile` for Linux
 macOS on x64 and arm64. Those do not exist yet, so Bun is required for now.
 
 ## Further reading
+
+- [Agent integration notes](docs/agent-integration.md) - the structured output contract for automation
 
 - [Recovering a Claude Code session your picker will not show you](https://tim-schipper.nl/en/blog/recover-crashed-claude-code-session)
 - [Your best context is in a session you cannot find](https://tim-schipper.nl/en/blog/search-agent-session-history)
