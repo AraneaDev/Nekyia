@@ -21,8 +21,8 @@ export interface FiltersProps {
   onHelpClose?: () => void
 }
 
-/** A focusable row in the filter dialog. */
-interface Field { id: string; label: string }
+/** A focusable row in the filter dialog; actions carry no value. */
+interface Field { id: string; label: string; value?: string; changed?: boolean }
 const TIMES = ['all', 'today', 'yesterday', '7d', '30d', 'custom'] as const
 const TIME_LABELS = ['All time', 'Today', 'Yesterday', 'Last 7 days', 'Last 30 days', 'Custom']
 
@@ -40,30 +40,23 @@ export function Filters({ value, now, clock, cwd, clients, branches, rows, colum
   const { exit } = useApp()
   const custom = draft.time.kind === 'custom' ? draft.time : null
   const time = draft.time.kind === 'preset' ? draft.time.preset : 'custom'
+  // One row per filter: ctrl+r resets the selected one, so a separate Reset row
+  // under each would only double the list without adding a way to do anything.
   const fields: Field[] = [
-    { id: 'project', label: `Project: ${draft.scope ?? 'All projects'}` },
-    { id: 'reset-project', label: 'Reset project' },
-    { id: 'client', label: `Client: ${draft.client ?? 'All visible clients'}` },
-    { id: 'reset-client', label: 'Reset client' },
-    { id: 'time', label: `Time: ${TIME_LABELS[TIMES.indexOf(time)]}` },
-    { id: 'reset-time', label: 'Reset time' },
+    { id: 'project', label: 'Project', value: draft.scope ?? 'All projects', changed: draft.scope !== null },
+    { id: 'client', label: 'Client', value: draft.client ?? 'All visible clients', changed: draft.client !== null },
+    { id: 'time', label: 'Time', value: TIME_LABELS[TIMES.indexOf(time)]!, changed: time !== 'all' },
   ]
   if (custom) fields.push(
-    { id: 'since', label: `Since: ${custom.sinceText || '(open lower bound)'}` },
-    { id: 'reset-since', label: 'Reset since' },
-    { id: 'until', label: `Until: ${custom.untilText || '(open upper bound)'}` },
-    { id: 'reset-until', label: 'Reset until' },
+    { id: 'since', label: 'Since', value: custom.sinceText || '(open lower bound)', changed: Boolean(custom.sinceText) },
+    { id: 'until', label: 'Until', value: custom.untilText || '(open upper bound)', changed: Boolean(custom.untilText) },
   )
   fields.push(
-    { id: 'sort', label: `Sort: ${draft.sort === 'auto' ? 'Auto' : draft.sort === 'recent' ? 'Recent' : 'Relevance'}` },
-    { id: 'reset-sort', label: 'Reset sort' },
-    { id: 'branch', label: `Branch: ${draft.branch === undefined ? 'All branches' : draft.branch === null ? 'No branch' : draft.branch}` },
-    { id: 'reset-branch', label: 'Reset branch' },
-    { id: 'file', label: `File: ${draft.file?.path || '(any file)'}` },
-    { id: 'file-mode', label: `File matching: ${draft.file?.exact ? 'Exact path' : 'Contains path'}` },
-    { id: 'reset-file', label: 'Reset file' },
-    { id: 'bookmarks', label: `Bookmarks: ${draft.bookmarkedOnly ? 'Bookmarked only' : 'All sessions'}` },
-    { id: 'reset-bookmarks', label: 'Reset bookmarks' },
+    { id: 'sort', label: 'Sort', value: draft.sort === 'auto' ? 'Auto' : draft.sort === 'recent' ? 'Recent' : 'Relevance', changed: draft.sort !== 'auto' },
+    { id: 'branch', label: 'Branch', value: draft.branch === undefined ? 'All branches' : draft.branch === null ? 'No branch' : draft.branch, changed: draft.branch !== undefined },
+    { id: 'file', label: 'File', value: draft.file?.path || '(any file)', changed: Boolean(draft.file?.path) },
+    { id: 'file-mode', label: 'File matching', value: draft.file?.exact ? 'Exact path' : 'Contains path', changed: Boolean(draft.file?.exact) },
+    { id: 'bookmarks', label: 'Bookmarks', value: draft.bookmarkedOnly ? 'Bookmarked only' : 'All sessions', changed: draft.bookmarkedOnly },
     { id: 'clear', label: 'Clear all filters' },
     { id: 'apply', label: 'Apply' },
     { id: 'cancel', label: 'Cancel' },
@@ -84,7 +77,7 @@ export function Filters({ value, now, clock, cwd, clients, branches, rows, colum
     patch({ time: { ...custom, [field === 'since' ? 'sinceText' : 'untilText']: text } })
   }
 
-  /** Exposes the reset for each selected field as well as its separate control. */
+  /** Resets the selected field to its unfiltered default. */
   function reset(field: string) {
     switch (field) {
       case 'project': patch({ scope: null }); break
@@ -132,9 +125,8 @@ export function Filters({ value, now, clock, cwd, clients, branches, rows, colum
     onClose()
   }
 
-  /** Activates choices, actions and resets from a single keyboard navigation model. */
+  /** Activates choices and actions from a single keyboard navigation model. */
   function activate(field: string, direction = 1) {
-    if (field.startsWith('reset-')) { reset(field.slice(6)); return }
     switch (field) {
       case 'project': patch({ scope: draft.scope === null ? cwd : null }); break
       case 'client': patch({ client: cycle<string | null>([null, ...new Set(clients)], draft.client, direction) }); break
@@ -162,7 +154,7 @@ export function Filters({ value, now, clock, cwd, clients, branches, rows, colum
       return
     }
     if (key.ctrl && input === 's') { apply(); return }
-    if (key.ctrl && input === 'r') { reset(focus.replace(/^reset-/u, '')); return }
+    if (key.ctrl && input === 'r') { reset(focus); return }
     if (key.return || key.leftArrow || key.rightArrow) { activate(focus, key.leftArrow ? -1 : 1); return }
     const textField = focus === 'since' || focus === 'until' || focus === 'file' || focus === 'project'
     if (!textField || key.meta || (key.ctrl && input !== 'u')) return
@@ -187,18 +179,25 @@ export function Filters({ value, now, clock, cwd, clients, branches, rows, colum
       { id: 'utc', label: 'Dates UTC; ISO needs Z/offset' },
       { id: 'spans', label: 'Spans: 30m, 12h, 2d, 3w' },
       { id: 'bounds', label: 'Since inclusive; Until exclusive' },
-      { id: 'reset', label: 'Reset rows clear one filter' },
       { id: 'clear-all', label: 'Clear all retains search text' },
     ]} help="esc back to your draft" />
 
   return <Box flexDirection="column" width={columns} height={rows} overflow="hidden">
-    <Text bold wrap="truncate-end">Filters · edit draft, then Apply</Text>
+    <Text wrap="truncate-end"><Text bold>Filters</Text><Text dimColor> · edit draft, then Apply</Text></Text>
     <Box flexDirection="column" flexGrow={1} overflow="hidden">
-      {fields.slice(start, start + visibleHeight).map(field => <Text key={field.id} color={field.id === focus ? 'cyan' : undefined} wrap="truncate-end">
-        {boundedDisplayText(`${field.id === focus ? '▸ ' : '  '}${field.label}${error?.field === field.id ? ` · Error: ${error.text}` : ''}`, columns)}
-      </Text>)}
+      {fields.slice(start, start + visibleHeight).map(field => {
+        const active = field.id === focus
+        const head = boundedDisplayText(`${active ? '▸ ' : '  '}${field.label}${field.value === undefined ? '' : ': '}`, columns)
+        const value = boundedDisplayText(field.value ?? '', Math.max(0, columns - Bun.stringWidth(head)))
+        const note = error?.field === field.id ? ` · Error: ${error.text}` : active && field.changed ? ' · ctrl+r reset' : ''
+        return <Text key={field.id} wrap="truncate-end">
+          <Text color={active ? 'cyan' : undefined} bold={active}>{head}</Text>
+          <Text color={field.changed ? 'cyan' : undefined} dimColor={!field.changed && !active}>{value}</Text>
+          <Text color={error?.field === field.id ? 'red' : undefined} dimColor={error?.field !== field.id}>{boundedDisplayText(note, Math.max(0, columns - Bun.stringWidth(head + value)))}</Text>
+        </Text>
+      })}
     </Box>
     <Text dimColor wrap="truncate-end">{boundedDisplayText(custom ? 'Dates UTC; ISO: Z/offset; spans: 2d; since inclusive / until exclusive' : 'Today/Yesterday: local days; 7d/30d: rolling; Custom: UTC dates or spans', columns)}</Text>
-    <Text dimColor wrap="truncate-end">{boundedDisplayText('ctrl+s apply · esc cancel · tab choose · enter/←/→ change · type paths/dates · ctrl+u clear', columns)}</Text>
+    <Text dimColor wrap="truncate-end">{boundedDisplayText('ctrl+s apply · esc cancel · tab choose · enter/←/→ change · ctrl+r reset · ctrl+u clear text', columns)}</Text>
   </Box>
 }

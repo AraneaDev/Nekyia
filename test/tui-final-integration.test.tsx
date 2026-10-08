@@ -74,7 +74,7 @@ test('fixture journey preserves prefix child evidence, literal find, custom filt
  const view=mount(db,{adapters:[native,target],bookmarkStore:store,initialState:{...restore(),reader:null,filters:clearedFilters()},onStateChange:value=>{state=value},onReindex:()=>{refreshed=true},onExec:plan=>{launched=true;emitted=plan}})
  const capture:Record<string,string>={}
  const tabs=async(count:number)=>{for(let index=0;index<count;index++){view.stdin.write('\t');await tick()}}
- await tick();view.stdin.write('\x07');await tick();await tabs(4);view.stdin.write('\x1b[D');await tick();await tabs(2);view.stdin.write(filters.time.sinceText);await tick();await tabs(2);view.stdin.write(filters.time.untilText);await tick();view.stdin.write('\x13');await tick();expect(state?.filters.time).toEqual(filters.time)
+ await tick();view.stdin.write('\x07');await tick();await tabs(2);view.stdin.write('\x1b[D');await tick();await tabs(1);view.stdin.write(filters.time.sinceText);await tick();await tabs(1);view.stdin.write(filters.time.untilText);await tick();view.stdin.write('\x13');await tick();expect(state?.filters.time).toEqual(filters.time)
  view.stdin.write('ten');await tick();capture.prefix=view.lastFrame()!
  expect(view.lastFrame()).toContain('Matched related session claude:child')
  view.stdin.write('\x0f');await tick();capture.reader=view.lastFrame()!
@@ -84,7 +84,7 @@ test('fixture journey preserves prefix child evidence, literal find, custom filt
  view.stdin.write('\x1b');await tick();expect(state?.text).toBe('ten');expect(state?.filters.time).toEqual(filters.time)
  view.stdin.write('\x07');await tick();capture.filters=view.lastFrame()!;view.stdin.write('\x13');await tick();expect(state?.filters.time).toEqual(filters.time)
  view.stdin.write('\x02');await tick();expect(bookmarks).toEqual(['claude:a'])
- view.stdin.write('\x07');await tick();await tabs(12);view.stdin.write('\r');await tick();await tabs(2);view.stdin.write('src/');await tick();await tabs(3);view.stdin.write('\r');await tick();view.stdin.write('\x13');await tick()
+ view.stdin.write('\x07');await tick();await tabs(6);view.stdin.write('\r');await tick();await tabs(1);view.stdin.write('src/');await tick();await tabs(2);view.stdin.write('\r');await tick();view.stdin.write('\x13');await tick()
  expect(state?.filters.branch).toBe('main');expect(state?.filters.file).toEqual({path:'src/',exact:false});expect(state?.filters.bookmarkedOnly).toBe(true)
  view.stdin.write('\x05');await tick();capture.chain=view.lastFrame()!;expect(view.lastFrame()).toContain('Related sessions (2 visible)');view.stdin.write('Child context');await tick();view.stdin.write('\r');await tick();view.stdin.write('\r');await tick();expect(view.lastFrame()).toContain('History · claude:child');view.stdin.write('\x1b');await tick()
  view.stdin.write('\x14');await tick();expect(view.lastFrame()).toContain('Codex');view.stdin.write('\r');await tick();capture.confirmation=view.lastFrame()!;expect(view.lastFrame()).toContain('Start a new briefed session');view.stdin.write('\x1b');await tick();view.stdin.write('\x1b');await tick();expect(launched).toBe(false)
