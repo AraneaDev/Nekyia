@@ -51,7 +51,7 @@ test('sessions are ordered newest first and bounded by limit', () => {
   }
   expect(timeline(db,{ dir:'/home/dev/work/proj', limit:2 }).map(s=>s.ref.uid)).toEqual(['claude:b','claude:c']); db.close()
 })
-test('since filters whole sessions by end time', () => {
+test('since keeps sessions whose activity reaches the lower bound', () => {
   const db=IndexDb.open(':memory:')
   const old=ref({ uid:'claude:old', endedAt:1000 }); const recent=ref({ uid:'claude:new', endedAt:9000 })
   for (const r of [old, recent]) {
@@ -106,5 +106,52 @@ test('capped sessions with truncated events fall back to unordered facets', () =
   expect(session?.entries).toEqual([
     { ordinal:null, turn:null, kind:'unknown', path:'src/db.ts', resolved:'/home/dev/work/proj/src/db.ts' },
   ])
+  db.close()
+})
+
+test('timeline time windows select overlapping activity and exact point bounds', () => {
+  const db = IndexDb.open(':memory:')
+  for (const [nativeId, startedAt, endedAt] of [
+    ['cross', 1000, 4000], ['later', 3000, 5000], ['at-since', 1000, 2000],
+    ['before', 500, 1999], ['reversed', 2800, 2200], ['start-point', 2500, 0],
+    ['end-point', -1, 2500], ['unknown', 0, -1], ['upper-point', 3000, 0],
+  ] as const) {
+    const r = ref({ uid: `claude:${nativeId}`, nativeId, startedAt, endedAt })
+    db.upsertRef(r)
+    db.upsertDoc(doc(r, { files: ['x.ts'] }))
+  }
+  expect(timeline(db, { dir: '/home/dev/work/proj', since: 2000, until: 3000 }).map((session) => session.ref.uid))
+    .toEqual(['claude:cross', 'claude:end-point', 'claude:reversed', 'claude:at-since', 'claude:start-point'])
+  expect(timeline(db, { dir: '/home/dev/work/proj' })).toHaveLength(9)
+  expect(timeline(db, { dir: '/home/dev/work/proj', until: 1000 }).map((session) => session.ref.uid))
+    .toEqual(['claude:before'])
+  db.close()
+})
+
+test('timeline time filtering composes with client and directory filters before limits', () => {
+  const db = IndexDb.open(':memory:')
+  for (const r of [
+    ref({ uid: 'claude:old', startedAt: 1000, endedAt: 4000 }),
+    ref({ uid: 'claude:new', startedAt: 4000, endedAt: 5000 }),
+    ref({ uid: 'codex:other', client: 'codex', startedAt: 1000, endedAt: 6000 }),
+    ref({ uid: 'claude:elsewhere', cwd: '/elsewhere', startedAt: 1000, endedAt: 6000 }),
+  ]) {
+    db.upsertRef(r)
+    db.upsertDoc(doc(r, { files: ['x.ts'] }))
+  }
+  expect(timeline(db, { dir: '/home/dev/work/proj', since: 2000, until: 3000, client: 'claude', limit: 1 })
+    .map((session) => session.ref.uid)).toEqual(['claude:old'])
+  db.close()
+})
+
+test('invalid timeline ranges fail closed', () => {
+  const db = IndexDb.open(':memory:')
+  const r = ref({ startedAt: 1000, endedAt: 4000 })
+  db.upsertRef(r)
+  db.upsertDoc(doc(r, { files: ['x.ts'] }))
+  for (const range of [
+    { since: NaN }, { until: Infinity }, { since: 1.5 }, { until: '3000' },
+    { since: 8_640_000_000_000_001 }, { since: 3000, until: 3000 }, { since: 4000, until: 3000 },
+  ]) expect(timeline(db, { dir: '/home/dev/work/proj', ...range } as never)).toEqual([])
   db.close()
 })

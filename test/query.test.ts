@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { DEFAULT_CONFIG, type Config } from '../src/config'
 import { IndexDb } from '../src/core/db'
 import { query, querySnapshot, readSessionSnapshot, recencyDecay } from '../src/core/query'
+import { chainMembers } from '../src/core/session-chains'
 import type { SessionDoc, SessionRef } from '../src/types'
 
 const DAY = 86_400_000
@@ -432,5 +433,118 @@ test('the overlay carries no launcher when the presentation entry has none', () 
   })
   expect(shown[0]!.clientLabel).toBe('codebuff')
   expect(shown[0]!.launcher).toBeUndefined()
+  db.close()
+})
+
+test('time ranges select overlapping intervals, exact bounds and point timestamps', () => {
+  const db = IndexDb.open(':memory:')
+  for (const [nativeId, startedAt, endedAt] of [
+    ['cross', 1000, 4000], ['later', 3000, 5000], ['at-since', 1000, 2000],
+    ['before', 500, 1999], ['reversed', 2800, 2200], ['start-point', 2500, 0],
+    ['end-point', -1, 2500], ['unknown', 0, -1], ['upper-point', 3000, 0],
+  ] as const) seed(db, { uid: `claude:${nativeId}`, nativeId, startedAt, endedAt })
+  const opts = { since: 2000, until: 3000 }
+  const expected = ['claude:cross', 'claude:end-point', 'claude:reversed', 'claude:at-since', 'claude:start-point']
+  expect(query(db, DEFAULT_CONFIG, opts).map((row) => row.uid)).toEqual(expected)
+  const snapshot = readSessionSnapshot(db)
+  expect(querySnapshot(db, DEFAULT_CONFIG, snapshot, opts).map((row) => row.uid)).toEqual(expected)
+  expect(query(db, DEFAULT_CONFIG)).toHaveLength(9)
+  expect(query(db, DEFAULT_CONFIG, { until: 1000 }).map((row) => row.uid)).toEqual(['claude:before'])
+  expect(query(db, DEFAULT_CONFIG, { since: 5000 }).map((row) => row.uid)).toEqual(['claude:later'])
+  db.close()
+})
+
+test('time filtering precedes chain collapse and limits while composing with other filters', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:root', nativeId: 'root', startedAt: 1000, endedAt: 4000, title: 'needle' }, { files: ['x.ts'] })
+  seed(db, { uid: 'claude:tip', nativeId: 'tip', parentNativeId: 'root', startedAt: 4000, endedAt: 5000, title: 'needle' }, { files: ['x.ts'] })
+  seed(db, { uid: 'claude:other', nativeId: 'other', startedAt: 1000, endedAt: 2200, title: 'needle' }, { files: ['x.ts'] })
+  seed(db, { uid: 'claude:wrong-file', nativeId: 'wrong-file', startedAt: 1000, endedAt: 6000, title: 'needle' }, { files: ['y.ts'] })
+  seed(db, { uid: 'claude:wrong-text', nativeId: 'wrong-text', startedAt: 1000, endedAt: 6000, title: 'haystack' }, { files: ['x.ts'] })
+  seed(db, { uid: 'claude:wrong-cwd', nativeId: 'wrong-cwd', startedAt: 1000, endedAt: 6000, title: 'needle', cwd: '/elsewhere' }, { files: ['x.ts'] })
+  seed(db, { uid: 'codex:wrong-client', nativeId: 'wrong-client', client: 'codex', startedAt: 1000, endedAt: 6000, title: 'needle' }, { files: ['x.ts'] })
+  const rows = query(db, DEFAULT_CONFIG, {
+    since: 2000, until: 3000, text: 'needle', file: 'x.ts', cwd: '/home/dev/work', client: 'claude', sort: 'recent', limit: 1,
+  })
+  expect(rows.map((row) => row.uid)).toEqual(['claude:root'])
+  expect(rows[0]?.collapsed).toBe(0)
+  expect(query(db, DEFAULT_CONFIG, { since: 2000, until: 3000, exactFile: '/home/dev/work/proj/x.ts' }).map((row) => row.uid))
+    .toEqual(['claude:wrong-text', 'codex:wrong-client', 'claude:root', 'claude:other'])
+  db.close()
+})
+
+test('invalid query time ranges fail closed', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { startedAt: 1000, endedAt: 4000 })
+  for (const range of [
+    { since: NaN }, { until: Infinity }, { since: 1.5 }, { until: '3000' },
+    { since: 8_640_000_000_000_001 }, { since: 3000, until: 3000 }, { since: 4000, until: 3000 },
+  ]) expect(query(db, DEFAULT_CONFIG, range as never)).toEqual([])
+  db.close()
+})
+
+test('prefix-last is opt-in and raw trailing delimiters complete the final term', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { title: 'retry tenant' })
+  expect(query(db, DEFAULT_CONFIG, { text: 'retry ten', matchMode: 'prefix-last' }).map((row) => row.uid))
+    .toEqual(['claude:a'])
+  expect(query(db, DEFAULT_CONFIG, { text: 'retry ten' })).toEqual([])
+  expect(query(db, DEFAULT_CONFIG, { text: 'retry ten ', matchMode: 'prefix-last' })).toEqual([])
+  expect(query(db, DEFAULT_CONFIG, { text: 'retry ten.', matchMode: 'prefix-last' })).toEqual([])
+  db.close()
+})
+
+test('branch and bookmark filters choose matching members before collapsing', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:root', nativeId: 'root', gitBranch: 'main', endedAt: NOW - DAY })
+  seed(db, { uid: 'claude:tip', nativeId: 'tip', parentNativeId: 'root', gitBranch: null })
+  seed(db, { uid: 'codex:hidden', client: 'codex', nativeId: 'hidden', gitBranch: 'main' })
+  const config = { ...DEFAULT_CONFIG, hiddenClients: ['codex'] }
+  expect(query(db, config, { branch: 'main' }).map((row) => [row.uid, row.collapsed]))
+    .toEqual([['claude:root', 0]])
+  expect(query(db, config, { branch: null }).map((row) => row.uid)).toEqual(['claude:tip'])
+  expect(query(db, config, { branch: undefined }).map((row) => [row.uid, row.collapsed]))
+    .toEqual([['claude:tip', 1]])
+  const bookmarks: ReadonlySet<string> = new Set(['claude:root', 'codex:hidden', 'stale'])
+  expect(query(db, config, { bookmarkedUids: bookmarks }).map((row) => [row.uid, row.collapsed]))
+    .toEqual([['claude:root', 0]])
+  expect(query(db, config, { bookmarkedUids: new Set() })).toEqual([])
+  expect(query(db, config, { branch: null, bookmarkedUids: bookmarks })).toEqual([])
+  db.close()
+})
+
+test('uncollapsed queries expose all matching UIDs with the same filters and ordering', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:root', nativeId: 'root', endedAt: NOW - DAY, title: 'needle' })
+  seed(db, { uid: 'claude:tip', nativeId: 'tip', parentNativeId: 'root', title: 'needle' })
+  seed(db, { uid: 'claude:no', nativeId: 'no', title: 'haystack' })
+  const rows = querySnapshot(db, DEFAULT_CONFIG, readSessionSnapshot(db), {
+    text: 'needle', sort: 'recent', collapse: false,
+  })
+  expect(rows.map((row) => [row.uid, row.collapsed, row.matchedUid]))
+    .toEqual([['claude:tip', 0, undefined], ['claude:root', 0, undefined]])
+  db.close()
+})
+
+test('related sessions reuse cycle-safe client-scoped chains with ambiguous IDs and orphan siblings', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', parentNativeId: 'b' })
+  seed(db, { uid: 'claude:b', nativeId: 'b', parentNativeId: 'a' })
+  seed(db, { uid: 'codex:a', client: 'codex', nativeId: 'a', parentNativeId: 'b' })
+  seed(db, { uid: 'claude:dup1', nativeId: 'dup' })
+  seed(db, { uid: 'claude:dup2', nativeId: 'dup' })
+  seed(db, { uid: 'claude:child', nativeId: 'child', parentNativeId: 'dup' })
+  seed(db, { uid: 'claude:orphan1', nativeId: 'orphan1', parentNativeId: 'gone' })
+  seed(db, { uid: 'claude:orphan2', nativeId: 'orphan2', parentNativeId: 'gone' })
+  const snapshot = readSessionSnapshot(db)
+  const uids = (uid: string) => chainMembers(snapshot, uid).map((row) => row.uid).sort()
+  expect(uids('claude:a')).toEqual(['claude:a', 'claude:b'])
+  expect(uids('codex:a')).toEqual(['codex:a'])
+  expect(uids('claude:child')).toEqual(['claude:child'])
+  expect(uids('claude:dup1')).toEqual(['claude:dup1'])
+  expect(uids('claude:orphan1')).toEqual(['claude:orphan1', 'claude:orphan2'])
+  expect(uids('unknown')).toEqual([])
+  // Repeated membership reads are stable over the same caller-held snapshot.
+  expect(uids('claude:b')).toEqual(['claude:a', 'claude:b'])
   db.close()
 })

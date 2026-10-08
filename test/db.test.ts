@@ -708,3 +708,28 @@ test('uidsUnderPrefix is served by the path indices rather than scanning', () =>
   expect(plans[1]).toContain('USING INDEX session_file_path_idx')
   db.close()
 })
+
+test('selected history APIs keep actual ordinals and exclude other UIDs', () => {
+  const db = IndexDb.open(':memory:')
+  const a = ref(), b = ref({ uid: 'b', nativeId: 'b' })
+  db.upsertHydrated(doc(a, { dialogue: [{ role: 'user', text: 'first' }], fileDetail: 'ordered' }))
+  db.upsertHydrated(doc(b, { dialogue: [{ role: 'assistant', text: 'secret' }] }))
+  db.raw().query('INSERT INTO session_turn VALUES (?, ?, ?, ?)').run(a.uid, 81, 'assistant', 'latest')
+  expect(db.retainedTurns(a.uid).turns.map(t => t.ordinal)).toEqual([0, 81])
+  expect(db.latestTurn(a.uid, 'assistant')).toEqual({ text: 'latest', capped: false })
+  expect(db.latestTurn(a.uid, 'user')?.text).toBe('first')
+  expect(db.matchSnippets(a.uid, '"secret"', '<s>', '<e>', '…')).toBeNull()
+  db.close()
+})
+
+test('selected bounded file events retain ordinals and disclose omitted events', () => {
+  const db = IndexDb.open(':memory:')
+  db.upsertHydrated(doc(ref(), { fileDetail: 'ordered', fileEvents: [
+    { kind: 'read', path: 'one', turn: null }, { kind: 'edit', path: 'two', turn: null }, { kind: 'write', path: 'three', turn: null },
+  ] }))
+  const events = db.fileEventsForUid('claude:abc', 2)
+  expect(events.capped).toBe(true)
+  expect(events.events.map(event => [event.ordinal, event.path])).toEqual([[0, 'one'], [1, 'two']])
+  expect(db.fileEventsForUid('gone', 2)).toEqual({ events: [], capped: false })
+  db.close()
+})

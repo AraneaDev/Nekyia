@@ -44,6 +44,7 @@
   },
   "scripts": {
     "test": "bun run scripts/make-fixtures.ts && bun test",
+    "test:coverage": "bun run scripts/make-fixtures.ts && bun test --coverage --coverage-reporter=text",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

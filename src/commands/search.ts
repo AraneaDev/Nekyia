@@ -17,6 +17,8 @@ export interface SearchOptions {
   exactFile?: string
   sort?: 'auto' | 'recent' | 'relevance'
   limit?: number
+  since?: number
+  until?: number
   json?: boolean
   /** Print only the session ids, so a result found by eye can be passed to `show` or `forget`. */
   ids?: boolean
@@ -76,6 +78,8 @@ export async function runSearch(opts: SearchOptions = {}): Promise<number> {
       exactFile: opts.exactFile,
       sort: opts.sort,
       limit: opts.limit ?? 40,
+      since: opts.since,
+      until: opts.until,
       presentation: presentations(loadManifests().manifests, cfg, defaultOnPath()),
     })
     if (opts.json) {

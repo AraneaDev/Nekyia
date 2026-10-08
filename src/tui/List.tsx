@@ -2,7 +2,7 @@ import React from 'react'
 import { Box, Text } from 'ink'
 import type { Row } from '../core/query'
 import { projectName, relTime } from '../render'
-import { boundedDisplayText, padColumns, scanLimit, suffixByCodeUnits } from './text'
+import { boundedDisplayText, padColumns, scanLimit, suffixByCodeUnits, wrappedDisplayLines } from './text'
 
 const CLIENT_COLOR: Record<string, string> = {
   claude: 'magenta',
@@ -114,6 +114,7 @@ export function visibleWindow(selected: number, total: number, height: number): 
 
 /** One rendered session row, given the width it must fill and the query to light inside it. */
 export interface ListRowProps {
+  bookmarked?: boolean
   row: Row
   index: number
   active: boolean
@@ -124,6 +125,8 @@ export interface ListRowProps {
   query: string
   /** Whether this row falls inside the part of the list currently on screen. */
   onThumb: boolean
+  /** Selected rows may use one continuation line; other rows remain compact. */
+  titleLines?: number
 }
 
 /** rail gutter, client, age and project columns, with the spaces between them. */
@@ -163,13 +166,33 @@ export function titleColumns(columns: number): number {
   return Math.max(8, naturalNumber(columns) - ROW_FIXED_COLUMNS)
 }
 
+/** Bounds selected-title wrapping before scanning untrusted transcript text. */
+function rowTitleLines(row: Row, columns: number, maximum: number, bookmarked?: boolean): string[] {
+  if (maximum <= 1) return [boundedDisplayText(row.title ?? '(no title)', titleColumns(columns))]
+  const suffix = `${bookmarked ? ' ★' : ''}${row.collapsed ? `  +${row.collapsed}` : ''}`
+  const width = Math.max(1, titleColumns(columns) - Bun.stringWidth(suffix))
+  const lines = wrappedDisplayLines(boundedDisplayText(row.title ?? '(no title)', width * 2 + 1), width)
+  const shown = lines.slice(0, 2)
+  if (lines.length > 2) shown[1] = `${boundedDisplayText(shown[1]!, width - 1)}…`
+  return shown.length ? shown : ['']
+}
+
+/** Reserves the selected continuation row before computing the virtual window. */
+export function listWindow(rows: readonly Row[], selected: number, height: number, columns: number,
+  wrapSelected: boolean, bookmarks?: ReadonlySet<string>): [number, number] {
+  const row = rows[boundedSelection(selected, rows.length)]
+  const extra = wrapSelected && height > 1 && row ? rowTitleLines(row, columns, 2, bookmarks?.has(row.uid)).length - 1 : 0
+  return visibleWindow(selected, rows.length, Math.max(0, height - extra))
+}
+
 /**
  * The standard renderer for a single session row in the picker list, displaying client, project, title, and age.
  */
-function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowProps) {
+function DefaultListRow({ row, active, now, columns, query, onThumb, bookmarked, titleLines = 1 }: ListRowProps) {
   const client = boundedDisplayText(row.clientLabel ?? row.client, 9) || '?'
   const project = boundedProjectName(row.cwd)
-  const title = boundedDisplayText(row.title ?? '(no title)', titleColumns(columns))
+  const titles = rowTitleLines(row, columns, active ? titleLines : 1, bookmarked)
+  const title = titles[0] ?? ''
   const hue = clientColor(client)
   // A client that cannot resume is dimmed rather than given its own glyph: the
   // question the mark answered was how live the session is, and dimming says
@@ -178,6 +201,7 @@ function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowPr
   const age = ageEmphasis(row.endedAt, now)
   const [before, hit, after] = matchSpans(title, query)
   return (
+    <Box flexDirection="column">
     <Text wrap="truncate-end">
       <Text color={active ? hue : undefined} dimColor={!active && !onThumb}>
         {active ? RAIL : TRACK}
@@ -190,8 +214,17 @@ function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowPr
       <Text bold={active}>{before}</Text>
       {hit ? <Text color="black" backgroundColor="yellow">{hit}</Text> : null}
       <Text bold={active}>{after}</Text>
+      {bookmarked ? <Text> ★</Text> : null}
       {row.collapsed ? <Text dimColor>{`  +${row.collapsed}`}</Text> : null}
     </Text>
+    {titles.slice(1).map((line, index) => {
+      const [before, hit, after] = matchSpans(line, query)
+      return <Text key={index} wrap="truncate-end">
+        <Text color={hue}>{RAIL}</Text>{' '.repeat(ROW_FIXED_COLUMNS - 1)}
+        <Text bold>{before}</Text>{hit ? <Text color="black" backgroundColor="yellow">{hit}</Text> : null}<Text bold>{after}</Text>
+      </Text>
+    })}
+    </Box>
   )
 }
 
@@ -205,8 +238,10 @@ function DefaultListRow({ row, active, now, columns, query, onThumb }: ListRowPr
  */
 export const List = React.memo(function List({
   rows, selected, height, now, columns = 92, query = '',
-  rowComponent: RowComponent = DefaultListRow,
+  rowComponent: RowComponent = DefaultListRow, bookmarks, wrapSelected = false,
 }: {
+  bookmarks?: ReadonlySet<string>
+  wrapSelected?: boolean
   rows: Row[]
   selected: number
   height: number
@@ -220,7 +255,7 @@ export const List = React.memo(function List({
 }) {
   const total = rows.length
   const active = boundedSelection(selected, total)
-  const [start, end] = visibleWindow(active, total, height)
+  const [start, end] = listWindow(rows, active, height, columns, wrapSelected, bookmarks)
   const [thumbFrom, thumbTo] = railThumb(start, end - start, total)
 
   return (
@@ -229,9 +264,10 @@ export const List = React.memo(function List({
         const index = start + offset
         return (
           <RowComponent
-            key={row.uid} row={row} index={index}
+            key={row.uid} bookmarked={bookmarks?.has(row.uid)} row={row} index={index}
             active={index === active} now={now} columns={columns} query={query}
             onThumb={offset >= thumbFrom && offset < thumbTo}
+            titleLines={wrapSelected && height > 1 ? 2 : 1}
           />
         )
       })}

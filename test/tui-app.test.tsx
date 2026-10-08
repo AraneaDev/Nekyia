@@ -44,7 +44,7 @@ const adapters = [buildAdapter(validateManifest({
   brief: { cmd: 'claude', args: ['{prompt}'], cwd: '{cwd}' },
 }))]
 
-const opts = { cwd: '/home/dev/work/proj', now: NOW }
+const opts = { cwd: '/home/dev/work/proj', now: NOW, checkResumePlan: () => ({ ok: true }) }
 const tick = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** Everything below the rule that separates the list from the preview. */
@@ -85,22 +85,22 @@ test('the picker never renders taller than the terminal', async () => {
   }
 })
 
-test('the preview sits under the list at every width', async () => {
+test('the preview stays full-width below the list and compact stats at every terminal width', async () => {
   const db = IndexDb.open(':memory:')
   for (let i = 0; i < 30; i++) seed(db, { uid: `claude:${i}`, nativeId: String(i) })
 
-  for (const columns of [80, 132, 220]) {
+  for (const columns of [40, 60, 80, 120, 160, 220]) {
     const view = render(
       <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} columns={columns} />,
     )
     await tick()
     const lines = view.lastFrame()!.split('\n')
-    // A row sharing its line with a vertical rule would mean a split pane.
-    // The gutter itself is a │ now, so a split pane shows as a rule further in.
-    expect(lines.filter((line) => /^[▌│]\s*claude/.test(line) && line.slice(2).includes('│')).length)
-      .toBe(0)
-    // The rule that separates list from preview runs across the frame.
-    expect(lines.some((line) => /^─+$/u.test(line.trim()) && line.trim().length > 20)).toBe(true)
+    const rule=lines.findIndex(line=>/^─+$/u.test(line.trim()))
+    expect(rule).toBeGreaterThan(0)
+    expect(Bun.stringWidth(lines[rule]!)).toBe(columns)
+    expect(lines[rule+1]).toContain('Fix the SSE reconnect race')
+    expect(view.lastFrame()!.includes('Current results')).toBe(columns>=140)
+    for (const line of lines) expect(Bun.stringWidth(line)).toBeLessThanOrEqual(columns)
     expect(lines.length).toBeLessThanOrEqual(30)
     view.unmount()
   }
@@ -130,7 +130,9 @@ test('the picker lists a session and shows a deterministic preview', () => {
   const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} />)
   const frame = view.lastFrame()!
   expect(frame).toContain('Fix the SSE reconnect race')
-  expect(frame.indexOf('src/sse.ts')).toBeLessThan(frame.indexOf('src/z.ts'))
+  expect(frame).toContain('main · 2 files')
+  expect(frame).toContain('Prompt text')
+  expect(frame).toContain('fix the sse reconnect')
   view.unmount()
   db.close()
 })
@@ -501,7 +503,7 @@ test('clipboard absence and rejection are reported without claiming success', as
 test('preview bounds and sanitizes every untrusted field before Ink renders it', () => {
   const db = IndexDb.open(':memory:')
   seed(db, {
-    title: `start\n\u001b[31m${'x'.repeat(2_000_000)}tail`,
+    title: `start\n\u001b[31m${'x'.repeat(2_000_000)}END_UNTRUSTED_TITLE`,
     cwd: `/root/\u202eevil${'c'.repeat(2_000_000)}`,
     gitBranch: `branch\n${'b'.repeat(2_000_000)}`,
   })
@@ -512,7 +514,7 @@ test('preview bounds and sanitizes every untrusted field before Ink renders it',
   expect(frame).not.toContain('\u001b')
   expect(frame).not.toContain('\u202e')
   expect(frame.length).toBeLessThan(5_000)
-  expect(frame).not.toContain('tail')
+  expect(frame).not.toContain('END_UNTRUSTED_TITLE')
   view.unmount()
   db.close()
 })
@@ -662,7 +664,7 @@ test('a manual reindex that changes nothing on disk still reads as fresh on the 
     indexExists: () => true,
     indexPath: () => '/index.db',
     indexedAt: () => NOW - 999 * 3_600_000,
-    loadConfig: () => DEFAULT_CONFIG,
+    loadConfig: () => ({ ...DEFAULT_CONFIG, autoReindexAfterHours: 24_000 }),
     buildAdapters: () => ({ adapters, diagnostics: [] }),
     openDb: () => db,
     cwd: () => '/home/dev/work/proj',
@@ -685,31 +687,40 @@ test('a manual reindex that changes nothing on disk still reads as fresh on the 
   expect(indexedAtSeen).toEqual([NOW - 999 * 3_600_000, NOW])
 })
 
-test('a failed manual reindex is reported and stops the picker rather than looping silently', async () => {
+test('a failed manual reindex recovers the readable index and reports failure', async () => {
   const messages: string[] = []
+  let mounts = 0
+  const notices: (string | undefined)[] = []
+  const ages: (number | undefined)[] = []
   const db = { close: () => {} } as unknown as IndexDb
   const deps: PickDependencies = {
     isTTY: () => true,
     needsConsent: () => false,
     indexExists: () => true,
     indexPath: () => '/index.db',
-    indexedAt: () => undefined,
-    loadConfig: () => DEFAULT_CONFIG,
+    indexedAt: () => NOW - 7 * 3_600_000,
+    loadConfig: () => ({ ...DEFAULT_CONFIG, autoReindexAfterHours: 24_000 }),
     buildAdapters: () => ({ adapters, diagnostics: [] }),
     openDb: () => db,
     cwd: () => '/home/dev/work/proj',
     now: () => NOW,
-    mount: (props) => ({
-      waitUntilExit: async () => { props.onReindex?.() },
+    mount: (props) => {
+      notices.push(props.initialNotice)
+      ages.push(props.indexedAt)
+      return ({
+      waitUntilExit: async () => { if (++mounts === 1) props.onReindex?.() },
       unmount: () => {},
-    }),
+    }) },
     checkPlan: () => { throw new Error('nothing was ever selected') },
     runPlan: async () => { throw new Error('nothing was ever selected') },
     ensureIndex: async () => { throw new Error('disk full') },
     error: (value) => { messages.push(value) },
   }
-  expect(await runPick(deps)).toBe(1)
-  expect(messages).toEqual(['could not refresh the session index: disk full'])
+  expect(await runPick(deps)).toBe(0)
+  expect(messages).toEqual([])
+  expect(notices).toEqual([undefined, 'Refresh failed: disk full; continuing with the existing index'])
+  expect(ages).toEqual([NOW - 7 * 3_600_000, NOW - 7 * 3_600_000])
+  expect(mounts).toBe(2)
 })
 
 test('runPick handles non-TTY, missing index, mount failures and exits without a selection', async () => {
@@ -821,20 +832,21 @@ test('the preview keeps a first prompt that differs from the title', async () =>
   view.unmount()
 })
 
-test('a directory with nothing in it points at the key that widens the search', async () => {
+test('an empty project filter offers a counterfactual action that widens scope', async () => {
   const db = IndexDb.open(':memory:')
   seed(db, { uid: 'claude:only', nativeId: 'only' })
-  const view = render(
-    <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24} />,
-  )
+  const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={24}
+    initialState={{ text: '', filters: { scope: '/empty/project', client: null, time: { kind: 'preset', preset: 'all' }, sort: 'auto', bookmarkedOnly: false }, selectedUid: null, selectedIndex: 0, listTop: 0, reader: null }} />)
   await tick()
-  expect(view.lastFrame()!).toContain('Press tab to search everywhere')
-
-  // Once the scope is widened the hint has done its job and gets out of the way.
-  view.stdin.write('\t')
-  await tick()
-  expect(view.lastFrame()!).not.toContain('Press tab to search everywhere')
+  expect(view.lastFrame()).toContain('Show all projects')
+  expect(view.lastFrame()).not.toContain('Fix the SSE reconnect race')
+  view.stdin.write('\u000b'); await tick()
+  view.stdin.write('Show all projects'); await tick()
+  view.stdin.write('\r'); await tick()
+  expect(view.lastFrame()).toContain('Fix the SSE reconnect race')
+  expect(view.lastFrame()!.split('\n')[0]).toContain('everywhere')
   view.unmount()
+  db.close()
 })
 
 test('typing lights the matching span inside a title', async () => {
@@ -914,11 +926,17 @@ test('the footer names its keys rather than drawing them', async () => {
   await tick()
   const frame = view.lastFrame()!
   // A reader who does not already know the glyph cannot find the key.
-  expect(frame).toContain('enter resume')
-  expect(frame).toContain('ctrl+o history')
+  expect(frame).toContain('enter Resume')
+  expect(frame).toContain('ctrl+k Actions')
+  expect(frame).toContain('ctrl+g Filters')
+  expect(frame).toContain('F1 Help')
+  expect(frame).toContain('ctrl+k Actions')
   for (const glyph of ['⇥', '↵']) expect(frame).not.toContain(glyph)
   // Whatever is shown is shown whole; a hint cut in half helps nobody.
   expect(frame).not.toContain('…')
+  view.stdin.write('\u000b'); await tick()
+  view.stdin.write('Inspect history'); await tick()
+  expect(view.lastFrame()).toContain('Inspect history (ctrl+o)')
   view.unmount()
 })
 
@@ -931,20 +949,24 @@ test('ctrl+f steps only through the clients the index actually holds', async () 
   )
   await tick()
   const header = () => view.lastFrame()!.split('\n', 1)[0]!
-  expect(header()).toContain('2 sessions · proj')
+  expect(header()).toContain('2 sessions')
+  expect(header()).toContain('proj')
 
   view.stdin.write('\u0006')
   await tick()
-  expect(header()).toContain('1 session · proj · claude')
+  expect(header()).toContain('1 session')
+  expect(header()).toContain('proj · claude')
   view.stdin.write('\u0006')
   await tick()
-  expect(header()).toContain('1 session · proj · codex')
+  expect(header()).toContain('1 session')
+  expect(header()).toContain('proj · codex')
 
   // Three presses is the whole cycle. It used to take seven, five of which
   // filtered to a client this machine has never run.
   view.stdin.write('\u0006')
   await tick()
-  expect(header()).toContain('2 sessions · proj')
+  expect(header()).toContain('2 sessions')
+  expect(header()).toContain('proj')
   expect(header()).not.toContain('codex')
   view.unmount()
   db.close()
@@ -960,7 +982,7 @@ test('an index with no clients in it offers no client key to press', async () =>
   expect(frame).toContain('No sessions indexed yet')
   // Nothing to cycle to, so the hint that promises the cycle is not offered.
   expect(frame).not.toContain('ctrl+f')
-  expect(frame).toContain('esc quit')
+  expect(frame).toContain('F1 Help')
   // And pressing it anyway is a no-op rather than a crash.
   view.stdin.write('\u0006')
   await tick()
@@ -1070,15 +1092,18 @@ test('ctrl+o opens the history, scrolls it, and hands focus back', async () => {
     <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} />,
   )
   await tick()
-  // Browsing fits the blocks into a third of the screen, so the tail is unreachable.
+  // The quick preview is bounded; the full reader makes the retained tail reachable.
   expect(view.lastFrame()!).not.toContain('reply line 90')
-  expect(view.lastFrame()!).toContain('ctrl+o history')
+  expect(view.lastFrame()!).toContain('ctrl+k Actions')
 
   view.stdin.write('\u000f')
   await tick()
   const opened = view.lastFrame()!
   // The footer says what the keys do here, so the mode is never a guess.
-  expect(opened).toContain('up/down scroll')
+  expect(opened).toContain('History · claude:long')
+  expect(opened).toContain('Esc back')
+  expect(listRowsOf(opened)).toBe(0)
+  expect(opened.split('\n').length).toBeLessThanOrEqual(30)
   expect(opened).toContain('prompt line 0')
 
   // Down scrolls the history rather than moving the list selection.
@@ -1092,7 +1117,7 @@ test('ctrl+o opens the history, scrolls it, and hands focus back', async () => {
   view.stdin.write('\u001b')
   await tick()
   const closed = view.lastFrame()!
-  expect(closed).toContain('ctrl+o history')
+  expect(closed).toContain('ctrl+k Actions')
   expect(closed).toContain('a long session')
   view.unmount()
 })
@@ -1322,7 +1347,8 @@ test('scrolling stops at the end of the history instead of running past it', asy
   for (let i = 0; i < 50; i++) view.stdin.write('\u001b[B')
   await tick()
   // A history shorter than the pane cannot be scrolled off the top.
-  expect(view.lastFrame()!).toContain('a short session')
+  expect(view.lastFrame()!).toContain('only one prompt')
+  expect(view.lastFrame()!).toContain('Lines 1-')
   view.unmount()
 })
 
@@ -1396,30 +1422,19 @@ test('an unknown index age is left unstated rather than guessed at', async () =>
   db.close()
 })
 
-test('reindex is only offered once the index has actually gone stale', async () => {
+test('refresh is discoverable through Actions for fresh, unknown and stale indexes', async () => {
   const db = IndexDb.open(':memory:')
-  seed(db, { uid: 'claude:a', nativeId: 'a' })
-  const fresh = render(<App
-    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
-    indexedAt={NOW - 60_000} {...opts}
-  />)
-  await tick()
-  expect(fresh.lastFrame()).not.toContain('reindex')
-  fresh.unmount()
-
-  const unknown = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} />)
-  await tick()
-  expect(unknown.lastFrame()).not.toContain('reindex')
-  unknown.unmount()
-
-  const stale = render(<App
-    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
-    indexedAt={NOW - 7 * 3_600_000} {...opts} columns={100}
-  />)
-  await tick()
-  expect(stale.lastFrame()).toContain('ctrl+r')
-  expect(stale.lastFrame()).toContain('reindex')
-  stale.unmount()
+  seed(db)
+  for (const indexedAt of [NOW - 60_000, undefined, NOW - 7 * 3_600_000]) {
+    const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+      onReindex={() => {}} indexedAt={indexedAt} {...opts} />)
+    await tick()
+    expect(view.lastFrame()).toContain('ctrl+k Actions')
+    view.stdin.write('\u000b'); await tick()
+    view.stdin.write('Refresh'); await tick()
+    expect(view.lastFrame()).toContain('Refresh index (ctrl+r)')
+    view.unmount()
+  }
   db.close()
 })
 
@@ -1440,7 +1455,7 @@ test('ctrl+r asks the host to reindex, once the index is stale enough to offer i
   db.close()
 })
 
-test('ctrl+r does nothing when the index is fresh and no offer is shown', async () => {
+test('ctrl+r explicitly refreshes even when the index is fresh', async () => {
   const db = IndexDb.open(':memory:')
   seed(db, { uid: 'claude:a', nativeId: 'a' })
   let requested = 0
@@ -1452,7 +1467,7 @@ test('ctrl+r does nothing when the index is fresh and no offer is shown', async 
   await tick()
   view.stdin.write('')
   await tick()
-  expect(requested).toBe(0)
+  expect(requested).toBe(1)
   view.unmount()
   db.close()
 })
@@ -1541,7 +1556,7 @@ function listRowsOf(frame: string): number {
   return frame.split('\n').filter((line) => /^[▌│]\s/u.test(line)).length
 }
 
-test('tab, backspace and delete leave the reader instead of moving the ground under it', async () => {
+test('tab, backspace and delete cannot change browse state until history is explicitly closed', async () => {
   const db = IndexDb.open(':memory:')
   const ref = seed(db, { uid: 'claude:aa', nativeId: 'aa', title: 'reconnect work' })
   db.upsertDoc({
@@ -1551,9 +1566,8 @@ test('tab, backspace and delete leave the reader instead of moving the ground un
   })
   seed(db, { uid: 'claude:zz', nativeId: 'zz', cwd: '/somewhere/else', title: 'far away work' })
 
-  // Ink blanks `input` for all three keys, so the printable-key guard cannot
-  // see them: each one used to change the list while the reader stayed open on
-  // a different session at the offset it had been left at.
+  // Nonprinting browse keys cannot change selection or filters beneath an open reader.
+  // After Escape returns to browse, those same keys retain their normal meaning.
   for (const key of ['\t', '\u007f', '\u001b[3~']) {
     const view = render(
       <App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts} rows={30} />,
@@ -1563,16 +1577,20 @@ test('tab, backspace and delete leave the reader instead of moving the ground un
     await tick()
     for (let i = 0; i < 8; i++) view.stdin.write('\u001b[B')
     await tick()
-    expect(view.lastFrame()!).toContain('up/down scroll')
+    expect(view.lastFrame()!).toContain('History · claude:aa')
 
     view.stdin.write(key)
     await tick()
     const frame = view.lastFrame()!
-    expect(frame).not.toContain('up/down scroll')
-    expect(frame).toContain('ctrl+o history')
-    // The reader reopens at the top rather than at the offset it was left at.
+    expect(frame).toContain('History · claude:aa')
+    expect(frame).not.toContain('far away work')
+    view.stdin.write('\u001b'); await tick(80)
+    view.stdin.write(key); await tick()
+    expect(view.lastFrame()).toContain('ctrl+k Actions')
+    // The original session remains inspectable; Home reaches its retained start.
     view.stdin.write('\u000f')
     await tick()
+    view.stdin.write('\u001b[H'); await tick()
     expect(view.lastFrame()!).toContain('prompt line 0')
     view.unmount()
   }
@@ -1583,6 +1601,7 @@ test('tab, backspace and delete leave the reader instead of moving the ground un
   await tick()
   view.stdin.write('\u000f')
   await tick()
+  view.stdin.write('\u001b'); await tick(80)
   view.stdin.write('\t')
   await tick()
   expect(view.lastFrame()!).toContain('far away work')
@@ -1604,18 +1623,18 @@ test('scrolling past the end costs nothing to come back from', async () => {
   await tick()
   view.stdin.write('\u000f')
   await tick()
-  expect(previewOf(view.lastFrame()!)).toContain('a scrollable session')
+  expect(view.lastFrame()).toContain('prompt line 0')
 
   for (let i = 0; i < 60; i++) view.stdin.write('\u001b[B')
   await tick()
-  expect(previewOf(view.lastFrame()!)).not.toContain('a scrollable session')
+  expect(view.lastFrame()).not.toContain('prompt line 0')
 
   // Forty presses back is further than the pane can have travelled, so the top
   // must be back. It was not: the down presses banked invisible scroll debt
   // that the up presses paid off before the pane moved a single line.
   for (let i = 0; i < 40; i++) view.stdin.write('\u001b[A')
   await tick()
-  expect(previewOf(view.lastFrame()!)).toContain('a scrollable session')
+  expect(view.lastFrame()).toContain('prompt line 0')
   view.unmount()
   db.close()
 })
@@ -1627,10 +1646,9 @@ test('a short terminal spends its rows on the list rather than on decoration', a
     db.upsertDoc({ ref, prompts: [`prompt ${i}`], prose: [`reply ${i}`], files: [], truncated: false })
   }
 
-  // Eleven rows of fixed chrome left every one of these heights with a single
-  // usable list row. The preview is kept at all of them; the spacer rows and
-  // the rule are what get handed back.
-  const expected: Record<number, number> = { 8: 1, 10: 2, 12: 4, 14: 6, 20: 7 }
+  // Compact previews leave several list rows usable; taller stacked panes
+  // retain both browsing and inspection access within the terminal budget.
+  const minimum: Record<number, number> = { 8: 3, 10: 4, 12: 3, 14: 4, 20: 6 }
   for (const rows of [8, 10, 12, 14, 20]) {
     const view = render(<App
       db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
@@ -1638,14 +1656,14 @@ test('a short terminal spends its rows on the list rather than on decoration', a
     />)
     await tick()
     const frame = view.lastFrame()!
-    expect(listRowsOf(frame)).toBe(expected[rows]!)
+    expect(listRowsOf(frame)).toBeGreaterThanOrEqual(minimum[rows]!)
     expect(frame.split('\n').length).toBeLessThanOrEqual(rows)
-    // Whatever else is dropped, the preview stays: this line is drawn nowhere
-    // but the pane under the list.
-    expect(frame).toContain('/home/dev/work/proj · main · just now')
+    // The selected session and inspection entry point remain visible.
+    expect(frame).toContain('session number 0')
+    expect(frame).toContain('ctrl+k Actions')
     // The rule is decoration, so it is the first thing a short terminal loses.
     const hasRule = frame.split('\n').some((line) => /^─+$/u.test(line.trim()))
-    expect(hasRule).toBe(rows >= 16)
+    expect(hasRule).toBe(rows >= 12)
     view.unmount()
   }
   db.close()
@@ -1692,7 +1710,7 @@ test('a session whose transcript has gone says so instead of vanishing', async (
   const frame = view.lastFrame()!
   // Dropping it turns "the file is gone" into "the session never existed".
   expect(frame).toContain('work on a deleted transcript')
-  expect(frame).toContain('source transcript no longer on disk')
+  expect(frame).toContain('Source missing')
   view.unmount()
   db.close()
 })
@@ -1763,8 +1781,8 @@ test('ctrl+o with nothing selected does not open a mode with nothing in it', asy
   const frame = view.lastFrame()!
   // The reader's footer promised keys that do nothing, and its escape closed
   // something invisible instead of quitting, so the first press looked dead.
-  expect(frame).not.toContain('up/down scroll')
-  expect(frame).toContain('esc quit')
+  expect(frame).not.toContain('History ·')
+  expect(frame).toContain('F1 Help')
   expect(frame).toContain('No sessions indexed yet')
   view.unmount()
   db.close()
@@ -1982,7 +2000,7 @@ test('a session that just ended is not described as "now ago"', async () => {
   />)
   await tick()
   expect(view.lastFrame()).not.toContain('now ago')
-  expect(view.lastFrame()).toContain('just now')
+  expect(view.lastFrame()).toMatch(/claude\s+now\s/u)
   view.unmount()
   db.close()
 })
@@ -2059,6 +2077,9 @@ test('with neither client installed, Enter says so instead of launching', async 
   )
   view.stdin.write('\r')
   await tick()
+  expect(view.lastFrame()).toContain('none of codebuff, freebuff')
+  view.stdin.write('\u000b'); await tick()
+  view.stdin.write('Resume'); await tick()
   expect(view.lastFrame()).toContain('is on PATH')
   expect(plans).toEqual([])
   view.unmount()
@@ -2079,4 +2100,242 @@ test('ctrl+y copies the command of the client the store opens in', async () => {
   expect(copied[0]).toContain('freebuff --continue c1')
   view.unmount()
   db.close()
+})
+
+
+test('ctrl+d cycles activity windows against the injected picker time', async () => {
+  const db = IndexDb.open(':memory:')
+  const midnight = new Date(NOW)
+  midnight.setHours(0, 0, 0, 0)
+  const entries = [
+    ['today', NOW], ['yesterday', midnight.getTime() - 3_600_000],
+    ['week', NOW - 5 * 86_400_000], ['month', NOW - 20 * 86_400_000],
+    ['old', NOW - 60 * 86_400_000], ['future', NOW + 1], ['undated', 0],
+  ] as const
+  for (const [name, endedAt] of entries) {
+    seed(db, { uid: `claude:${name}`, nativeId: name, title: `${name} activity`, endedAt })
+  }
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    {...opts} rows={30} columns={100}
+  />)
+  try {
+    await tick()
+    expect(view.lastFrame()).toContain('7 sessions')
+    expect(view.lastFrame()).toContain('F1 Help')
+    const windows: readonly [string, readonly string[]][] = [
+      ['Today', ['today']], ['Yesterday', ['yesterday']],
+      ['Last 7 days', ['today', 'yesterday', 'week']],
+      ['Last 30 days', ['today', 'yesterday', 'week', 'month']],
+      ['All time', entries.map(([name]) => name)],
+    ]
+    for (const [label, matching] of windows) {
+      view.stdin.write('\u0004')
+      await tick()
+      const frame = view.lastFrame()!
+      if (label !== 'All time') expect(frame).toContain(label)
+      else expect(frame.split('\n')[0]).not.toMatch(/Today|Yesterday|Last (?:7|30) days/u)
+      expect(frame).toContain(`${matching.length} session${matching.length === 1 ? '' : 's'}`)
+      for (const [name] of entries) {
+        if (matching.includes(name)) expect(frame).toContain(`${name} activity`)
+        else expect(frame).not.toContain(`${name} activity`)
+      }
+    }
+  } finally { view.unmount(); db.close() }
+})
+
+test('cycling and clearing time reset selection while keeping query, project and client', async () => {
+  // Keep every candidate on the same local day, even where NOW falls at midnight.
+  const localNoon = new Date(NOW)
+  localNoon.setHours(12, 0, 0, 0)
+  const pickerNow = localNoon.getTime()
+  for (const clear of [false, true]) {
+    const db = IndexDb.open(':memory:')
+    seed(db, { uid: 'claude:first', nativeId: 'first', title: 'needle first', endedAt: pickerNow })
+    seed(db, { uid: 'claude:second', nativeId: 'second', title: 'needle second', endedAt: pickerNow - 1_000 })
+    seed(db, { uid: 'claude:other-text', nativeId: 'other-text', title: 'unrelated title', endedAt: pickerNow - 2_000 })
+    seed(db, { uid: 'claude:away', nativeId: 'away', title: 'needle away', cwd: '/other/project', endedAt: pickerNow - 3_000 })
+    seed(db, { uid: 'codex:other', client: 'codex', nativeId: 'other', title: 'needle other client', endedAt: pickerNow - 4_000 })
+    const plans: ExecPlan[] = []
+    const view = render(<App
+      db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={(plan) => plans.push(plan)}
+      cwd="/unindexed" now={pickerNow} rows={24} columns={100} checkResumePlan={() => ({ ok: true })}
+    />)
+    try {
+      await tick()
+      // Make scope an explicit choice rather than relying on its launch default.
+      view.stdin.write('\t')
+      await tick()
+      view.stdin.write('\u0006')
+      await tick()
+      view.stdin.write('needle')
+      await tick()
+      if (clear) { view.stdin.write('\u0004'); await tick() }
+      view.stdin.write('\u001b[B')
+      await tick()
+      expect(view.lastFrame()).toMatch(/▌.*needle second/u)
+      view.stdin.write(clear ? '\u0015' : '\u0004')
+      await tick()
+      const frame = view.lastFrame()!
+      expect(frame).toContain('▸ needle')
+      expect(frame).toContain('proj')
+      expect(frame).toContain('claude')
+      expect(frame).toContain('2 sessions')
+      expect(frame).toMatch(/▌.*needle first/u)
+      expect(frame).not.toContain('unrelated title')
+      expect(frame).not.toContain('needle away')
+      expect(frame).not.toContain('needle other client')
+      view.stdin.write('\r')
+      await tick()
+      expect(plans[0]).toMatchObject({ kind: 'resume', args: ['--resume', 'first'] })
+    } finally { view.unmount(); db.close() }
+  }
+})
+
+test('an empty time window explains ctrl+u and clears without dropping typed text', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:old', nativeId: 'old', title: 'historic needle', endedAt: NOW - 60 * 86_400_000 })
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    {...opts} rows={8} columns={80}
+  />)
+  try {
+    await tick()
+    view.stdin.write('needle')
+    await tick()
+    view.stdin.write('\u0004')
+    await tick()
+    const empty = view.lastFrame()!
+    expect(empty).toContain('0 sessions')
+    expect(empty).toContain('Today')
+    expect(empty).toContain('No sessions match')
+    expect(empty).toContain('ctrl+u')
+    expect(empty).toMatch(/clear(?:s)? time/u)
+    expect(empty).not.toContain('No sessions indexed')
+    expect(empty).not.toContain('nekyia index')
+    expect(empty.split('\n').length).toBeLessThanOrEqual(8)
+    view.stdin.write('\u0015')
+    await tick()
+    expect(view.lastFrame()).toContain('historic needle')
+    expect(view.lastFrame()).toContain('▸ needle')
+    expect(view.lastFrame()!.split('\n')[0]).not.toContain('Today')
+  } finally { view.unmount(); db.close() }
+})
+
+test('time changes close history and reopen it at the beginning', async () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { title: 'scrollable activity' })
+  db.upsertDoc({
+    ref, prompts: Array.from({ length: 40 }, (_, i) => `prompt line ${i}`),
+    prose: [], files: [], truncated: false,
+  })
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    {...opts} rows={30} columns={100}
+  />)
+  try {
+    await tick()
+    for (const key of ['\u0004', '\u0015']) {
+      view.stdin.write('\u000f')
+      await tick()
+      for (let i = 0; i < 12; i++) view.stdin.write('\u001b[B')
+      await tick()
+      expect(view.lastFrame()).not.toContain('prompt line 0')
+      view.stdin.write(key)
+      await tick()
+      expect(view.lastFrame()).not.toContain('History ·')
+      expect(view.lastFrame()).toContain('ctrl+k Actions')
+      view.stdin.write('\u000f')
+      await tick()
+      view.stdin.write('\u001b[H'); await tick()
+      expect(view.lastFrame()).toContain('prompt line 0')
+      view.stdin.write('\u000f')
+      await tick()
+    }
+  } finally { view.unmount(); db.close() }
+})
+
+test('active time windows fit short terminals and their shortcuts remain discoverable in Help', async () => {
+  const db = IndexDb.open(':memory:')
+  for (let i = 0; i < 30; i++) seed(db, { uid: `claude:time-${i}`, nativeId: `time-${i}` })
+  for (const rows of [8, 12, 16, 24, 30]) {
+    const view = render(<App
+      db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+      {...opts} rows={rows} columns={80}
+    />)
+    try {
+      await tick()
+      view.stdin.write('\u0004')
+      await tick()
+      const frame = view.lastFrame()!
+      expect(frame).toContain('Today')
+      expect(frame).toContain('ctrl+g Filters')
+      view.stdin.write('\u001bOP'); await tick()
+      view.stdin.write('Ctrl+U'); await tick()
+      expect(view.lastFrame()).toMatch(/clear(?:s)? time/u)
+      expect(frame.split('\n').length).toBeLessThanOrEqual(rows)
+    } finally { view.unmount() }
+  }
+  db.close()
+})
+
+test('ordinary d and u still enter search text', async () => {
+  const db = IndexDb.open(':memory:')
+  const ref = seed(db, { uid: 'claude:deploy', nativeId: 'deploy', title: 'deploy change' })
+  db.upsertDoc({ ref, prompts: ['d u deploy change'], prose: [], files: [], truncated: false })
+  seed(db, { uid: 'claude:parser', nativeId: 'parser', title: 'parser fix' })
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} {...opts}
+  />)
+  try {
+    await tick()
+    for (const letter of ['d', 'u']) {
+      view.stdin.write(letter)
+      await tick()
+      expect(view.lastFrame()).toContain(`▸ ${letter}`)
+      expect(view.lastFrame()).toContain('deploy change')
+      expect(view.lastFrame()).not.toContain('parser fix')
+      expect(view.lastFrame()).not.toContain('Today')
+      view.stdin.write('\u007f')
+      await tick()
+    }
+  } finally { view.unmount(); db.close() }
+})
+
+
+test('one time-filtered session keeps Filters accessible in an eight-row terminal', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db)
+  const view = render(<App
+    db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}}
+    {...opts} rows={8} columns={80}
+  />)
+  try {
+    await tick()
+    view.stdin.write('\u0004')
+    await tick()
+    expect(view.lastFrame()).toContain('ctrl+g Filters')
+    expect(view.lastFrame()!.split('\n').length).toBeLessThanOrEqual(8)
+  } finally { view.unmount(); db.close() }
+})
+
+
+test('an active range remains visible beside a long project name at eighty columns', async () => {
+  const db = IndexDb.open(':memory:')
+  const cwd = `/work/${'a-long-project-name-'.repeat(8)}`
+  seed(db, { cwd })
+  const props = { db, cfg: DEFAULT_CONFIG, adapters, onExec: () => {}, cwd, now: NOW, rows: 24, columns: 80 }
+  const view = render(<App {...props} />)
+  // Match Ink's output stream to the actual viewport, rather than its default 100 columns.
+  Object.defineProperty(view.stdout, 'columns', { value: 80 })
+  view.rerender(<App {...props} />)
+  try {
+    await tick()
+    view.stdin.write('\u0004')
+    await tick()
+    const frame = view.lastFrame()!
+    expect(frame.split('\n')[0]).toContain('Today')
+    expect(frame).toContain('ctrl+g Filters')
+    for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(80)
+  } finally { view.unmount(); db.close() }
 })

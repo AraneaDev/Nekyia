@@ -49,7 +49,7 @@ const STEPS: Step[] = [
   { wait: 'type to search', hold: 0.5 },
   { key: 'Tab', hold: 0.9 },
   { type: ['retry', ' tenant'], each: 1.0, hold: 1.2 },
-  { key: 'C-o', hold: 2.4, settled: 'scroll' },
+  { key: 'C-o', hold: 2.4, settled: 'Ctrl+F find' },
 ]
 
 function run(command: string[]): string {

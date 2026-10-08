@@ -211,6 +211,7 @@ export function shareLines(room: number, wanted: number[]): number[] {
 
 /** One line of the session preview, with the styling it should be drawn in. */
 export interface PreviewLine {
+  spans?: {start:number;end:number}[]
   text: string
   /** Hanging label, drawn only on a block's first line. */
   label?: string
@@ -409,10 +410,22 @@ export function Preview({ lines, offset = 0, maxLines = 12 }: {
             bold={line.bold}
             color={line.color}
           >
-            {line.text}
+            {line.spans?.length ? highlightEvidence(line.text,line.spans) : line.text}
           </Text>
         </Box>
       ))}
     </Box>
   )
+}
+
+/** Native evidence spans, already sanitized by the core reader, carry real FTS matches. */
+function highlightEvidence(text:string,spans:readonly {start:number;end:number}[]):React.ReactNode[] {
+  const out:React.ReactNode[]=[]
+  let end=0
+  spans.forEach((span,index)=>{
+    out.push(text.slice(end,span.start),<Text key={index} bold underline>{text.slice(span.start,span.end)}</Text>)
+    end=span.end
+  })
+  out.push(text.slice(end))
+  return out
 }

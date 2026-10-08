@@ -4,6 +4,7 @@ import { IndexDb } from '../core/db'
 import { trackedFiles } from '../core/git'
 import { defaultOnPath, presentations, type Presentation } from '../core/launcher'
 import { timeline } from '../core/timeline'
+import { parseTimeBound } from '../core/time-range'
 import { loadManifests } from '../manifests/load'
 import { formatTimeline } from '../render'
 import type { Tier } from '../types'
@@ -28,28 +29,21 @@ export function presentedTier(
 export interface TimelineCommandOptions {
   dir: string
   since?: number
+  until?: number
   client?: string
   limit?: number
   json?: boolean
 }
 
-const SPANS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }
-
 /**
- * Reads `--since` in the vocabulary `relTime` already prints, plus a plain date.
+ * Compatibility entry point for spans, UTC dates, and timezone-aware ISO times.
  *
  * Anything else is refused rather than guessed at: a window a user thinks they
  * asked for and did not get is worse than an error, in a command someone runs
  * after losing work.
  */
 export function parseSince(value: string, now: number = Date.now()): number {
-  const span = /^(\d+)([mhdw])$/u.exec(value)
-  if (span) return now - Number(span[1]) * SPANS[span[2]!]!
-  if (/^\d{4}-\d{2}-\d{2}$/u.test(value)) {
-    const parsed = Date.parse(`${value}T00:00:00Z`)
-    if (Number.isFinite(parsed)) return parsed
-  }
-  throw new Error('--since takes a span such as 30m, 12h, 2d, 3w, or a date such as 2026-08-01')
+  return parseTimeBound(value, now, '--since')
 }
 
 /**
@@ -70,6 +64,7 @@ export async function runTimeline(opts: TimelineCommandOptions): Promise<number>
       console.log(JSON.stringify({
         dir: opts.dir,
         since: opts.since ?? null,
+        ...(opts.until === undefined ? {} : { until: opts.until }),
         git: { consulted: false },
         sessions: [],
       }, null, 2))
@@ -83,6 +78,7 @@ export async function runTimeline(opts: TimelineCommandOptions): Promise<number>
     const sessions = timeline(db, {
       dir: opts.dir,
       since: opts.since,
+      until: opts.until,
       client: opts.client,
       limit: opts.limit ?? 40,
     })
@@ -92,6 +88,7 @@ export async function runTimeline(opts: TimelineCommandOptions): Promise<number>
       console.log(JSON.stringify({
         dir: opts.dir,
         since: opts.since ?? null,
+        ...(opts.until === undefined ? {} : { until: opts.until }),
         git: { consulted: git.consulted },
         sessions: sessions.map((session) => {
           const presented = presentedTier(session.ref.client, session.ref.tier, presentation)
