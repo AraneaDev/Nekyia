@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import React from 'react'
 import { render } from 'ink-testing-library'
 import { History } from '../src/tui/History'
-import { anchorLine, buildHistoryLines, findHistory, nextHit } from '../src/tui/history.js'
+import { anchorLine, buildHistoryLines, findHistory, nextHit } from '../src/tui/reader-lines'
 import type { SessionDetail } from '../src/core/session-detail'
 import type { PickerRestore } from '../src/tui/state'
 const tick = () => new Promise(resolve => setTimeout(resolve, 30))

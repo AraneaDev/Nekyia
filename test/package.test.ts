@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const root = join(import.meta.dir, '..')
@@ -143,4 +143,13 @@ test('the bug template carries a disclosure warning', () => {
   ).toLowerCase()
   expect(template).toContain('prompts and file paths')
   expect(template).toContain('redact')
+})
+
+test('no two shipped modules differ only in letter case', () => {
+  // macOS and Windows file systems fold case, so an import of './History'
+  // can resolve to history.ts there and the package stops loading. Compared
+  // without extensions, because that is how an import names a module.
+  const paths = ['bin', 'src']
+    .flatMap(dir => readdirSync(join(root, dir), { recursive: true }).map(path => `${dir}/${String(path)}`.toLowerCase().replace(/\.(?:tsx?|m?js)$/u, '')))
+  expect(paths.filter((path, index) => paths.indexOf(path) !== index)).toEqual([])
 })
