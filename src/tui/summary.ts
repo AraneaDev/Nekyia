@@ -29,7 +29,11 @@ export function buildSummaryLines(
   const lines: PreviewLine[] = [{ text: boundedDisplayText(title, columns), bold: true }]
   const badge = qualityBadge(detail.reasons)
   if (badge) lines.push({ text: `${badge} · Actions → Session details`, color: 'yellow' })
-  if (evidence) {
+  // A title match on the selected row is already the line above; light the
+  // matched words there instead of printing the same title a second time.
+  if (evidence && evidence.uid === row.uid && evidence.field === 'title' && evidence.text === lines[0]!.text) {
+    lines[0]!.spans = evidence.spans
+  } else if (evidence) {
     if (evidence.uid !== row.uid) {
       lines.push({ text: boundedDisplayText(`Matched related session ${evidence.uid}`, columns) })
     }
@@ -37,7 +41,7 @@ export function buildSummaryLines(
   }
   const files = detail.fileCount === null ? 'File details unavailable'
     : `${detail.fileCountCapped ? 'at least ' : ''}${detail.fileCount} files`
-  lines.push({ text: boundedDisplayText(`${row.gitBranch ?? 'No branch'} · ${files}`, columns) })
+  lines.push({ text: boundedDisplayText(`${row.gitBranch ?? 'No branch'} · ${files}`, columns), dim: true })
 
   const incomplete = detail.reasons.some(reason => ['truncated', 'degraded', 'reader-cap'].includes(reason))
   const replyLabel = !detail.ordered ? 'Reply text' : incomplete ? 'Last retained reply' : 'Latest reply'
@@ -49,11 +53,11 @@ export function buildSummaryLines(
   const blocks = summaries.flatMap(({ label, body }) => {
     if (!body || body.trim().toLocaleLowerCase() === normalizedTitle) return []
     // Bound before wrapping: cursor movement must never reflow a full transcript.
-    return [wrappedDisplayLines(`${label}: ${body.slice(0, SUMMARY_CODE_UNITS)}`, columns)]
+    return [{ lead: label.length + 1, rows: wrappedDisplayLines(`${label}: ${body.slice(0, SUMMARY_CODE_UNITS)}`, columns) }]
   })
-  const shares = shareLines(Math.max(0, maxLines - lines.length), blocks.map(block => block.length))
+  const shares = shareLines(Math.max(0, maxLines - lines.length), blocks.map(block => block.rows.length))
   blocks.forEach((block, index) => {
-    block.slice(0, shares[index]).forEach(text => lines.push({ text }))
+    block.rows.slice(0, shares[index]).forEach((text, row) => lines.push(row === 0 ? { text, lead: block.lead } : { text }))
   })
   return lines
 }

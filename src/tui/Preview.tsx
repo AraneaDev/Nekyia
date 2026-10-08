@@ -218,6 +218,8 @@ export interface PreviewLine {
   dim?: boolean
   bold?: boolean
   color?: string
+  /** Code units at the start of the text that name it, drawn dimmed like a label. */
+  lead?: number
 }
 
 /**
@@ -410,7 +412,9 @@ export function Preview({ lines, offset = 0, maxLines = 12 }: {
             bold={line.bold}
             color={line.color}
           >
-            {line.spans?.length ? highlightEvidence(line.text,line.spans) : line.text}
+            {line.spans?.length ? highlightEvidence(line.text,line.spans)
+              : line.lead ? <><Text dimColor>{line.text.slice(0, line.lead)}</Text>{line.text.slice(line.lead)}</>
+              : line.text}
           </Text>
         </Box>
       ))}
@@ -423,7 +427,7 @@ function highlightEvidence(text:string,spans:readonly {start:number;end:number}[
   const out:React.ReactNode[]=[]
   let end=0
   spans.forEach((span,index)=>{
-    out.push(text.slice(end,span.start),<Text key={index} bold underline>{text.slice(span.start,span.end)}</Text>)
+    out.push(text.slice(end,span.start),<Text key={index} color="black" backgroundColor="yellow">{text.slice(span.start,span.end)}</Text>)
     end=span.end
   })
   out.push(text.slice(end))

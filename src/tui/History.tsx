@@ -3,11 +3,35 @@ import { Box, Text, useApp, useInput, useStdin } from 'ink'
 import type { SessionDetail } from '../core/session-detail'
 import type { MatchEvidence } from '../core/search-match'
 import type { PickerRestore, ReaderAnchor } from './state'
-import { anchorLine, buildHistoryLines, findHistory, nextHit, type HistoryLine } from './history.js'
+import { anchorLine, buildHistoryLines, findHistory, HEADING_OFFSET, nextHit, type HistoryHit, type HistoryLine } from './history.js'
 import { boundedDisplayText, wrappedDisplayLines } from './text'
 import { Menu } from './ActionMenu'
 
 const NO_EXTRA_LINES: readonly string[] = []
+/** Columns the role gutter takes before each line of text. */
+const GUTTER = 2
+const ROLE_COLOR = { user: 'cyan', assistant: 'magenta' } as const
+
+/** Lights every literal occurrence of the find text inside one rendered row. */
+function litMatches(text: string, find: string): React.ReactNode {
+  if (!find) return text
+  const expression = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'giu')
+  const out: React.ReactNode[] = []
+  let end = 0
+  for (const match of text.matchAll(expression)) {
+    if (!match[0]) break
+    out.push(text.slice(end, match.index), <Text key={match.index} color="black" backgroundColor="yellow">{match[0]}</Text>)
+    end = match.index + match[0].length
+  }
+  if (!out.length) return text
+  out.push(text.slice(end))
+  return out
+}
+
+/** Whether a rendered row carries the start of the given hit. */
+function holdsHit(line: HistoryLine, hit: HistoryHit | undefined): boolean {
+  return Boolean(hit && line.ordinal === hit.ordinal && hit.start >= line.offset && hit.start < line.endOffset)
+}
 
 /** Reader input and continuity callbacks. */
 export interface HistoryProps {
@@ -23,10 +47,12 @@ export interface HistoryProps {
   onHelpClose?(): void
   /** Bounded file events and provenance notices supplied by the selected-session loader. */
   extraLines?: readonly string[]
+  /** What the session was about, shown beside its id so the reader knows where it is. */
+  subtitle?: string
 }
 
 /** Full-screen retained conversation reader with semantic position and literal find. */
-export function History({ detail, evidence, rows, columns, initial, onPosition, onClose, onRefresh, helpOpen = false, onHelpClose, extraLines = NO_EXTRA_LINES }: HistoryProps) {
+export function History({ detail, evidence, rows, columns, initial, onPosition, onClose, onRefresh, helpOpen = false, onHelpClose, extraLines = NO_EXTRA_LINES, subtitle }: HistoryProps) {
   const { exit } = useApp()
   const { stdin } = useStdin()
   const width = Math.max(1, Math.min(512, columns))
@@ -35,22 +61,25 @@ export function History({ detail, evidence, rows, columns, initial, onPosition, 
     { ordinal: -1, role: 'user', text: detail.latestUser ?? '' },
     { ordinal: -2, role: 'assistant', text: detail.latestReply ?? '' },
   ], [detail])
+  const textWidth = Math.max(1, width - GUTTER)
   const lines = useMemo(() => {
-    const body: HistoryLine[] = buildHistoryLines(searchTurns, width).map(line => detail.ordered ? line : {
+    const body: HistoryLine[] = buildHistoryLines(searchTurns, textWidth).map(line => detail.ordered ? line : {
       ...line, ordinal: null, legacyOrdinal: line.ordinal ?? undefined,
-      text: line.endOffset === 0 && line.offset === 0
+      text: line.kind === 'heading'
         ? line.text === 'Prompt' ? 'Prompt text' : line.text === 'Reply' ? 'Reply text' : line.text
         : line.text,
     })
+    if (extraLines.length && body.length) body.push({ text: '', ordinal: null, offset: 0, endOffset: 0, kind: 'spacer' })
+    if (extraLines.length) body.push({ text: 'Files', ordinal: null, offset: 0, endOffset: 0, kind: 'heading' })
     for (const raw of extraLines) {
-      for (const text of wrappedDisplayLines(raw, width)) body.push({ text, ordinal: null, offset: 0, endOffset: 0 })
+      for (const text of wrappedDisplayLines(raw, textWidth)) body.push({ text, ordinal: null, offset: 0, endOffset: 0 })
     }
     return body.length ? body : [{ text: 'No retained conversation', ordinal: null, offset: 0, endOffset: 0 }]
-  }, [detail, searchTurns, width, extraLines])
+  }, [detail, searchTurns, textWidth, extraLines])
   const [anchor, setAnchor] = useState<ReaderAnchor>(() => initial?.anchor.uid === detail.uid
     ? initial.anchor
     : { uid: detail.uid, ordinal: evidence?.anchor?.ordinal ?? detail.turns[0]?.ordinal ?? null,
-      offset: evidence?.anchor?.offset ?? 0, fallbackLine: 0 })
+      offset: evidence?.anchor?.offset ?? HEADING_OFFSET, fallbackLine: 0 })
   const [findText, setFindText] = useState(initial?.findText ?? '')
   const [hitIndex, setHitIndex] = useState(initial?.hitIndex ?? -1)
   const hitIndexRef = useRef(hitIndex)
@@ -159,10 +188,23 @@ export function History({ detail, evidence, rows, columns, initial, onPosition, 
     { id: 'refresh', label: 'Ctrl+R: refresh index; Ctrl+C: exit', enabled: false },
   ]} rows={height} columns={width} onSelect={() => {}} onClose={onHelpClose ?? (() => {})}
     help="Esc returns to the same reader position and find" />
+  const currentHit = hits[hitIndex]
+  const header = boundedDisplayText(`History · ${detail.uid}`, width)
+  const headerRest = subtitle ? boundedDisplayText(` · ${subtitle}`, Math.max(0, width - Bun.stringWidth(header))) : ''
   return <Box flexDirection="column" width={width}>
-    {height >= 4 ? <Text bold>{boundedDisplayText(`History · ${detail.uid}`, width)}</Text> : null}
+    {height >= 4 ? <Text wrap="truncate-end"><Text bold>{header}</Text><Text dimColor>{headerRest}</Text></Text> : null}
     {height >= 4 ? notices.map((notice, index) => <Text key={`notice:${index}`} color="yellow">{boundedDisplayText(notice, width)}</Text>) : null}
-    {lines.slice(top, top + room).map((line, index) => <Text key={top + index}>{boundedDisplayText(line.text, width)}</Text>)}
-    {height >= 2 ? <Text dimColor>{boundedDisplayText(footer, width)}</Text> : null}
+    {lines.slice(top, top + room).map((line, index) => {
+      const hue = line.role ? ROLE_COLOR[line.role] : undefined
+      const text = boundedDisplayText(line.text, textWidth)
+      if (line.kind === 'spacer') return <Text key={top + index}> </Text>
+      if (line.kind === 'heading') return <Text key={top + index} wrap="truncate-end"><Text color={hue}>{'▍ '}</Text><Text bold color={hue}>{text}</Text></Text>
+      const marked = holdsHit(line, currentHit)
+      return <Text key={top + index} wrap="truncate-end">
+        <Text color={marked ? 'yellow' : hue} dimColor={!marked}>{marked ? '▶ ' : '▏ '}</Text>
+        <Text dimColor={!hue}>{litMatches(text, findText)}</Text>
+      </Text>
+    })}
+    {height >= 2 ? <Text dimColor wrap="truncate-end">{boundedDisplayText(footer, width)}</Text> : null}
   </Box>
 }

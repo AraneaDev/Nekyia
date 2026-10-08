@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { boundedDisplayText, wrappedDisplayLines } from '../src/tui/text'
+import { boundedDisplayText, ellipsizedDisplayText, wrappedDisplayLines } from '../src/tui/text'
 
 test('the display bound keeps whole Unicode graphemes at the column edge', () => {
   const family = '👨‍👩‍👧‍👦'
@@ -13,9 +13,24 @@ test('history wrapping keeps the sanitized tail across terminal rows', () => {
   const lines = wrappedDisplayLines(source, 18)
   expect(lines.length).toBeGreaterThan(1)
   expect(lines.every((line) => Bun.stringWidth(line) <= 18)).toBe(true)
-  // Every character survives, with the escape byte turned into a space.
-  expect(lines.join('')).toBe(source.replace('\u001b', ' '))
+  // Every word survives, with the escape byte turned into a space; only the
+  // single space each break replaces is not drawn.
+  expect(lines.join(' ')).toBe(source.replace('\u001b', ' '))
   expect(lines.join('')).toContain('last')
+})
+
+test('history wrapping breaks between words rather than inside them', () => {
+  expect(wrappedDisplayLines('the retry budget is shared', 12)).toEqual(['the retry', 'budget is', 'shared'])
+  // A word wider than the row has no space to break at, so it is cut.
+  expect(wrappedDisplayLines('a supercalifragilistic word', 8)).toEqual(['a', 'supercal', 'ifragili', 'stic', 'word'])
+})
+
+test('an ellipsis marks only the text that was actually shortened', () => {
+  expect(ellipsizedDisplayText('short', 8)).toBe('short')
+  expect(ellipsizedDisplayText('exactly8', 8)).toBe('exactly8')
+  expect(ellipsizedDisplayText('much too long', 8)).toBe('much to…')
+  expect(Bun.stringWidth(ellipsizedDisplayText('東京東京東京', 5))).toBeLessThanOrEqual(5)
+  expect(ellipsizedDisplayText('anything', 0)).toBe('')
 })
 
 test('history wrapping never splits a grapheme across two rows', () => {

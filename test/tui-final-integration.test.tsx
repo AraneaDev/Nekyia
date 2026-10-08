@@ -55,7 +55,7 @@ test('effective resume launcher supplies native primary footer for raw search ro
  const {db,ref}=setup();db.upsertRef({...ref,tier:'search'})
  const adapter=buildAdapter(validateManifest({schema:1,id:'claude',name:'Shared',roots:['/none'],format:'jsonl-transcript',tier:'search',jsonl:{glob:'*.jsonl',variant:'claude'},launchers:{fresh:{name:'Fresh',tier:'search',brief:{cmd:'fresh',args:['{prompt}'],cwd:'{cwd}'}},native:{name:'Native',tier:'resume',resume:{cmd:'native',args:['{id}'],cwd:'{cwd}'}}}}))
  const view=mount(db,{adapters:[adapter],cfg:{...DEFAULT_CONFIG,launchers:{claude:'native'}},onPath:()=>true,columns:160});await tick()
- expect(view.lastFrame()).toContain('Resume session available');expect(view.lastFrame()).toContain('enter Resume session')
+ expect(view.lastFrame()).toContain('Resume session available');expect(view.lastFrame()).toContain('enter Resume');expect(view.lastFrame()).not.toContain('enter Start fresh')
  view.unmount();db.close()
 })
 

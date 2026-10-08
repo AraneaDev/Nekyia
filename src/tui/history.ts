@@ -3,8 +3,27 @@ import type { ReaderAnchor } from './state'
 
 /** One literal match identified in stored turn coordinates. */
 export interface HistoryHit { ordinal: number; start: number; end: number }
-/** A sanitized rendered line with an explicit mapping to original source offsets. */
-export interface HistoryLine { text: string; ordinal: number | null; offset: number; endOffset: number; legacyOrdinal?: number }
+/**
+ * A sanitized rendered line with an explicit mapping to original source offsets.
+ *
+ * Headings and the spacer above them belong to their turn but sit before its
+ * text, at offsets -1 and -2. A heading at offset 0 shared its position with
+ * the turn's first row, so scrolling onto it resolved straight back to that
+ * row and the reader could never move up past a turn.
+ */
+export interface HistoryLine {
+  text: string
+  ordinal: number | null
+  offset: number
+  endOffset: number
+  legacyOrdinal?: number
+  role?: 'user' | 'assistant'
+  kind?: 'heading' | 'spacer'
+}
+
+/** The offset a turn's heading occupies, before any of its text. */
+export const HEADING_OFFSET = -1
+const SPACER_OFFSET = -2
 
 /** Literal Unicode matching retains the database text's UTF-16 offsets. */
 export function findHistory(turns: readonly RetainedTurn[], text: string): HistoryHit[] {
@@ -32,7 +51,9 @@ export function buildHistoryLines(turns: readonly RetainedTurn[], columns: numbe
   const width = Math.max(1, Math.min(512, Math.floor(columns) || 1))
   const lines: HistoryLine[] = []
   for (const turn of turns) {
-    lines.push({ text: turn.role === 'user' ? 'Prompt' : 'Reply', ordinal: turn.ordinal, offset: 0, endOffset: 0 })
+    const role = turn.role === 'user' ? 'user' : 'assistant'
+    if (lines.length) lines.push({ text: '', ordinal: turn.ordinal, offset: SPACER_OFFSET, endOffset: SPACER_OFFSET, role, kind: 'spacer' })
+    lines.push({ text: role === 'user' ? 'Prompt' : 'Reply', ordinal: turn.ordinal, offset: HEADING_OFFSET, endOffset: HEADING_OFFSET, role, kind: 'heading' })
     let safe = ''
     const offsets: number[] = []
     for (let index = 0; index < turn.text.length;) {
@@ -44,30 +65,38 @@ export function buildHistoryLines(turns: readonly RetainedTurn[], columns: numbe
       }
       index += char.length
     }
-    let text = ''
+    // The row being built, one grapheme at a time with its source span, so a
+    // break can fall back to the last space without losing coordinates.
+    let row: { text: string; size: number; start: number; end: number }[] = []
     let cells = 0
-    let start = offsets[0] ?? 0
-    let end = start
+    let lineStart = offsets[0] ?? 0
     /** Finish a wrapped row without discarding its source coordinates. */
-    const push = () => {
-      lines.push({ text, ordinal: turn.ordinal, offset: start, endOffset: end })
-      text = ''; cells = 0
+    const push = (parts: typeof row, fallback: number) => {
+      lines.push({
+        text: parts.map(part => part.text).join(''), ordinal: turn.ordinal, role,
+        offset: parts[0]?.start ?? fallback, endOffset: parts.at(-1)?.end ?? fallback,
+      })
     }
     for (const part of graphemes.segment(safe)) {
       const raw = offsets[part.index] ?? turn.text.length
       if (part.segment === '\n') {
-        end = raw; push(); start = raw + 1; end = start
+        push(row, lineStart); row = []; cells = 0; lineStart = raw + 1
         continue
       }
       const size = Bun.stringWidth(part.segment)
-      if (text && cells + size > width) { push(); start = raw }
-      if (!text) start = raw
+      const end = (offsets[part.index + part.segment.length - 1] ?? raw) + 1
+      if (row.length && cells + size > width) {
+        if (part.segment === ' ') { push(row, raw); row = []; cells = 0; lineStart = end; continue }
+        const space = row.findLastIndex(item => item.text === ' ')
+        push(space > 0 ? row.slice(0, space) : row, raw)
+        row = space > 0 ? row.slice(space + 1) : []
+        cells = row.reduce((sum, item) => sum + item.size, 0)
+      }
+      if (!row.length) lineStart = raw
       // A terminal narrower than one grapheme omits that grapheme rather than overflowing.
-      if (size <= width) text += part.segment
-      cells += size
-      end = (offsets[part.index + part.segment.length - 1] ?? raw) + 1
+      if (size <= width) { row.push({ text: part.segment, size, start: raw, end }); cells += size }
     }
-    if (text || safe.endsWith('\n')) push()
+    if (row.length || safe.endsWith('\n')) push(row, lineStart)
   }
   return lines
 }

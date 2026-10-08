@@ -19,7 +19,7 @@ test('actions search and disabled selection cannot dispatch',async()=>{
 test('menu backspace removes one complete emoji grapheme',async()=>{
  const view=render(<Actions items={[]} rows={8} columns={80} onAction={()=>{}} onClose={()=>{}}/>)
  await tick();view.stdin.write('👩‍💻');await tick();view.stdin.write('\x7f');await tick()
- expect(view.lastFrame()).toContain('Find:\n')
+ expect(view.lastFrame()).toContain('Find: type to filter');expect(view.lastFrame()).not.toContain('👩')
  expect(view.lastFrame()).not.toContain('👩')
  expect(view.lastFrame()).not.toContain('�')
  view.unmount()
