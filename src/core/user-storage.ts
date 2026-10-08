@@ -39,9 +39,19 @@ function errorCode(error: unknown): unknown {
   return typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
 }
 
-/** Reads a bounded regular UTF-8 file without following symlinks. */
+/**
+ * Reads a bounded regular UTF-8 file without following symlinks.
+ *
+ * Only the directory that holds the file is checked, not every ancestor. A
+ * symlink higher up is the system's or the user's own arrangement: macOS keeps
+ * its temporary directories under /var, a link to /private/var, and dotfile
+ * managers often link ~/.config. Refusing those made every read fail there, so
+ * the config could not be loaded and indexing stopped.
+ */
 export function readUserText(path: string, maxBytes: number): string {
-  ensureSafeDirectory(dirname(resolve(path)), false)
+  const directory = dirname(resolve(path))
+  const holder = lstatSync(directory)
+  if (!holder.isDirectory() || holder.isSymbolicLink()) throw new Error('config directory is not a safe directory')
   let fd: number | undefined
   try {
     fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
@@ -62,7 +72,7 @@ export function readUserText(path: string, maxBytes: number): string {
 }
 
 /** Validates directory ancestors, creating missing private directories for writes. */
-function ensureSafeDirectory(directory: string, create = true): void {
+function ensureSafeDirectory(directory: string): void {
   const absolute = resolve(directory)
   const parsed = parsePath(absolute)
   let cursor = parsed.root
@@ -74,7 +84,7 @@ function ensureSafeDirectory(directory: string, create = true): void {
         throw new Error('config path contains an unsafe directory')
       }
     } catch (error) {
-      if (errorCode(error) !== 'ENOENT' || !create) throw error
+      if (errorCode(error) !== 'ENOENT') throw error
       const previousUmask = process.umask(0o077)
       try {
         try { mkdirSync(cursor, { mode: 0o700 }) } catch (mkdirError) {

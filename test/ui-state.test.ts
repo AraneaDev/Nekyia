@@ -140,3 +140,13 @@ test('an old lock held by a live process stays protected', async () => {
   expect(readFileSync(owner, 'utf8')).toBe(raw)
   expect(readdirSync(dir).sort()).toEqual(['.ui-state.lock', 'ui-state.json'])
 })
+
+test('a symlink above the storage directory does not block reading it', () => {
+  // macOS keeps temporary directories under /var, a link to /private/var, and
+  // dotfile managers link ~/.config; neither is the storage directory itself.
+  const real = join(tmp, 'real')
+  mkdirSync(join(real, 'private'), { recursive: true })
+  writeFileSync(join(real, 'private', 'ui-state.json'), '{"version":1,"uids":["kept"]}')
+  symlinkSync(real, join(tmp, 'linked'))
+  expect(loadBookmarks(join(tmp, 'linked', 'private'))).toEqual({ state: { version: 1, uids: ['kept'] }, warning: null, writable: true })
+})
