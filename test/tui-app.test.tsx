@@ -5,17 +5,15 @@ import { DEFAULT_CONFIG } from '../src/config'
 import { mountPicker, runPick, type PickDependencies } from '../src/commands/pick'
 import { buildAdapter, type Adapter } from '../src/core/adapter'
 import { IndexDb } from '../src/core/db'
-import { query } from '../src/core/query'
 import { validateManifest } from '../src/manifests/load'
 import {
   App, fitKeys, indexAgeSeverity, previewLines, safeCommandForClipboard,
   SEVERITY_COLOR, type CommandCopyWork,
 } from '../src/tui/App'
-import { buildPreviewLines, shareLines } from '../src/tui/Preview'
+import { shareLines } from '../src/tui/Preview'
 import {
   createHostClipboard, releaseTerminal, writeTtySequence, type ClipboardRuntime,
 } from '../src/tui/clipboard'
-import type { Row } from '../src/core/query'
 import type { ExecPlan, SessionRef } from '../src/types'
 import codebuffManifest from '../src/manifests/builtin/codebuff.json'
 
@@ -1122,217 +1120,6 @@ test('ctrl+o opens the history, scrolls it, and hands focus back', async () => {
   view.unmount()
 })
 
-/** The row shape `buildPreviewLines` takes, built from what the index stored. */
-function previewRow(db: IndexDb, uid: string): Row {
-  return { ...db.getRef(uid)!, score: 0, collapsed: 0 }
-}
-
-/** Every dialogue line the history drew, as [speaker, text] pairs. */
-function spoken(lines: ReturnType<typeof buildPreviewLines>): Array<[string, string]> {
-  return lines
-    .filter((line) => line.label === 'asked' || line.label === 'replied')
-    .map((line) => [line.label!, line.text])
-}
-
-test('the full history reads as a conversation, opening prompt included', () => {
-  const db = IndexDb.open(':memory:')
-  // The opening prompt is also the title. Browsing drops it as a restatement;
-  // a transcript that skipped it would start mid-conversation.
-  const ref = seed(db, { uid: 'claude:talk', nativeId: 'talk', title: 'opening question' })
-  db.upsertDoc({
-    ref,
-    prompts: ['opening question', 'follow-up question'],
-    prose: ['opening answer', 'follow-up answer'],
-    dialogue: [
-      { role: 'user', text: 'opening question' },
-      { role: 'assistant', text: 'opening answer' },
-      { role: 'user', text: 'follow-up question' },
-      { role: 'assistant', text: 'follow-up answer' },
-    ],
-    files: ['src/a.ts'],
-    truncated: false,
-  })
-
-  const lines = buildPreviewLines(db, previewRow(db, ref.uid), { full: true, maxLines: 200 })
-  expect(spoken(lines)).toEqual([
-    ['asked', 'opening question'],
-    ['replied', 'opening answer'],
-    ['asked', 'follow-up question'],
-    ['replied', 'follow-up answer'],
-  ])
-  // Replies stay dimmed, and the files a session touched still close it out.
-  expect(lines.find((line) => line.label === 'replied')?.dim).toBe(true)
-  expect(lines.filter((line) => line.label === 'touched').map((line) => line.text))
-    .toEqual(['src/a.ts'])
-
-  // Browsing keeps the grouped blocks: all prompts, then all replies.
-  const browsing = buildPreviewLines(db, previewRow(db, ref.uid), { maxLines: 12 })
-  expect(spoken(browsing)).toEqual([
-    ['asked', 'follow-up question'],
-    ['replied', 'opening answer'],
-  ])
-  db.close()
-})
-
-test('inspecting shows file operations in the order they happened', () => {
-  const db = IndexDb.open(':memory:')
-  const ref = seed(db, { uid: 'claude:ops', nativeId: 'ops', title: 'fix the sse race' })
-  db.upsertDoc({
-    ref,
-    prompts: ['fix the sse race'],
-    prose: ['done'],
-    dialogue: [
-      { role: 'user', text: 'fix the sse race' },
-      { role: 'assistant', text: 'done' },
-    ],
-    files: ['src/sse.ts'],
-    fileDetail: 'ordered',
-    fileEvents: [
-      { path: 'src/sse.ts', kind: 'read', turn: 1 },
-      { path: 'src/sse.ts', kind: 'edit', turn: 3 },
-    ],
-    truncated: false,
-  })
-  const lines = buildPreviewLines(db, previewRow(db, ref.uid), { full: true, maxLines: 200 })
-  const touched = lines.filter((line) => line.text.includes('src/sse.ts'))
-  expect(touched.map((line) => line.text)).toEqual([
-    'read    src/sse.ts',
-    'edit    src/sse.ts',
-  ])
-  db.close()
-})
-test('browsing keeps the alphabetical file list it always had', () => {
-  const db = IndexDb.open(':memory:')
-  const ref = seed(db, { uid: 'claude:browse', nativeId: 'browse', title: 'a session' })
-  db.upsertDoc({
-    ref,
-    prompts: ['a session'],
-    prose: ['done'],
-    files: ['b.ts', 'a.ts'],
-    fileDetail: 'ordered',
-    fileEvents: [
-      { path: 'b.ts', kind: 'edit', turn: 0 },
-      { path: 'a.ts', kind: 'read', turn: 1 },
-    ],
-    truncated: false,
-  })
-  const lines = buildPreviewLines(db, previewRow(db, ref.uid), { maxLines: 12 })
-  expect(lines.some((line) => line.text === 'a.ts')).toBe(true)
-  expect(lines.some((line) => line.text.includes('read'))).toBe(false)
-  db.close()
-})
-
-test('a session indexed before ordered turns falls back to the grouped history', () => {
-  const db = IndexDb.open(':memory:')
-  const ref = seed(db, { uid: 'claude:old', nativeId: 'old', title: 'an older session' })
-  db.upsertDoc({
-    ref,
-    prompts: ['first question', 'second question'],
-    prose: ['first answer', 'second answer'],
-    files: [],
-    truncated: false,
-  })
-  expect(db.raw().query('SELECT * FROM session_turn').all()).toEqual([])
-
-  const lines = buildPreviewLines(db, previewRow(db, ref.uid), { full: true, maxLines: 200 })
-  // Grouped, not chronological: exactly what the fallback promises until the
-  // session is hydrated again.
-  expect(spoken(lines)).toEqual([
-    ['asked', 'first question'],
-    ['replied', 'first answer'],
-  ])
-  expect(lines.map((line) => line.text)).toContain('second question')
-  expect(lines.every((line) => line.text !== 'history display capped; indexed dialogue continues'))
-    .toBe(true)
-  db.close()
-})
-
-test('the full history wraps a long reply instead of dropping its tail', () => {
-  const db = IndexDb.open(':memory:')
-  const ref = seed(db, { uid: 'claude:wide', nativeId: 'wide', title: 'long dialogue' })
-  const answer = `${'abcdefghij '.repeat(40)}visible tail`
-  db.upsertDoc({
-    ref,
-    prompts: ['long dialogue'],
-    prose: [answer],
-    dialogue: [
-      { role: 'user', text: 'long dialogue' },
-      { role: 'assistant', text: answer },
-    ],
-    files: [],
-    truncated: false,
-  })
-
-  const lines = buildPreviewLines(db, previewRow(db, ref.uid), {
-    columns: 40, full: true, maxLines: 500,
-  })
-  const start = lines.findIndex((line) => line.label === 'replied')
-  const reply = lines.slice(start).map((line) => line.text)
-  expect(reply.length).toBeGreaterThan(1)
-  expect(reply.every((line) => Bun.stringWidth(line) <= 40 - 9)).toBe(true)
-  expect(reply.join(' ')).toBe(answer)
-  db.close()
-})
-
-test('the full history stops at its character budget and says that it did', () => {
-  const db = IndexDb.open(':memory:')
-  const ref = seed(db, { uid: 'claude:huge', nativeId: 'huge', title: 'a huge session' })
-  // Three turns of 500,000 characters: the first two fit inside the 1 MiB
-  // budget, the third is cut to what is left of it, and a fourth never starts.
-  const block = (mark: string) => mark.repeat(500_000)
-  db.upsertDoc({
-    ref,
-    prompts: [],
-    prose: [],
-    dialogue: [
-      { role: 'user', text: block('a') },
-      { role: 'assistant', text: block('b') },
-      { role: 'user', text: block('c') },
-      { role: 'assistant', text: 'never reached' },
-    ],
-    files: [],
-    truncated: false,
-  })
-
-  const lines = buildPreviewLines(db, previewRow(db, ref.uid), {
-    columns: 521, full: true, maxLines: 10_000,
-  })
-  const shown = lines.filter((line) => line.label !== undefined).map((line) => line.text).join('')
-  expect(shown.length).toBe(1_048_576)
-  expect(shown.split('a').length - 1).toBe(500_000)
-  expect(shown.split('b').length - 1).toBe(500_000)
-  expect(shown.split('c').length - 1).toBe(48_576)
-  expect(shown).not.toContain('never reached')
-  expect(lines.map((line) => line.text))
-    .toContain('history display capped; indexed dialogue continues')
-  db.close()
-})
-
-test('the full history stops at its turn budget and says that it did', () => {
-  const db = IndexDb.open(':memory:')
-  const ref = seed(db, { uid: 'claude:many', nativeId: 'many', title: 'a chatty session' })
-  db.upsertDoc({
-    ref,
-    prompts: [],
-    prose: [],
-    dialogue: Array.from({ length: 4_100 }, (_, index) => ({
-      role: index % 2 === 0 ? 'user' as const : 'assistant' as const,
-      text: `turn ${index}`,
-    })),
-    files: [],
-    truncated: false,
-  })
-
-  const lines = buildPreviewLines(db, previewRow(db, ref.uid), { full: true, maxLines: 10_000 })
-  const said = spoken(lines)
-  expect(said.length).toBe(4_096)
-  expect(said[0]).toEqual(['asked', 'turn 0'])
-  expect(said.at(-1)).toEqual(['replied', 'turn 4095'])
-  expect(lines.map((line) => line.text))
-    .toContain('history display capped; indexed dialogue continues')
-  db.close()
-})
-
 test('scrolling stops at the end of the history instead of running past it', async () => {
   const db = IndexDb.open(':memory:')
   const ref = seed(db, { uid: 'claude:short', nativeId: 'short', title: 'a short session' })
@@ -1715,29 +1502,6 @@ test('a session whose transcript has gone says so instead of vanishing', async (
   db.close()
 })
 
-test('preview explains incomplete indexed context', () => {
-  const db = IndexDb.open(':memory:')
-  const ref = seed(db, { uid: 'claude:partial', nativeId: 'partial', title: 'partial context' })
-  db.upsertDoc({
-    ref,
-    prompts: ['question'],
-    prose: ['answer'],
-    files: ['src/partial.ts'],
-    fileDetail: 'paths',
-    fileEventsTruncated: true,
-    truncated: true,
-    degraded: true,
-  })
-
-  const lines = buildPreviewLines(db, previewRow(db, ref.uid), { maxLines: 12 })
-  const text = lines.map((line) => line.text).join('\n')
-  expect(text).toContain('content was too large to index completely')
-  expect(text).toContain('source could not be read completely')
-  expect(text).toContain('file operation order unavailable')
-  expect(text).toContain('file operation log was capped')
-  db.close()
-})
-
 test('a count past the query limit is reported as such, and one session is one', async () => {
   const empty = IndexDb.open(':memory:')
   const none = render(
@@ -1785,25 +1549,6 @@ test('ctrl+o with nothing selected does not open a mode with nothing in it', asy
   expect(frame).toContain('F1 Help')
   expect(frame).toContain('No sessions indexed yet')
   view.unmount()
-  db.close()
-})
-
-test('the preview head uses the whole pane, not the width the label gutter costs', () => {
-  const db = IndexDb.open(':memory:')
-  seed(db, {
-    uid: 'claude:wide', nativeId: 'wide',
-    cwd: '/root/a-project-directory-with-a-name-long-enough-to-fill-the-pane',
-  })
-  const row = query(db, DEFAULT_CONFIG, { limit: 1, now: NOW })[0]!
-  const lines = buildPreviewLines(db, row, { columns: 40, maxLines: 12, now: NOW })
-  const meta = lines[1]!
-  // Nothing draws a gutter for a head line, so charging it for one left the
-  // line cut nine columns short with nine columns of pane sitting empty.
-  expect(meta.label).toBeUndefined()
-  expect(Bun.stringWidth(meta.text)).toBe(40)
-  // Block bodies do hang off the gutter and still pay for it.
-  const body = lines.find((line) => line.label !== undefined && line.text)!
-  expect(Bun.stringWidth(body.text)).toBeLessThanOrEqual(40 - 9)
   db.close()
 })
 

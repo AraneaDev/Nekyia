@@ -132,9 +132,6 @@ export const SEVERITY_COLOR: Record<IndexAgeSeverity, string> = {
   'very-stale': 'red',
 }
 
-/** Rows the list keeps while the detail view is being read, for context only. */
-export const INSPECT_LIST_ROWS = 4
-
 /** Splits the screen between the list and the session preview, scaled to terminal height. */
 export function previewLines(rows: number): number {
   // About a third of the screen, so a tall terminal shows the session rather
@@ -481,13 +478,54 @@ export function App({
   const selectedRow = sessions.rows[sessions.selected]
   const handoffTargets = useMemo(
     () => adapters.filter((adapter) => adapter.id !== selectedRow?.client && !cfg.hiddenClients?.includes(adapter.id) && canBrief(adapter.manifest)),
-    [adapters, selectedRow?.client],
+    [adapters, selectedRow?.client, cfg.hiddenClients],
   )
   const [statsVisible, setStatsVisible] = useState(initialState?.statsVisible ?? true)
   const statsAvailable = terminalWidth >= 140 && terminalHeight >= 18
   const layout=paneLayout(terminalWidth,terminalHeight,4,statsVisible)
   const stats = useMemo(() => resultStats(sessions.rows, now), [sessions.rows, now])
   const reading=mode==='history'&&readerAllowed
+  // Launch checks plan the session and, for a search-tier client, build its
+  // whole brief. They depend on the selected row and launcher policy only, so
+  // they run when the selection changes rather than on every keypress, and
+  // they sit above the early returns so the input handler never reads them
+  // before they exist. The reader shows none of them, so it never pays for them.
+  const launchState=useMemo(()=>{
+    if(reading)return {selectedAdapter:undefined,resolved:null,native:false,launchReason:null,contextReason:null}
+    const selectedAdapter=selectedRow?adapterFor(selectedRow.client):undefined
+    const resolved=selectedRow&&selectedAdapter?resolveRowLauncher(selectedAdapter,selectedRow):null
+    const resolutionReason=selectedRow?.missing?'Source missing':!selectedAdapter?'No adapter available':resolved?.kind==='unavailable'?resolved.message:null
+    const native=Boolean(selectedRow&&resolved&&resolved.kind==='resolved'&&resolved.tier==='resume')
+    const checkedNative=(()=>{
+      if(!native||!selectedRow||!selectedAdapter||resolved?.kind!=='resolved')return null
+      try {
+        const plan=selectedAdapter.plan(selectedRow,undefined,resolved.launcher)
+        return plan?checkResumePlan(plan):{ok:false,reason:'This session cannot be launched'}
+      }catch{return {ok:false,reason:'Could not validate the launch'}}
+    })()
+    const launchReason=resolutionReason??(checkedNative&&!checkedNative.ok?checkedNative.reason??'This session cannot be launched':null)
+  
+    const contextReason=(()=>{
+      if(!selectedRow||!selectedAdapter||!canBrief(selectedAdapter.manifest))return 'No context launcher available'
+      if(resolved?.kind==='unavailable')return resolved.message
+      try {
+        if(resolved?.kind==='resolved'&&resolved.tier==='search'){
+          const brief=buildBrief(db,selectedRow.uid)
+          if(!brief)return 'Nothing indexed for this session yet'
+          const plan=selectedAdapter.plan(selectedRow,brief,resolved.launcher)
+          if(!plan||plan.kind!=='brief')return 'This context session cannot be launched'
+          const checked=checkResumePlan(plan)
+          return checked.ok?null:checked.reason??'This context session cannot be launched'
+        }
+        const result=buildHandoffPlan(db,selectedRow.uid,selectedRow.client,adapters)
+        if(!result.ok)return result.reason
+        const checked=checkResumePlan(result.plan)
+        return checked.ok?null:checked.reason??'This context session cannot be launched'
+      }catch{return 'Could not validate the context launch'}
+    })()
+    return {selectedAdapter,resolved,native,launchReason,contextReason}
+  },[reading,selectedRow,adapters,liveCfg,pathCheck,checkResumePlan,db])
+  const {selectedAdapter,resolved,native,launchReason,contextReason}=launchState
   const detailLines = layout.mode === 'compact' ? 1 : previewLines(terminalHeight)
   const listHeight = Math.max(1, layout.bodyRows - detailLines)
   const summaryRows = layout.mode === 'compact' ? 1 : Math.max(1, detailLines - 1)
@@ -1001,37 +1039,6 @@ export function App({
     )
   }
 
-  const selectedAdapter=selectedRow?adapterFor(selectedRow.client):undefined
-  const resolved=selectedRow&&selectedAdapter?resolveRowLauncher(selectedAdapter,selectedRow):null
-  const resolutionReason=selectedRow?.missing?'Source missing':!selectedAdapter?'No adapter available':resolved?.kind==='unavailable'?resolved.message:null
-  const native=Boolean(selectedRow&&resolved&&resolved.kind==='resolved'&&resolved.tier==='resume')
-  const checkedNative=(()=>{
-    if(!native||!selectedRow||!selectedAdapter||resolved?.kind!=='resolved')return null
-    try {
-      const plan=selectedAdapter.plan(selectedRow,undefined,resolved.launcher)
-      return plan?checkResumePlan(plan):{ok:false,reason:'This session cannot be launched'}
-    }catch{return {ok:false,reason:'Could not validate the launch'}}
-  })()
-  const launchReason=resolutionReason??(checkedNative&&!checkedNative.ok?checkedNative.reason??'This session cannot be launched':null)
-
-  const contextReason=(()=>{
-    if(!selectedRow||!selectedAdapter||!canBrief(selectedAdapter.manifest))return 'No context launcher available'
-    if(resolved?.kind==='unavailable')return resolved.message
-    try {
-      if(resolved?.kind==='resolved'&&resolved.tier==='search'){
-        const brief=buildBrief(db,selectedRow.uid)
-        if(!brief)return 'Nothing indexed for this session yet'
-        const plan=selectedAdapter.plan(selectedRow,brief,resolved.launcher)
-        if(!plan||plan.kind!=='brief')return 'This context session cannot be launched'
-        const checked=checkResumePlan(plan)
-        return checked.ok?null:checked.reason??'This context session cannot be launched'
-      }
-      const result=buildHandoffPlan(db,selectedRow.uid,selectedRow.client,adapters)
-      if(!result.ok)return result.reason
-      const checked=checkResumePlan(result.plan)
-      return checked.ok?null:checked.reason??'This context session cannot be launched'
-    }catch{return 'Could not validate the context launch'}
-  })()
   const actionItems=actionsFor({hasSelection:Boolean(selectedRow),canResume:Boolean(selectedRow&&(native||resolved?.kind==='ask')&&!launchReason),resumeReason:launchReason??(!native&&resolved?.kind!=='ask'?'Use Start fresh with context':null),
     canHandoff:Boolean(selectedRow&&(contextReason===null||handoffTargets.length)),handoffReason:contextReason,hasMatch:Boolean(evidence),hasPrompt:Boolean(rich?.latestUser),hasCommand:native&&!launchReason,
     bookmarked:Boolean(selectedRow&&bookmarkUids.has(selectedRow.uid)),hasQuery:Boolean(sessions.text),refreshing:!onReindex,statsVisible,statsAvailable}).map(item=>item.id==='resume'&&resolved?.kind==='ask'?{...item,label:'Choose launcher'}:item)
