@@ -1270,7 +1270,7 @@ test('the full history wraps a long reply instead of dropping its tail', () => {
   const reply = lines.slice(start).map((line) => line.text)
   expect(reply.length).toBeGreaterThan(1)
   expect(reply.every((line) => Bun.stringWidth(line) <= 40 - 9)).toBe(true)
-  expect(reply.join('')).toBe(answer)
+  expect(reply.join(' ')).toBe(answer)
   db.close()
 })
 

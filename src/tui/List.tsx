@@ -2,7 +2,7 @@ import React from 'react'
 import { Box, Text } from 'ink'
 import type { Row } from '../core/query'
 import { projectName, relTime } from '../render'
-import { boundedDisplayText, padColumns, scanLimit, suffixByCodeUnits, wrappedDisplayLines } from './text'
+import { boundedDisplayText, ellipsizedDisplayText, padColumns, scanLimit, suffixByCodeUnits, wrappedDisplayLines } from './text'
 
 const CLIENT_COLOR: Record<string, string> = {
   claude: 'magenta',
@@ -168,12 +168,14 @@ export function titleColumns(columns: number): number {
 
 /** Bounds selected-title wrapping before scanning untrusted transcript text. */
 function rowTitleLines(row: Row, columns: number, maximum: number, bookmarked?: boolean): string[] {
-  if (maximum <= 1) return [boundedDisplayText(row.title ?? '(no title)', titleColumns(columns))]
   const suffix = `${bookmarked ? ' ★' : ''}${row.collapsed ? `  +${row.collapsed}` : ''}`
   const width = Math.max(1, titleColumns(columns) - Bun.stringWidth(suffix))
-  const lines = wrappedDisplayLines(boundedDisplayText(row.title ?? '(no title)', width * 2 + 1), width)
+  if (maximum <= 1) return [ellipsizedDisplayText(row.title ?? '(no title)', width)]
+  // Read a little past two rows, so a break that falls back to an earlier space
+  // still has the words to fill the second row.
+  const lines = wrappedDisplayLines(boundedDisplayText(row.title ?? '(no title)', width * 3), width)
   const shown = lines.slice(0, 2)
-  if (lines.length > 2) shown[1] = `${boundedDisplayText(shown[1]!, width - 1)}…`
+  if (lines.length > 2) shown[1] = ellipsizedDisplayText(`${shown[1]!} ${lines[2]!}`, width)
   return shown.length ? shown : ['']
 }
 

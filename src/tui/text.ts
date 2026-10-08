@@ -110,6 +110,11 @@ export function boundedErrorMessage(error: unknown): string {
  * reading a reply in full, and its scroll model can reach every row produced
  * here, so a 400-character answer must continue rather than disappear.
  *
+ * Rows break at the last space that fits, and that one space is spent on the
+ * break rather than drawn, so prose reads as words instead of fragments cut at
+ * an arbitrary column. A word longer than the whole width has nowhere better
+ * to go and is cut where it overflows.
+ *
  * Nothing bounds the input, so a caller must bring its own budget: this reads
  * the entire string and returns a row for roughly every `maxColumns` of it.
  */
@@ -118,7 +123,7 @@ export function wrappedDisplayLines(value: string, maxColumns: number): string[]
   if (columns === 0 || value.length === 0) return []
   const safe = sanitizeDisplaySample(value)
   const lines: string[] = []
-  let pieces: string[] = []
+  let pieces: { text: string; width: number }[] = []
   let width = 0
 
   for (const part of GRAPHEMES.segment(safe)) {
@@ -126,15 +131,35 @@ export function wrappedDisplayLines(value: string, maxColumns: number): string[]
     // A grapheme wider than the whole width still has to go somewhere, so it
     // takes a row of its own rather than looping forever on an empty line.
     if (pieces.length > 0 && width + partWidth > columns) {
-      lines.push(pieces.join(''))
-      pieces = []
-      width = 0
+      if (part.segment === ' ') {
+        lines.push(pieces.map((piece) => piece.text).join(''))
+        pieces = []
+        width = 0
+        continue
+      }
+      const space = pieces.findLastIndex((piece) => piece.text === ' ')
+      const kept = space > 0 ? pieces.slice(0, space) : pieces
+      lines.push(kept.map((piece) => piece.text).join(''))
+      pieces = space > 0 ? pieces.slice(space + 1) : []
+      width = pieces.reduce((sum, piece) => sum + piece.width, 0)
     }
-    pieces.push(part.segment)
+    pieces.push({ text: part.segment, width: partWidth })
     width += partWidth
   }
-  if (pieces.length > 0) lines.push(pieces.join(''))
+  if (pieces.length > 0) lines.push(pieces.map((piece) => piece.text).join(''))
   return lines
+}
+
+/**
+ * Bounds a value to a width and marks the cut with an ellipsis, so a reader can
+ * tell a title that ends from one that was shortened to fit.
+ */
+export function ellipsizedDisplayText(value: string, maxColumns: number): string {
+  const columns = displayColumns(maxColumns)
+  if (columns === 0) return ''
+  const whole = boundedDisplayText(value, columns + 1)
+  if (Bun.stringWidth(whole) <= columns) return whole
+  return `${boundedDisplayText(whole, columns - 1)}…`
 }
 
 /** Pads to a terminal width; `padEnd` counts code units, which a wide character breaks. */

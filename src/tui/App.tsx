@@ -11,7 +11,7 @@ import {
 } from '../core/launcher'
 import { checkPlan, shellQuote } from '../core/resume'
 import type { ExecPlan } from '../types'
-import { List, listWindow } from './List'
+import { clientColor, List, listWindow } from './List'
 import { boundedDisplayText, boundedPathTail, MAX_DISPLAY_COLUMNS, prefixByCodeUnits, wrappedDisplayLines } from './text'
 import { projectName, relTime } from '../render'
 import { Preview } from './Preview'
@@ -943,8 +943,12 @@ export function App({
   const helpProps={helpOpen,
     /** Returns from contextual help to its still-mounted dialog. */
     onHelpClose:()=>setHelpOpen(false)}
-  if(reading&&readerUid)return <History {...helpProps} key={readerUid} detail={readSessionDetail(db,readerUid)} evidence={evidence?.uid===readerUid?evidence:null}
-    initial={readerState} extraLines={readerExtras} rows={terminalHeight} columns={terminalWidth} onPosition={setReaderState} onClose={close} onRefresh={requestRefresh}/>
+  if(reading&&readerUid){
+    const ref=sessions.snapshot.find(item=>item.uid===readerUid)
+    const subtitle=ref?[ref.cwd?projectName(ref.cwd):'',ref.title??''].filter(Boolean).join(' · '):undefined
+    return <History {...helpProps} key={readerUid} detail={readSessionDetail(db,readerUid)} evidence={evidence?.uid===readerUid?evidence:null} subtitle={subtitle}
+      initial={readerState} extraLines={readerExtras} rows={terminalHeight} columns={terminalWidth} onPosition={setReaderState} onClose={close} onRefresh={requestRefresh}/>
+  }
   if(helpOpen&&(launcherAsk||confirm||handoff))return <Menu title="Launch help" items={[
     {id:'choose',label:'Up/Down or Tab choose launcher/target'},
     {id:'confirm',label:'Enter confirms the displayed action'},
@@ -1045,7 +1049,9 @@ export function App({
     {id:'time',label:'Ctrl+D cycles time presets'},
     {id:'clear-time',label:'Ctrl+U clears time'},
     {id:'launcher',label:'Ctrl+L Choose launcher'},
-    ...actionItems.map(item=>({id:item.id,label:`${item.shortcut??'Actions menu'} ${item.label}`,reason:item.reason})),
+    // Prefixed: the Filters entry above and the filters action share an id, and a
+    // repeated key makes React drop or duplicate one of the two rows.
+    ...actionItems.map(item=>({id:`action:${item.id}`,label:`${item.shortcut??'Actions menu'} ${item.label}`,reason:item.reason})),
     {id:'reader',label:'History: Ctrl+F find · F3/Shift+F3 hit · Home/End · Esc back'},
   ]} rows={terminalHeight} columns={terminalWidth} onSelect={()=>{}} onClose={close}/>
   if(mode==='filters')return <Filters {...helpProps} clock={clock} value={sessions.filters} now={now} cwd={cwd} clients={sessions.clientCycle.filter((client):client is string=>client!==undefined)}
@@ -1086,18 +1092,40 @@ export function App({
     sessions.filters.branch!==undefined?`branch:${sessions.filters.branch??'none'}`:'',sessions.filters.file?`file:${sessions.filters.file.path}`:'',sessions.filters.bookmarkedOnly?'Bookmarked':''].filter(Boolean).join(' · ')
   const found=sessions.overflowed?`${SESSION_DISPLAY_LIMIT}+ sessions`:`${sessions.rows.length} session${sessions.rows.length===1?'':'s'}`
   const indexAge=indexedAt!==undefined&&Number.isFinite(indexedAt)?freshlyIndexed(indexedAt,now):''
-  const status=[found,filterLabel,rich?qualityBadge(rich.reasons):'',sessions.scope?projectName(sessions.scope):'everywhere',sessions.client, note,indexAge].filter(Boolean).join(' · ')
+  const badge=rich?qualityBadge(rich.reasons):''
+  const status:{text:string;color?:string;dim?:boolean}[]=[
+    {text:found},
+    ...(filterLabel?[{text:filterLabel,color:'cyan'}]:[]),
+    ...(badge?[{text:badge,color:'yellow'}]:[]),
+    {text:sessions.scope?projectName(sessions.scope):'everywhere',dim:!sessions.scope},
+    ...(sessions.client?[{text:sessions.client,color:clientColor(sessions.client)}]:[]),
+    ...(note?[{text:note,color:'yellow'}]:[]),
+    ...(indexAge&&indexedAt!==undefined?[{text:indexAge,color:SEVERITY_COLOR[indexAgeSeverity(now-indexedAt)],dim:indexAgeSeverity(now-indexedAt)==='fresh'}]:[]),
+  ].map(part=>({...part,text:boundedDisplayText(part.text,terminalWidth)}))
   const primary=actionItems.find(item=>item.id===(resolved?.kind==='resolved'&&resolved.tier==='search'?'handoff':'resume'))
-  const keys:[string,string][]=[['ctrl+k','Actions'],['ctrl+g','Filters'],['F1','Help'],...(primary?[['enter',primary.enabled?primary.label:'unavailable']] as [string,string][]:[]),['ctrl+o','History'],...(statsAvailable?[['ctrl+s','Stats']] as [string,string][]:[]),['esc','quit']]
+  // The primary action leads, because enter is the key most people press next;
+  // when it cannot run its name stays, dimmed, rather than becoming a bare
+  // "unavailable" that does not say what is unavailable.
+  // Short forms, so the primary action costs no more width than the hint it
+  // displaced and Filters still fits beside it at eighty columns.
+  const primaryLabel=primary?.label==='Resume session'?'Resume':primary?.label==='Start fresh with context'?'Start fresh':primary?.label
+  const keys:[string,string][]=[...(primaryLabel&&selectedRow?[['enter',primaryLabel]] as [string,string][]:[]),['ctrl+k','Actions'],['ctrl+g','Filters'],['F1','Help'],['ctrl+o','History'],...(statsAvailable?[['ctrl+s','Stats']] as [string,string][]:[]),['esc','quit']]
   const list=<List rows={sessions.rows} selected={sessions.selected} height={listHeight} now={now} columns={layout.listWidth} query={sessions.text} bookmarks={bookmarkUids} wrapSelected={layout.mode!=='compact'}/>
   const quick=<Preview lines={detail} maxLines={summaryRows}/>
   const availabilityText = resolved?.kind === 'ask' ? 'Choose launcher'
     : resolved?.kind === 'resolved' && resolved.tier === 'search'
       ? !handoffTargets.length && contextReason ? contextReason : 'Start fresh with context'
       : launchReason ?? 'Resume session available'
+  const availabilityProblem = resolved?.kind === 'resolved' && resolved.tier === 'search'
+    ? !handoffTargets.length && Boolean(contextReason)
+    : resolved?.kind !== 'ask' && Boolean(launchReason)
   return <Box flexDirection="column" height={terminalHeight} width={terminalWidth} overflow="hidden">
-    <Text wrap="truncate-end"><Text bold>nekyia</Text>{boundedDisplayText(` · ${status}`,terminalWidth-6)}</Text>
-    <Text wrap="truncate-end" color="cyan">{boundedPathTail(`▸ ${sessions.text||'type to search'}`,terminalWidth)}</Text>
+    <Text wrap="truncate-end"><Text bold color="cyan">nekyia</Text>{status.map((part,index)=><React.Fragment key={index}>
+      <Text dimColor>{' · '}</Text><Text color={part.color} dimColor={part.dim}>{part.text}</Text>
+    </React.Fragment>)}</Text>
+    {sessions.text
+      ? <Text wrap="truncate-end"><Text color="cyan" bold>{'▸ '}</Text>{boundedPathTail(sessions.text,Math.max(1,terminalWidth-2))}</Text>
+      : <Text wrap="truncate-end"><Text color="cyan" bold>{'▸ '}</Text><Text dimColor>type to search</Text></Text>}
     {!sessions.rows.length?<Box flexDirection="column" flexGrow={1} overflow="hidden">
       <EmptyState indexedEmpty={sessions.snapshot.length===0} searching={Boolean(sessions.text)} narrowed={sessions.scope!==null} timeFiltered={timeFiltered}/>
       {suggestions.map((item,index)=><Text key={item.label} wrap="truncate-end">{`${index+1}. ${item.label} (Actions)`}</Text>)}
@@ -1113,9 +1141,11 @@ export function App({
       {layout.mode!=='compact'&&<Text dimColor>{'─'.repeat(Math.min(MAX_DISPLAY_COLUMNS,terminalWidth))}</Text>}
       <Box height={detailLines} flexDirection="column" overflow="hidden">
         {quick}
-        {layout.mode !== 'compact' && <Text dimColor wrap="truncate-end">{boundedDisplayText(availabilityText, layout.previewWidth)}</Text>}
+        {layout.mode !== 'compact' && <Text dimColor={!availabilityProblem} color={availabilityProblem ? 'yellow' : undefined} wrap="truncate-end">{boundedDisplayText(availabilityText, layout.previewWidth)}</Text>}
       </Box>
     </Box>}
-    <Text wrap="truncate-end">{fitKeys(keys,terminalWidth).map(([key,label])=>`${key} ${label}`).join('   ')}</Text>
+    <Text wrap="truncate-end">{fitKeys(keys,terminalWidth).map(([key,label],index)=><React.Fragment key={key}>
+      {index?'   ':''}<Text color="cyan">{key}</Text> <Text dimColor={key!=='enter'||!primary?.enabled}>{label}</Text>
+    </React.Fragment>)}</Text>
   </Box>
 }

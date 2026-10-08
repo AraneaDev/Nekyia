@@ -96,13 +96,15 @@ export function Menu({ title, items, rows, columns, onSelect, onClose, help, hel
   />
 
   return <Box flexDirection="column" width={columns} height={rows} overflow="hidden">
-    <Text bold wrap="truncate-end">{boundedDisplayText(`${title} · ${choices.length ? selected + 1 : 0}/${choices.length}`, columns)}</Text>
-    <Text wrap="truncate-end">{boundedDisplayText(`Find: ${text}`, columns)}</Text>
+    <Text bold wrap="truncate-end">{boundedDisplayText(title, columns)}<Text dimColor>{boundedDisplayText(` · ${choices.length ? selected + 1 : 0}/${choices.length}`, Math.max(0, columns - Bun.stringWidth(title)))}</Text></Text>
+    <Text wrap="truncate-end"><Text color="cyan">Find: </Text>{text ? boundedDisplayText(text, Math.max(0, columns - 6)) : <Text dimColor>type to filter</Text>}</Text>
     <Box flexDirection="column" flexGrow={1} overflow="hidden">
       {choices.slice(start, start + height).map((item, offset) => {
         const active = start + offset === selected
+        const label = boundedDisplayText(`${active ? '▸ ' : '  '}${item.label}`, columns)
+        const shortcut = item.shortcut ? boundedDisplayText(` (${item.shortcut})`, Math.max(0, columns - Bun.stringWidth(label))) : ''
         return <Text key={item.id} wrap="truncate-end" color={active ? 'cyan' : undefined} dimColor={Boolean(item.reason) && !active}>
-          {boundedDisplayText(`${active ? '▸ ' : '  '}${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`, columns)}
+          <Text bold={active}>{label}</Text><Text dimColor>{shortcut}</Text>
         </Text>
       })}
       {!choices.length && <Text>No matching actions</Text>}

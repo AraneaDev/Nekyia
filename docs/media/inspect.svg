@@ -1,37 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="780" height="644" viewBox="0 0 780 644" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">
-<rect width="780" height="644" rx="8" fill="#12151b"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1141" height="644" viewBox="0 0 1141 644" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">
+<rect width="1141" height="644" rx="8" fill="#12151b"/>
 <text x="16.0" y="16.0" fill="#c9d1d9" font-weight="600" textLength="445.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">History · claude:00000000-0000-4000-8000-000000000001</text>
-<text x="16.0" y="34.0" fill="#c9d1d9" textLength="394.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">walk me through where the budget is decremented</text>
-<text x="16.0" y="52.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
-<text x="16.0" y="70.0" fill="#c9d1d9" textLength="747.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Decremented in retry-budget.ts before the hedge fires, keyed by route rather than tenant.</text>
-<text x="16.0" y="88.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
-<text x="16.0" y="106.0" fill="#c9d1d9" textLength="268.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">why is it keyed by route at all?</text>
-<text x="16.0" y="124.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
-<text x="16.0" y="142.0" fill="#c9d1d9" textLength="705.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Moving the key to the tenant id fixes the sharing without touching the hedging path.</text>
-<text x="16.0" y="160.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
-<text x="16.0" y="178.0" fill="#c9d1d9" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">show me what breaks if the key changes</text>
-<text x="16.0" y="196.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
-<text x="16.0" y="214.0" fill="#c9d1d9" textLength="722.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Route was the original key because budgets predate tenancy; nothing depends on it now.</text>
-<text x="16.0" y="232.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
-<text x="16.0" y="250.0" fill="#c9d1d9" textLength="369.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">does the hedging path read the same counter?</text>
-<text x="16.0" y="268.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
-<text x="16.0" y="286.0" fill="#c9d1d9" textLength="739.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Changing the key alters two call sites and one test fixture, nothing in the wire format.</text>
-<text x="16.0" y="304.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
-<text x="16.0" y="322.0" fill="#c9d1d9" textLength="470.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">add a test that a noisy tenant cannot starve a quiet one</text>
-<text x="16.0" y="340.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
-<text x="16.0" y="358.0" fill="#c9d1d9" textLength="739.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">The hedging path reads the same counter, so it inherits the fix rather than needing one.</text>
-<text x="16.0" y="376.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
-<text x="16.0" y="394.0" fill="#c9d1d9" textLength="462.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">what happens on the first request for an unseen tenant?</text>
-<text x="16.0" y="412.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
-<text x="16.0" y="430.0" fill="#c9d1d9" textLength="722.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Added a test with one tenant spending its budget while another still gets its retries.</text>
-<text x="16.0" y="448.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
-<text x="16.0" y="466.0" fill="#c9d1d9" textLength="394.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">make the default budget configurable per tenant</text>
-<text x="16.0" y="484.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
-<text x="16.0" y="502.0" fill="#c9d1d9" textLength="739.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">An unseen tenant starts at the full default rather than at zero, which matches the docs.</text>
-<text x="16.0" y="520.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
-<text x="16.0" y="538.0" fill="#c9d1d9" textLength="386.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the integration test is flaky now, is that us?</text>
-<text x="16.0" y="556.0" fill="#c9d1d9" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
-<text x="16.0" y="574.0" fill="#c9d1d9" textLength="714.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Made the default overridable per tenant, falling back to the global value when unset.</text>
-<text x="16.0" y="592.0" fill="#c9d1d9" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
-<text x="16.0" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Lines 6-37 of 60 · Esc back · Ctrl+F find</text>
+<text x="469.6" y="16.0" fill="#c9d1d9" opacity="0.62" textLength="655.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">· api-gateway · the retry budget is shared across tenants, it should be per te</text>
+<text x="16.0" y="34.0" fill="#c678dd" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="34.0" fill="#c678dd" font-weight="600" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
+<text x="16.0" y="52.0" fill="#c678dd" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="52.0" fill="#c9d1d9" textLength="638.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">The budget lives on the client, so every tenant draws from the same counter.</text>
+<text x="16.0" y="88.0" fill="#56b6c2" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="88.0" fill="#56b6c2" font-weight="600" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
+<text x="16.0" y="106.0" fill="#56b6c2" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="106.0" fill="#c9d1d9" textLength="394.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">walk me through where the budget is decremented</text>
+<text x="16.0" y="142.0" fill="#c678dd" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="142.0" fill="#c678dd" font-weight="600" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
+<text x="16.0" y="160.0" fill="#c678dd" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="160.0" fill="#c9d1d9" textLength="747.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Decremented in retry-budget.ts before the hedge fires, keyed by route rather than tenant.</text>
+<text x="16.0" y="196.0" fill="#56b6c2" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="196.0" fill="#56b6c2" font-weight="600" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
+<text x="16.0" y="214.0" fill="#56b6c2" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="214.0" fill="#c9d1d9" textLength="268.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">why is it keyed by route at all?</text>
+<text x="16.0" y="250.0" fill="#c678dd" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="250.0" fill="#c678dd" font-weight="600" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
+<text x="16.0" y="268.0" fill="#c678dd" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="268.0" fill="#c9d1d9" textLength="705.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Moving the key to the tenant id fixes the sharing without touching the hedging path.</text>
+<text x="16.0" y="304.0" fill="#56b6c2" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="304.0" fill="#56b6c2" font-weight="600" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
+<text x="16.0" y="322.0" fill="#56b6c2" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="322.0" fill="#c9d1d9" textLength="319.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">show me what breaks if the key changes</text>
+<text x="16.0" y="358.0" fill="#c678dd" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="358.0" fill="#c678dd" font-weight="600" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
+<text x="16.0" y="376.0" fill="#c678dd" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="376.0" fill="#c9d1d9" textLength="722.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Route was the original key because budgets predate tenancy; nothing depends on it now.</text>
+<text x="16.0" y="412.0" fill="#56b6c2" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="412.0" fill="#56b6c2" font-weight="600" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
+<text x="16.0" y="430.0" fill="#56b6c2" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="430.0" fill="#c9d1d9" textLength="369.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">does the hedging path read the same counter?</text>
+<text x="16.0" y="466.0" fill="#c678dd" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="466.0" fill="#c678dd" font-weight="600" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
+<text x="16.0" y="484.0" fill="#c678dd" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="484.0" fill="#c9d1d9" textLength="739.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Changing the key alters two call sites and one test fixture, nothing in the wire format.</text>
+<text x="16.0" y="520.0" fill="#56b6c2" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="520.0" fill="#56b6c2" font-weight="600" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Prompt</text>
+<text x="16.0" y="538.0" fill="#56b6c2" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="538.0" fill="#c9d1d9" textLength="470.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">add a test that a noisy tenant cannot starve a quiet one</text>
+<text x="16.0" y="574.0" fill="#c678dd" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▍</text>
+<text x="32.8" y="574.0" fill="#c678dd" font-weight="600" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Reply</text>
+<text x="16.0" y="592.0" fill="#c678dd" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▏</text>
+<text x="32.8" y="592.0" fill="#c9d1d9" textLength="739.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">The hedging path reads the same counter, so it inherits the fix rather than needing one.</text>
+<text x="16.0" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="344.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Lines 4-35 of 86 · Esc back · Ctrl+F find</text>
 </svg>

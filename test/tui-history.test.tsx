@@ -138,10 +138,11 @@ test('reader applies every arrow in a burst before repaint', async () => {
   await tick()
   view.stdin.write('\u001b[B'); view.stdin.write('\u001b[B'); view.stdin.write('\u001b[B')
   await tick()
-  expect(position!.anchor.offset).toBe(15)
+  // The reader opens on the turn's heading, so three rows down is row2.
+  expect(position!.anchor.offset).toBe(10)
   view.stdin.write('\u001b[A'); view.stdin.write('\u001b[A')
   await tick()
-  expect(position!.anchor.offset).toBe(5)
+  expect(position!.anchor.offset).toBe(0)
   expect(view.lastFrame()).toContain('row1')
   view.unmount()
 })
@@ -188,8 +189,28 @@ test('capped reader shows both retained scope and absent match location without 
   await tick()
   const frame = view.lastFrame()!
   expect(frame).toContain('retained history capped')
-  expect(frame.replaceAll('\n', '')).toContain('Match location unavailable in retained history')
+  expect(frame.replaceAll('\n', ' ')).toContain('Match location unavailable in retained history')
   expect(frame.split('\n').length).toBeLessThanOrEqual(8)
   expect(frame.split('\n').every(line => Bun.stringWidth(line) <= 40)).toBe(true)
+  view.unmount()
+})
+
+test('scrolling up passes turn headings instead of snapping back to their first row', async () => {
+  let position: PickerRestore['reader'] = null
+  const source = { ...detail, turns: [
+    { ordinal: 1, role: 'user', text: 'first question' },
+    { ordinal: 2, role: 'assistant', text: 'first answer' },
+    { ordinal: 3, role: 'user', text: 'second question' },
+  ] }
+  const view = render(<History detail={source} rows={5} columns={40}
+    onPosition={value => { position = value }} onClose={() => {}} />)
+  await tick()
+  expect(view.lastFrame()).toContain('Prompt')
+  for (let step = 0; step < 6; step++) { view.stdin.write('\u001b[B'); await tick() }
+  expect(position!.anchor.ordinal).toBe(3)
+  for (let step = 0; step < 6; step++) { view.stdin.write('\u001b[A'); await tick() }
+  // Six rows down and six back up lands on the opening heading again.
+  expect(position!.anchor).toMatchObject({ ordinal: 1, offset: -1 })
+  expect(view.lastFrame()).toContain(' 1-3/8')
   view.unmount()
 })

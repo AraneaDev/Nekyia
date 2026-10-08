@@ -1,8 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1141" height="644" viewBox="0 0 1141 644" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">
 <rect width="1141" height="644" rx="8" fill="#12151b"/>
-<text x="16.0" y="16.0" fill="#c9d1d9" font-weight="600" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">nekyia</text>
-<text x="74.8" y="16.0" fill="#c9d1d9" textLength="411.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">· 22 sessions · everywhere · index just refreshed</text>
-<text x="16.0" y="34.0" fill="#56b6c2" textLength="134.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▸ type to search</text>
+<text x="16.0" y="16.0" fill="#56b6c2" font-weight="600" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">nekyia</text>
+<text x="74.8" y="16.0" fill="#c9d1d9" opacity="0.62" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">·</text>
+<text x="91.6" y="16.0" fill="#c9d1d9" textLength="92.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">22 sessions</text>
+<text x="192.4" y="16.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">· everywhere ·</text>
+<text x="318.4" y="16.0" fill="#98c379" opacity="0.62" textLength="168.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">index just refreshed</text>
+<text x="16.0" y="34.0" fill="#56b6c2" font-weight="600" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▸</text>
+<text x="32.8" y="34.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">type to search</text>
 <text x="16.0" y="52.0" fill="#c678dd" textLength="8.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">▌</text>
 <text x="32.8" y="52.0" fill="#c678dd" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">claude</text>
 <text x="125.2" y="52.0" fill="#c9d1d9" font-weight="600" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">22m</text>
@@ -381,9 +385,22 @@
 <line x1="1116.4" y1="390.0" x2="1120.6" y2="390.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <line x1="1120.6" y1="390.0" x2="1124.8" y2="390.0" stroke="#c9d1d9" stroke-width="1" shape-rendering="crispEdges"/>
 <text x="16.0" y="412.0" fill="#c9d1d9" font-weight="600" textLength="554.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the retry budget is shared across tenants, it should be per tenant</text>
-<text x="16.0" y="430.0" fill="#c9d1d9" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">main · 5 files</text>
-<text x="16.0" y="448.0" fill="#c9d1d9" textLength="613.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Latest request: update the rate-limits doc to describe per-tenant budgets</text>
-<text x="16.0" y="466.0" fill="#c9d1d9" textLength="714.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Latest reply: Updated rate-limits.md to describe per-tenant budgets and the fallback.</text>
-<text x="16.0" y="484.0" fill="#c9d1d9" opacity="0.62" textLength="478.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the directory /home/dev/work/api-gateway no longer exists</text>
-<text x="16.0" y="610.0" fill="#c9d1d9" textLength="747.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+k Actions   ctrl+g Filters   F1 Help   enter unavailable   ctrl+o History   esc quit</text>
+<text x="16.0" y="430.0" fill="#c9d1d9" opacity="0.62" textLength="117.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">main · 5 files</text>
+<text x="16.0" y="448.0" fill="#c9d1d9" opacity="0.62" textLength="126.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Latest request:</text>
+<text x="150.4" y="448.0" fill="#c9d1d9" textLength="478.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">update the rate-limits doc to describe per-tenant budgets</text>
+<text x="16.0" y="466.0" fill="#c9d1d9" opacity="0.62" textLength="109.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Latest reply:</text>
+<text x="133.6" y="466.0" fill="#c9d1d9" textLength="596.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Updated rate-limits.md to describe per-tenant budgets and the fallback.</text>
+<text x="16.0" y="484.0" fill="#e5c07b" textLength="478.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">the directory /home/dev/work/api-gateway no longer exists</text>
+<text x="16.0" y="610.0" fill="#56b6c2" textLength="42.0" lengthAdjust="spacingAndGlyphs" xml:space="preserve">enter</text>
+<text x="66.4" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Resume</text>
+<text x="142.0" y="610.0" fill="#56b6c2" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+k</text>
+<text x="200.8" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Actions</text>
+<text x="284.8" y="610.0" fill="#56b6c2" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+g</text>
+<text x="343.6" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Filters</text>
+<text x="427.6" y="610.0" fill="#56b6c2" textLength="16.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">F1</text>
+<text x="452.8" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">Help</text>
+<text x="511.6" y="610.0" fill="#56b6c2" textLength="50.4" lengthAdjust="spacingAndGlyphs" xml:space="preserve">ctrl+o</text>
+<text x="570.4" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="58.8" lengthAdjust="spacingAndGlyphs" xml:space="preserve">History</text>
+<text x="654.4" y="610.0" fill="#56b6c2" textLength="25.2" lengthAdjust="spacingAndGlyphs" xml:space="preserve">esc</text>
+<text x="688.0" y="610.0" fill="#c9d1d9" opacity="0.62" textLength="33.6" lengthAdjust="spacingAndGlyphs" xml:space="preserve">quit</text>
 </svg>
