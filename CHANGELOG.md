@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.3.0](https://github.com/AraneaDev/Nekyia/compare/v1.2.0...v1.3.0) (2026-10-08)
+
+
+### Features
+
+* improve picker UX and add time-range filtering ([4361da4](https://github.com/AraneaDev/Nekyia/commit/4361da448d5cf23d697db921bfd2a648b9545a4f))
+* **tui:** replace per-filter Reset rows with an inline ctrl+r hint ([9876197](https://github.com/AraneaDev/Nekyia/commit/9876197b350081ed30c4a706a6fb487c28194747))
+
+
+### Fixes
+
+* **config:** read user storage through symlinked ancestor directories ([e7475f3](https://github.com/AraneaDev/Nekyia/commit/e7475f37cf2e8b9e737a810832e0e6d73b15c5b3))
+* **tui:** let the reader scroll past turn headings and polish picker styling ([19094f6](https://github.com/AraneaDev/Nekyia/commit/19094f6b62768acadf77aef6c483cedd2f4dfb29))
+* **tui:** rename reader line module that collided with History.tsx on case-insensitive file systems ([ea4f36a](https://github.com/AraneaDev/Nekyia/commit/ea4f36a5745e194ea6a7d096f27e12d635c0d0ec))
+
+
+### Refactoring
+
+* **tui:** compute launch checks once per selection and drop dead preview code ([df5160e](https://github.com/AraneaDev/Nekyia/commit/df5160e6ec2800a5e116a25e386586b7a78da779))
+
 ## [1.2.0](https://github.com/AraneaDev/Nekyia/compare/v1.1.1...v1.2.0) (2026-09-22)
 
 
