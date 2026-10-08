@@ -3,7 +3,7 @@ import { Box, Text, useApp, useInput, useStdin } from 'ink'
 import type { SessionDetail } from '../core/session-detail'
 import type { MatchEvidence } from '../core/search-match'
 import type { PickerRestore, ReaderAnchor } from './state'
-import { anchorLine, buildHistoryLines, findHistory, HEADING_OFFSET, nextHit, type HistoryHit, type HistoryLine } from './history.js'
+import { anchorLine, buildHistoryLines, findHistory, HEADING_OFFSET, nextHit, type HistoryHit, type HistoryLine } from './reader-lines'
 import { boundedDisplayText, wrappedDisplayLines } from './text'
 import { Menu } from './ActionMenu'
 
