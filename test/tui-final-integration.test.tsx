@@ -150,3 +150,14 @@ test('reader scrolling reuses bounded file metadata without additional selected-
  expect(events.mock.calls.length).toBe(1);expect(paths.mock.calls.length).toBe(1);expect(checks).toBe(0)
  view.unmount();events.mockRestore();paths.mockRestore();metadata.mockRestore();db.close()
 })
+
+test('launch checks run once per selection, not on every keypress in a dialog',async()=>{
+ const {db}=setup();let checks=0
+ const view=mount(db,{checkResumePlan:()=>{checks++;return {ok:true}}});await tick()
+ const before=checks
+ expect(before).toBeGreaterThan(0)
+ view.stdin.write('\x0b');await tick()
+ for(const char of 'resume'){view.stdin.write(char);await tick()}
+ expect(checks).toBe(before)
+ view.unmount();db.close()
+})
