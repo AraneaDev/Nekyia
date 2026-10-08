@@ -6,7 +6,8 @@ import { runSearch, type SearchOptions } from './commands/search'
 import { runShow, type ShowOptions } from './commands/show'
 import { runHandoff, type HandoffOptions } from './commands/handoff'
 import { MAX_HANDOFF_NOTE_LENGTH, type HandoffIntent } from './core/handoff'
-import { parseSince, runTimeline, type TimelineCommandOptions } from './commands/timeline'
+import { runTimeline, type TimelineCommandOptions } from './commands/timeline'
+import { parseTimeBound, validateTimeRange, type TimeRange } from './core/time-range'
 import type { DoctorOptions } from './commands/doctor'
 import type { PruneOptions } from './commands/privacy'
 import { isSafeClientId, parseUid, UNSAFE_UID_TEXT } from './types'
@@ -47,14 +48,20 @@ options:
   --sniff           inspect likely unsupported stores (doctor only)
   --emit-manifest <path>  write a draft for the first sniffed store (doctor only)
   --dir <path>      directory a timeline covers (default: the current one)
-  --since <when>    30m, 12h, 2d, 3w, or a date such as 2026-08-01
+  --since <when>    inclusive session bound (search, blame, timeline)
+  --until <when>    exclusive session bound (search, blame, timeline)
 
-blame takes only --client, --limit, --ids, and --json: it always searches every
-directory, newest first, for the one file the path resolves to.
+Time bounds accept 30m, 12h, 2d, 3w, UTC dates such as 2026-10-01, or ISO times
+with a timezone such as 2026-10-07T14:00:00+02:00. Sessions match when their
+activity overlaps the window; undated sessions are excluded only when filtered.
+Use --until 2026-10-08 to include October 7.
+
+blame takes --client, --limit, --ids, --json, --since, and --until: it always
+searches every directory, newest first, for the one file the path resolves to.
 
 timeline groups events by session because ordering inside a session is exact
 and ordering between them is by end time only. It reads the index, never a
-transcript.
+transcript. Time bounds select whole session groups, not individual operations.
 
 handoff uses the last indexed context. The target may send it to its configured
 model provider. --dry-run does not check installation; its output contains the
@@ -87,6 +94,7 @@ const OPTIONS = {
   missing: { type: 'boolean' },
   dir: { type: 'string' },
   since: { type: 'string' },
+  until: { type: 'string' },
 } as const
 
 /** Every subcommand the CLI answers to; anything else is an unknown command. */
@@ -114,6 +122,20 @@ function positiveLimit(value: string | undefined): number | undefined {
     throw new CliError('--limit must be a positive integer')
   }
   return limit
+}
+
+/** Parse both bounds against one invocation time and reject invalid windows before index access. */
+function timeRange(values: { since?: string; until?: string }, now: number): TimeRange {
+  try {
+    const range: TimeRange = {
+      ...(values.since === undefined ? {} : { since: parseTimeBound(values.since, now, '--since') }),
+      ...(values.until === undefined ? {} : { until: parseTimeBound(values.until, now, '--until') }),
+    }
+    validateTimeRange(range)
+    return range
+  } catch (error) {
+    throw new CliError(error instanceof Error ? error.message : String(error))
+  }
 }
 
 /**
@@ -145,7 +167,7 @@ export type CliPlan =
  *
  * `cwd` and `now` are parameters rather than reads of the ambient process so a
  * plan is a function of its inputs alone, which is what lets a test assert the
- * resolved directory and the window `--since` opens.
+ * resolved directory and the window the time bounds select.
  */
 export function planCli(argv: string[], cwd: string = process.cwd(), now: number = Date.now()): CliPlan {
   const subcommand = argv[0]
@@ -226,7 +248,7 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
   }
   if (subcommand === 'doctor') {
     if (positionals.length > 0) throw new CliError('doctor does not accept positional arguments')
-    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'ids', 'rebuild', 'yes', 'quiet', 'max-chars', 'missing', 'dir', 'since'])) {
+    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'ids', 'rebuild', 'yes', 'quiet', 'max-chars', 'missing', 'dir', 'since', 'until'])) {
       throw new CliError('only --json, --sniff, and --emit-manifest can be used with doctor')
     }
     if (values['emit-manifest'] !== undefined && values.sniff !== true) {
@@ -246,7 +268,7 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
   }
   if (subcommand === 'index') {
     if (positionals.length > 0) throw new CliError('index does not accept positional arguments')
-    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'ids', 'max-chars', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
+    if (present(values, ['client', 'file', 'sort', 'limit', 'all', 'json', 'ids', 'max-chars', 'sniff', 'emit-manifest', 'missing', 'dir', 'since', 'until'])) {
       throw new CliError('search options cannot be used with index')
     }
     return {
@@ -259,6 +281,9 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
     }
   }
   if (subcommand === 'show') {
+    if (present(values, ['since', 'until'])) {
+      throw new CliError('only --max-chars and --json can be used with show')
+    }
     // A bare `show` is not rejected here: the command prints its own usage,
     // which is the message a user missing an argument should see.
     if (!positionals[0]) {
@@ -291,21 +316,13 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
       'file', 'sort', 'all', 'ids', 'rebuild', 'yes', 'quiet', 'max-chars',
       'sniff', 'emit-manifest', 'missing',
     ])) {
-      throw new CliError('only --dir, --since, --client, --limit, and --json can be used with timeline')
-    }
-    let since: number | undefined
-    if (values.since !== undefined) {
-      try {
-        since = parseSince(values.since, now)
-      } catch (error) {
-        throw new CliError(error instanceof Error ? error.message : String(error))
-      }
+      throw new CliError('only --dir, --since, --until, --client, --limit, and --json can be used with timeline')
     }
     return {
       kind: 'timeline',
       options: {
         dir: resolve(cwd, values.dir ?? '.'),
-        since,
+        ...timeRange(values, now),
         client: values.client,
         limit: positiveLimit(values.limit),
         json: values.json === true,
@@ -318,9 +335,9 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
     }
     if (present(values, [
       'file', 'sort', 'all', 'rebuild', 'yes', 'quiet', 'max-chars',
-      'sniff', 'emit-manifest', 'missing', 'dir', 'since',
+      'sniff', 'emit-manifest', 'missing', 'dir',
     ])) {
-      throw new CliError('only --client, --limit, --ids, and --json can be used with blame')
+      throw new CliError('only --client, --limit, --ids, --json, --since, and --until can be used with blame')
     }
     const file = positionals[0]
     if (file.length > 16_384 || /[\u0000-\u001f\u007f-\u009f]/u.test(file)) {
@@ -338,11 +355,12 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
         json: values.json === true,
         ids: values.ids === true,
         sort: 'recent',
+        ...timeRange(values, now),
       },
     }
   }
 
-  if (present(values, ['rebuild', 'yes', 'quiet', 'max-chars', 'sniff', 'emit-manifest', 'missing', 'dir', 'since'])) {
+  if (present(values, ['rebuild', 'yes', 'quiet', 'max-chars', 'sniff', 'emit-manifest', 'missing', 'dir'])) {
     throw new CliError('index options cannot be used with search')
   }
   // Two answers to the same question. Printing both would leave a caller
@@ -365,6 +383,7 @@ export function planCli(argv: string[], cwd: string = process.cwd(), now: number
       limit: positiveLimit(values.limit),
       json: values.json === true,
       ids: values.ids === true,
+      ...timeRange(values, now),
     },
   }
 }

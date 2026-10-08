@@ -1,6 +1,7 @@
 import type { FileEventKind } from '../types'
 import type { IndexDb, SearchRef } from './db'
 import { isAbsolutePath, normalizedPath, resolveFacetPath } from './query'
+import { matchesTimeRange } from './time-range'
 
 /** One file operation, resolved against the session that recorded it. */
 export interface TimelineEntry {
@@ -25,6 +26,7 @@ export interface TimelineSession {
 export interface TimelineOpts {
   dir: string
   since?: number
+  until?: number
   client?: string
   limit?: number
 }
@@ -76,7 +78,7 @@ export function timeline(db: IndexDb, opts: TimelineOpts): TimelineSession[] {
     const ref = byUid.get(uid)
     if (!ref) return false
     if (opts.client && ref.client !== opts.client) return false
-    if (opts.since !== undefined && ref.endedAt < opts.since) return false
+    if (!matchesTimeRange(ref.startedAt, ref.endedAt, opts)) return false
     return true
   })
   if (uids.length === 0) return []

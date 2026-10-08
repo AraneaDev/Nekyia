@@ -855,6 +855,75 @@ export class IndexDb {
     `).all(query) as FtsHit[]
   }
 
+  /** Native selected-row excerpts: token and text budgets are independent. */
+  matchSnippets(uid: string, expression: string, start: string, end: string, ellipsis: string): string[] | null {
+    try {
+      const row = this.db.query(`
+        SELECT substr(snippet(session_fts, 0, ?, ?, ?, 32), 1, 8193) AS title,
+          substr(snippet(session_fts, 1, ?, ?, ?, 32), 1, 8193) AS prompt,
+          substr(snippet(session_fts, 2, ?, ?, ?, 32), 1, 8193) AS reply
+        FROM session_fts JOIN session_text AS st ON st.rowid = session_fts.rowid
+        WHERE st.uid = ? AND session_fts MATCH ? LIMIT 1
+      `).get(start, end, ellipsis, start, end, ellipsis, start, end, ellipsis, uid, expression) as
+        { title: string; prompt: string; reply: string } | null
+      return row ? [row.title ?? '', row.prompt ?? '', row.reply ?? ''] : null
+    } catch { return null }
+  }
+
+  /** Bounded forward history, retaining the real database ordinals. */
+  retainedTurns(uid: string, maxBytes = 1_048_576, maxTurns = 4096): {
+    turns: Array<{ ordinal: number; role: string; text: string }>; capped: boolean
+  } {
+    if (this.schemaVersion() < TURN_SCHEMA_VERSION) return { turns: [], capped: false }
+    const stats = this.db.query(`
+      SELECT COUNT(*) AS count, COALESCE(SUM(length(CAST(text AS BLOB))), 0) AS bytes
+      FROM session_turn WHERE uid = ? AND role IN ('user', 'assistant')
+    `).get(uid) as { count: number; bytes: number }
+    const turns = this.db.query(`
+      WITH ordered AS (
+        SELECT ordinal, role, text,
+          COALESCE(SUM(length(CAST(text AS BLOB))) OVER (
+            ORDER BY ordinal ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+          ), 0) AS before_bytes
+        FROM session_turn WHERE uid = ? AND role IN ('user', 'assistant')
+      )
+      SELECT ordinal, role,
+        CAST(substr(CAST(text AS BLOB), 1, max(0, ? - before_bytes)) AS TEXT) AS text
+      FROM ordered WHERE before_bytes < ? ORDER BY ordinal LIMIT ?
+    `).all(uid, maxBytes, maxBytes, maxTurns) as Array<{ ordinal: number; role: string; text: string }>
+    return { turns, capped: stats.count > maxTurns || stats.bytes > maxBytes }
+  }
+
+  /** Fetch each latest retained role independently from the reverse ordinal index. */
+  latestTurn(uid: string, role: 'user' | 'assistant', maxBytes = 65_536): { text: string; capped: boolean } | null {
+    if (this.schemaVersion() < TURN_SCHEMA_VERSION) return null
+    const row = this.db.query(`
+      SELECT CAST(substr(CAST(text AS BLOB), 1, ?) AS TEXT) AS text,
+        length(CAST(text AS BLOB)) > ? AS capped
+      FROM session_turn WHERE uid = ? AND role = ? ORDER BY ordinal DESC LIMIT 1
+    `).get(maxBytes, maxBytes, uid, role) as { text: string; capped: number } | null
+    return row ? { text: row.text, capped: Boolean(row.capped) } : null
+  }
+
+  /** Legacy grouped facets with fixed text caps, never a claim of turn ordering. */
+  groupedText(uid: string, maxBytes = 65_536): { prompts: string | null; prose: string | null } | null {
+    return this.db.query(`
+      SELECT CAST(substr(CAST(prompts AS BLOB), 1, ?) AS TEXT) AS prompts,
+        CAST(substr(CAST(prose AS BLOB), 1, ?) AS TEXT) AS prose
+      FROM session_text WHERE uid = ?
+    `).get(maxBytes, maxBytes, uid) as { prompts: string | null; prose: string | null } | null
+  }
+
+  /** A bounded lower-bound count instead of materializing every path. */
+  boundedFileCount(uid: string, limit = 500): { count: number; capped: boolean } {
+    const row = this.db.query(`
+      SELECT COUNT(*) AS count FROM (
+        SELECT 1 FROM session_file WHERE uid = ? LIMIT ?
+      )
+    `).get(uid, limit + 1) as { count: number }
+    return { count: Math.min(row.count, limit), capped: row.count > limit }
+  }
+
   /**
    * Finds all session UIDs that touched a file whose path contains the given substring fragment.
    */
@@ -880,6 +949,16 @@ export class IndexDb {
       WHERE path LIKE ? ESCAPE '\\'
       ORDER BY uid, path COLLATE BINARY
     `).all(`%${literal}%`) as FileFacet[]
+  }
+
+  /** Bounded legacy/path-only reader fallback, retaining a cap caveat. */
+  filePathsForUid(uid: string, limit = 500): { paths: string[]; capped: boolean } {
+    const rowLimit = Math.max(1, Math.min(500, Number.isFinite(limit) ? Math.floor(limit) : 500))
+    const rows = this.db.query(`
+      SELECT substr(path, 1, 2048) AS path FROM session_file
+      WHERE uid = ? ORDER BY path COLLATE BINARY LIMIT ?
+    `).all(uid, rowLimit + 1) as Array<{ path: string }>
+    return { paths: rows.slice(0, rowLimit).map(row => row.path), capped: rows.length > rowLimit }
   }
 
   /** One session's recorded file facets, as stored. */
@@ -927,6 +1006,17 @@ export class IndexDb {
       SELECT uid, ordinal, turn, path, kind FROM session_file_event
       WHERE uid IN (${holes}) ORDER BY uid, ordinal
     `).all(...uids) as FileEventRow[]
+  }
+
+  /** A selected reader's bounded file log, preserving ordinals and path-size limits. */
+  fileEventsForUid(uid: string, limit = 500): { events: FileEventRow[]; capped: boolean } {
+    if (this.schemaVersion() < FILE_EVENT_SCHEMA_VERSION) return { events: [], capped: false }
+    const rowLimit = Math.max(1, Math.min(500, Number.isFinite(limit) ? Math.floor(limit) : 500))
+    const rows = this.db.query(`
+      SELECT uid, ordinal, turn, substr(path, 1, 2048) AS path, kind
+      FROM session_file_event WHERE uid = ? ORDER BY ordinal LIMIT ?
+    `).all(uid, rowLimit + 1) as FileEventRow[]
+    return { events: rows.slice(0, rowLimit), capped: rows.length > rowLimit }
   }
 
   /** What each session's reader could see, and whether its log was capped. */

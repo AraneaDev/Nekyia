@@ -9,6 +9,7 @@ import { App, type AppProps } from '../tui/App'
 import { releaseTerminal } from '../tui/clipboard'
 import { boundedDisplayText, boundedErrorMessage as message } from '../tui/text'
 import type { ExecPlan } from '../types'
+import type { PickerRestore } from '../tui/state'
 import { runReindex } from './reindex'
 import { needsConsent } from './firstrun'
 
@@ -100,7 +101,7 @@ const defaults: PickDependencies = {
   },
   buildAdapters,
   /** Opens the index database for reading. */
-  openDb: (path) => IndexDb.open(path, false),
+  openDb: (path) => IndexDb.openReadonly(path),
   /** Returns the current working directory. */
   cwd: () => process.cwd(),
   /** Returns the current timestamp in milliseconds. */
@@ -134,9 +135,8 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
   let requiresSetup: boolean
   try {
     requiresSetup = deps.needsConsent() || !deps.indexExists(path)
-    // Opt-in only: an unset threshold changes nothing, and an unreadable age is
-    // left alone rather than guessed at, the same restraint the picker's own
-    // status line uses for the same value.
+    // Config defaults to a one-hour refresh threshold. An unreadable age is
+    // left alone rather than guessed at, matching the picker's status line.
     if (!requiresSetup) {
       const threshold = deps.loadConfig().autoReindexAfterHours
       const indexedAt = threshold === undefined ? undefined : deps.indexedAt(path)
@@ -159,7 +159,7 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
     let code: number
     try {
       code = await deps.ensureIndex()
-      refreshedAt = deps.now()
+      if (code === 0) refreshedAt = deps.now()
     } catch (error) {
       deps.error(`could not build the session index: ${message(error)}`)
       return 1
@@ -204,6 +204,12 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
   let pending: ExecPlan | null = null
   let pendingCopy: Promise<void> | null = null
   let lifecycleError: unknown
+  let lastState: PickerRestore | undefined
+  let initialNotice: string | undefined
+  let knownIndexedAt = refreshedAt
+  let capturedAge = false
+  /** Capture an immutable transient snapshot; no picker state is written to disk. */
+  const captureState = (state: PickerRestore): void => { lastState = structuredClone(state) }
   // A manual reindex exits the picker rather than refreshing in place: Ink owns
   // the alternate screen, and `ensureIndex`'s progress output is written for a
   // plain terminal, so the two cannot share a frame. Closing and reopening the
@@ -212,6 +218,10 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
   for (;;) {
     let reindexRequested = false
     try {
+      if (!capturedAge) {
+        knownIndexedAt = refreshedAt ?? deps.indexedAt(path)
+        capturedAge = true
+      }
       const cfg = deps.loadConfig()
       const { adapters } = deps.buildAdapters()
       picker = deps.mount({
@@ -220,7 +230,11 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
         adapters,
         cwd: deps.cwd(),
         now: deps.now(),
-        indexedAt: refreshedAt ?? deps.indexedAt(path),
+        clock: deps.now,
+        indexedAt: knownIndexedAt,
+        initialState: lastState,
+        onStateChange: captureState,
+        initialNotice,
         /** Captures the chosen execution plan and optional copy task when the user selects a session. */
         onExec: (plan, copy) => {
           if (pending) return
@@ -248,18 +262,29 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
 
     if (lifecycleError || pending || !reindexRequested) break
 
+    let refreshFailure: string | undefined
     try {
-      await deps.ensureIndex()
-      refreshedAt = deps.now()
+      const code = await deps.ensureIndex()
+      if (code === 0) knownIndexedAt = deps.now()
+      else refreshFailure = `Refresh failed (exit ${code})`
     } catch (error) {
-      deps.error(`could not refresh the session index: ${message(error)}`)
-      return 1
+      refreshFailure = `Refresh failed: ${message(error)}`
     }
+    // Failed indexing can leave the previous readable index intact. Reopen it
+    // before deciding the command has failed, preserving state and its old age.
     try {
       db = deps.openDb(path)
     } catch (error) {
-      deps.error(`could not reopen the session index: ${message(error)}`)
+      deps.error(`${refreshFailure ? `${refreshFailure}; ` : ''}could not reopen a readable session index: ${message(error)}`)
       return 1
+    }
+    initialNotice = refreshFailure ? `${refreshFailure}; continuing with the existing index` : undefined
+    if (lastState?.reader && !db.getRef(lastState.reader.anchor.uid)) {
+      lastState = { ...lastState, reader: null }
+      initialNotice = [initialNotice, 'Reader session no longer available; returned to browse'].filter(Boolean).join(' · ')
+    }
+    if (lastState?.selectedUid && !db.getRef(lastState.selectedUid)) {
+      initialNotice = [initialNotice, 'Selected session no longer matches; restored nearest result'].filter(Boolean).join(' · ')
     }
   }
 

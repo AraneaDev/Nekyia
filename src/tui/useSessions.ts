@@ -4,7 +4,9 @@ import { dirname } from 'node:path'
 import type { Config } from '../config'
 import type { IndexDb } from '../core/db'
 import type { Presentation } from '../core/launcher'
-import { querySnapshot, readSessionSnapshot, type Row, type SessionSnapshot } from '../core/query'
+import { querySnapshot, readSessionSnapshot, resolveFacetPath, type Row, type SessionSnapshot } from '../core/query'
+import { presetTimeRange, type TimePreset, type TimeRange } from '../core/time-range'
+import {clearedFilters, restoreSelection, type PickerFilters, type PickerRestore} from './state'
 
 /**
  * The directory the list is narrowed to, or null for the whole index. A path
@@ -19,9 +21,15 @@ export type Scope = string | null
  * silently counted as exactly this many.
  */
 export const SESSION_DISPLAY_LIMIT = 500
+const EMPTY_BOOKMARKS: ReadonlySet<string> = new Set()
+const TIME_PRESETS: readonly TimePreset[] = ['all', 'today', 'yesterday', '7d', '30d']
 
 /** The picker's search state and the actions that change it, kept out of the component so it can be tested directly. */
 export interface SessionsState {
+  filters: PickerFilters
+  applyFilters: (filters: PickerFilters) => void
+  snapshot: SessionSnapshot
+  countMatches: (text: string, filters: PickerFilters) => number
   rows: Row[]
   /** True when the search matched more sessions than `rows` can show. */
   overflowed: boolean
@@ -37,6 +45,11 @@ export interface SessionsState {
   clientCycle: readonly (string | undefined)[]
   /** Steps the client filter on to the next entry of `clientCycle`. */
   cycleClient: () => void
+  timePreset: TimePreset
+  /** Resolved bounds shared with related-session membership annotations. */
+  activeTimeRange: TimeRange
+  cycleTimePreset: () => void
+  clearTimePreset: () => void
   selected: number
   setSelected: (selected: SetStateAction<number>) => void
   move: (delta: number) => void
@@ -105,7 +118,7 @@ function initialScope(db: IndexDb, cfg: Config, snapshot: SessionSnapshot, cwd: 
 
 /** Query state shared by the picker and its keyboard bindings. */
 export function useSessions(
-  db: IndexDb, cfg: Config, cwd: string, presentation?: Map<string, Presentation>,
+  db: IndexDb, cfg: Config, cwd: string, presentation?: Map<string, Presentation>, now?: number, initial?: PickerRestore, bookmarks: ReadonlySet<string> = EMPTY_BOOKMARKS, clock: () => number = () => now ?? Date.now(),
 ): SessionsState {
   // The picker holds one index handle for its whole run, so the session table is
   // read once here and every keystroke reuses those rows and the fork chains
@@ -145,109 +158,73 @@ export function useSessions(
     return [undefined, ...indexedClients.filter((client) => !hidden.has(client))]
   }, [indexedClients, hiddenClientsKey])
 
-  const [text, setTextState] = useState('')
-  const [scope, setScopeState] = useState<Scope>(
-    () => initialScope(db, queryConfig, snapshot, cwd),
-  )
-  const [client, setClientState] = useState<string | undefined>()
-  const [selectedState, setSelectedState] = useState(0)
-
-  const found = useMemo(
-    () => querySnapshot(db, queryConfig, snapshot, {
-      text: text || undefined,
-      cwd: scope ?? undefined,
-      client,
-      // Sessions whose transcript has vanished stay in the list. They cannot be
-      // launched, but hiding them turns "the file is gone" into "the session
-      // never existed"; the preview says which one it is in red.
-      includeMissing: true,
-      limit: SESSION_DISPLAY_LIMIT + 1,
-      presentation,
-    }),
-    [db, queryConfig, snapshot, text, scope, cwd, client, presentation],
-  )
+  const [text, setTextState] = useState(initial?.text ?? '')
+  const [filters, setFilters] = useState<PickerFilters>(() => initial?.filters ?? {
+    ...clearedFilters(), scope: initialScope(db, queryConfig, snapshot, cwd),
+  })
+  const [selectionNow, setSelectionNow] = useState(() => now ?? clock())
+  const activeTimeRange = useMemo(() => filters.time.kind === 'preset'
+    ? presetTimeRange(filters.time.preset, selectionNow) : filters.time.range, [filters.time, selectionNow])
+  const scope = filters.scope
+  const client = filters.client ?? undefined
+  const timePreset = filters.time.kind === 'preset' ? filters.time.preset : 'all'
+  const options = useCallback((value: string, f: PickerFilters) => ({
+    text: value || undefined, cwd: f.scope ?? undefined, client: f.client ?? undefined,
+    ...(f.time.kind === 'preset' ? presetTimeRange(f.time.preset, selectionNow) : f.time.range),
+    sort: f.sort, branch: f.branch, file: f.file?.exact ? undefined : f.file?.path, exactFile: f.file?.exact ? resolveFacetPath(f.file.path,cwd) ?? f.file.path : undefined,
+    bookmarkedUids: f.bookmarkedOnly ? bookmarks : undefined,
+    matchMode: 'prefix-last' as const, includeMissing: true, presentation, now: selectionNow,
+  }), [selectionNow, bookmarks, presentation, cwd])
+  const found = useMemo(() => querySnapshot(db, queryConfig, snapshot, {
+    ...options(text, filters), limit: SESSION_DISPLAY_LIMIT + 1,
+  }), [db, queryConfig, snapshot, options, text, filters])
   const overflowed = found.length > SESSION_DISPLAY_LIMIT
-  const rows = useMemo(
-    () => (found.length > SESSION_DISPLAY_LIMIT ? found.slice(0, SESSION_DISPLAY_LIMIT) : found),
-    [found],
-  )
-
-  const rowCount = useRef(rows.length)
-  rowCount.current = rows.length
-  // Read at the moment tab is pressed, so narrowing follows the cursor rather
-  // than whichever row was selected when the handler was built.
+  const rows = useMemo(() => found.slice(0, SESSION_DISPLAY_LIMIT), [found])
+  const [selectedState, setSelectedState] = useState(() => restoreSelection(
+    rows.map(row => row.uid), initial?.selectedUid ?? null, initial?.selectedIndex ?? 0,
+  ))
   const rowsRef = useRef(rows)
   rowsRef.current = rows
-  const selectedRef = useRef(0)
   const selected = clampSelection(selectedState, rows.length)
+  const selectedRef = useRef(selected)
   selectedRef.current = selected
-  // Read at the moment ctrl+f is pressed, for the same reason.
-  const cycleRef = useRef(clientCycle)
-  cycleRef.current = clientCycle
-  useEffect(() => {
-    if (selectedState !== selected) setSelectedState(selected)
-  }, [selectedState, selected])
-
+  useEffect(() => { if (selectedState !== selected) setSelectedState(selected) }, [selectedState, selected])
   const setSelected = useCallback((next: SetStateAction<number>) => {
-    setSelectedState((previous) => {
-      const value = typeof next === 'function' ? next(previous) : next
-      return clampSelection(value, rowCount.current)
-    })
+    setSelectedState(previous => clampSelection(typeof next === 'function' ? next(previous) : next, rowsRef.current.length))
   }, [])
-
   const move = useCallback((delta: number) => {
-    const step = Number.isFinite(delta) ? Math.trunc(delta) : 0
-    setSelectedState((previous) => clampSelection(
-      clampSelection(previous, rowCount.current) + step,
-      rowCount.current,
-    ))
+    setSelectedState(previous => clampSelection(previous + (Number.isFinite(delta) ? Math.trunc(delta) : 0), rowsRef.current.length))
   }, [])
-
-  const setText = useCallback((next: string) => {
-    setTextState(next)
-    setSelectedState(0)
+  const applyFilters = useCallback((next: PickerFilters) => {
+    if (next.time.kind === 'preset') setSelectionNow(clock())
+    setFilters(next); setSelectedState(0)
+  }, [clock])
+  const update = useCallback((fn: (f: PickerFilters) => PickerFilters) => {
+    setFilters(fn); setSelectedState(0)
   }, [])
-  const setScope = useCallback((next: Scope) => {
-    setScopeState(next)
-    setSelectedState(0)
-  }, [])
-  const toggleScope = useCallback(() => {
-    setScopeState((previous) => {
-      if (previous !== null) return null
-      const row = rowsRef.current[selectedRef.current]
-      return (typeof row?.cwd === 'string' && row.cwd) || cwd || null
+  const setText = useCallback((value: string) => { setTextState(value); setSelectedState(0) }, [])
+  const setScope = useCallback((value: Scope) => update(f => ({...f,scope:value})), [update])
+  const toggleScope = useCallback(() => update(f => ({...f,scope:f.scope !== null ? null :
+    rowsRef.current[selectedRef.current]?.cwd || cwd || null})), [update,cwd])
+  const setClient = useCallback((value: string | undefined) => update(f => ({...f,client:value ?? null})), [update])
+  const cycleClient = useCallback(() => update(f => {
+    const at=clientCycle.indexOf(f.client ?? undefined)
+    return {...f,client:clientCycle[(at+1)%clientCycle.length] ?? null}
+  }), [update,clientCycle])
+  const cycleTimePreset = useCallback(() => {
+    setSelectionNow(clock())
+    update(f => {
+      const preset=f.time.kind==='preset'?f.time.preset:'all'
+      return {...f,time:{kind:'preset',preset:TIME_PRESETS[(TIME_PRESETS.indexOf(preset)+1)%TIME_PRESETS.length]!}}
     })
-    setSelectedState(0)
-  }, [cwd])
-  const setClient = useCallback((next: string | undefined) => {
-    setClientState(next)
-    setSelectedState(0)
-  }, [])
-  const cycleClient = useCallback(() => {
-    setClientState((previous) => {
-      const cycle = cycleRef.current
-      // A filter the cycle does not hold is not found, and -1 steps to the
-      // first entry: the press widens back to all clients instead of sticking.
-      const at = cycle.indexOf(previous)
-      return cycle[(at + 1) % cycle.length]
-    })
-    setSelectedState(0)
-  }, [])
-
-  return {
-    rows,
-    overflowed,
-    text,
-    setText,
-    scope,
-    setScope,
-    toggleScope,
-    client,
-    setClient,
-    clientCycle,
-    cycleClient,
-    selected,
-    setSelected,
-    move,
-  }
+  }, [update,clock])
+  const clearTimePreset = useCallback(() => {
+    setSelectionNow(clock())
+    update(f => ({...f,time:{kind:'preset',preset:'all'}}))
+  }, [update,clock])
+  const countMatches = useCallback((value:string,f:PickerFilters) => querySnapshot(db,queryConfig,snapshot,{
+    ...options(value,f),limit:1,
+  }).length,[db,queryConfig,snapshot,options])
+  return {rows,overflowed,text,setText,scope,setScope,toggleScope,client,setClient,clientCycle,cycleClient,
+    timePreset,activeTimeRange,cycleTimePreset,clearTimePreset,selected,setSelected,move,filters,applyFilters,snapshot,countMatches}
 }

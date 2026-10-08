@@ -604,7 +604,7 @@ test('auto-reindex on open leaves a younger-than-configured index alone', async 
   expect(ensured).toBe(0)
 })
 
-test('auto-reindex stays off when unconfigured, no matter how old the index is', async () => {
+test('auto-reindex refreshes an old index with the default configuration', async () => {
   const NOW = 1_800_000_000_000
   let ensured = 0
   const db = { close: () => {} } as unknown as IndexDb
@@ -622,7 +622,7 @@ test('auto-reindex stays off when unconfigured, no matter how old the index is',
     error: (message) => { throw new Error(message) },
   })
   expect(code).toBe(0)
-  expect(ensured).toBe(0)
+  expect(ensured).toBe(1)
 })
 
 test('autoReindexAfterHours of zero reindexes on every open', async () => {

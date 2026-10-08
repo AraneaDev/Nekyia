@@ -1,25 +1,46 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Box, measureElement, Text, useApp, useInput, type DOMElement } from 'ink'
-import { saveLauncherChoice, type Config } from '../config'
+import { Box, Text, useApp, useInput, useStdin } from 'ink'
+import { configDir, saveLauncherChoice, type Config } from '../config'
 import { canBrief, type Adapter } from '../core/adapter'
 import { buildBrief } from '../core/brief'
 import { buildHandoffPlan, MAX_HANDOFF_NOTE_LENGTH, preambleForIntent } from '../core/handoff'
 import type { IndexDb } from '../core/db'
+import {type TimePreset} from '../core/time-range'
 import {
   defaultOnPath, nextLauncher, presentations, resolveForLaunch, type OnPath, type ResolveForLaunch,
 } from '../core/launcher'
 import { checkPlan, shellQuote } from '../core/resume'
 import type { ExecPlan } from '../types'
-import { List } from './List'
+import { List, listWindow } from './List'
 import { boundedDisplayText, boundedPathTail, MAX_DISPLAY_COLUMNS, prefixByCodeUnits, wrappedDisplayLines } from './text'
 import { projectName, relTime } from '../render'
-import { buildPreviewLines, Preview } from './Preview'
+import { Preview } from './Preview'
+import { buildSummaryLines } from './summary'
+import { StatsPanel } from './StatsPanel'
+import { resultStats } from './result-stats'
 import { SESSION_DISPLAY_LIMIT, useSessions } from './useSessions'
 import { createHostClipboard, type ClipboardLike } from './clipboard'
 
+import {readSessionDetail, qualityBadge} from '../core/session-detail'
+import {readMatchEvidence} from '../core/search-match'
+import {compileSearch} from '../core/search-text'
+import {chainMembers} from '../core/session-chains'
+import {querySnapshot, resolveFacetPath, type Row} from '../core/query'
+import {bookmarkStore as createBookmarkStore, type BookmarkStore} from '../core/ui-state'
+import {actionsFor, type ActionId} from './actions.js'
+import {Actions, Menu} from './ActionMenu'
+import {Filters} from './Filters'
+import {History} from './History'
+import {Details} from './Details'
+import {ChainPicker} from './ChainPicker'
+import {Bookmarks} from './Bookmarks'
+import {paneLayout} from './layout'
+import {emptySuggestions} from './empty-state'
+import {type PickerRestore} from './state'
+
 const SEARCH_COLUMNS = 512
 /** First-paint estimate of non-list chrome; layout measurement corrects it immediately. */
-const CHROME_SEED = 12
+
 /**
  * Below this height the decorative chrome costs more than it gives. Full chrome
  * is eleven rows, so sixteen is the first height that still leaves the list four
@@ -27,7 +48,10 @@ const CHROME_SEED = 12
  * and the list gets them back. The preview stays: a list you can see and a
  * session you cannot is the wrong half to keep.
  */
-const COMPACT_CHROME_ROWS = 16
+
+const TIME_LABELS: Record<TimePreset, string> = {
+  all: 'All time', today: 'Today', yesterday: 'Yesterday', '7d': 'Last 7 days', '30d': 'Last 30 days',
+}
 
 /**
  * Content lines the preview may claim. Derived from the terminal alone, never
@@ -37,30 +61,19 @@ const COMPACT_CHROME_ROWS = 16
  * An empty screen is the one place with nothing useful to displace, so it says
  * what to do next rather than reporting that a query matched nothing.
  */
-function EmptyState({ searching, narrowed }: { searching: boolean; narrowed: boolean }) {
+function EmptyState({ searching, narrowed, timeFiltered, indexedEmpty = true }: {
+  searching: boolean; narrowed: boolean; timeFiltered: boolean; indexedEmpty?: boolean
+}) {
   return (
     <Box flexDirection="column" flexShrink={0}>
-      <Text>{searching ? 'Nothing came up.' : 'No sessions indexed yet.'}</Text>
+      <Text>{timeFiltered ? 'No sessions match this time range.' : searching ? 'Nothing came up.' : indexedEmpty ? 'No sessions indexed yet.' : 'No sessions match these filters.'}</Text>
       <Text dimColor wrap="truncate-end">
-        {searching
+        {timeFiltered
+          ? <>Press <Text color="cyan">ctrl+u</Text> to clear time, or <Text color="cyan">ctrl+d</Text> to change it.</>
+          : searching
           ? <>Try fewer words{narrowed ? <>, or press <Text color="cyan">tab</Text> to search everywhere</> : null}.</>
+          : !indexedEmpty ? <>Press ctrl+g to reset filters, or use the suggested Actions.</>
           : <>Run <Text color="cyan">nekyia index</Text> to read the histories your agent CLIs already keep.</>}
-      </Text>
-    </Box>
-  )
-}
-
-/**
- * Displays a hint indicating that search is currently restricted to a specific project.
- */
-function SparseHint({ project }: { project: string }) {
-  return (
-    <Box marginTop={1} flexDirection="column" flexShrink={0}>
-      <Text dimColor wrap="truncate-end">
-        Only {project} is being searched.
-      </Text>
-      <Text dimColor wrap="truncate-end">
-        Press <Text color="cyan">tab</Text> to search everywhere.
       </Text>
     </Box>
   )
@@ -369,21 +382,6 @@ function useTerminalSize(rowsIn?: number, columnsIn?: number): TerminalSize {
 }
 
 /**
- * Measured height of a flex child, so the list windows against real space.
- * The seed only decides the first paint before layout is measurable; the root
- * box clips, so an over-long seed can never push the frame past the terminal.
- */
-function useMeasuredHeight(ref: React.RefObject<DOMElement | null>, seed: number): number {
-  const [height, setHeight] = useState(seed)
-  useEffect(() => {
-    if (!ref.current) return
-    const measured = measureElement(ref.current).height
-    setHeight((previous) => (previous === measured ? previous : measured))
-  })
-  return height
-}
-
-/**
  * Printable input always searches. Picker actions use ctrl+p, ctrl+y and ctrl+f
  * so a query can begin with any ordinary letter.
  */
@@ -404,6 +402,7 @@ export interface AppProps {
    */
   onExec: (plan: ExecPlan, pendingCopy?: Promise<void>) => void
   /** Preflight for handoffs while the target picker can still report failures. */
+  checkResumePlan?: typeof checkPlan
   checkHandoffPlan?: typeof checkPlan
   /** Whether a launcher's command is on PATH. Injectable so tests never depend on the host. */
   onPath?: OnPath
@@ -426,20 +425,35 @@ export interface AppProps {
    * guessed at.
    */
   indexedAt?: number
+  clock?: () => number
+  initialState?: PickerRestore
+  onStateChange?: (state: PickerRestore) => void
+  initialNotice?: string
+  bookmarkStore?: BookmarkStore
 }
 
 /** The picker: search, scoping, client filtering, history inspection, and launch. */
 export function App({
   db, cfg, adapters, cwd, now, onExec, onReindex, clipboard,
   clipboardFactory = createHostClipboard, rows, columns, indexedAt,
-  checkHandoffPlan = checkPlan, onPath, saveLauncher = saveLauncherChoice,
+  checkHandoffPlan = checkPlan, checkResumePlan = checkPlan, onPath, saveLauncher = saveLauncherChoice,
+  initialState, onStateChange, initialNotice, bookmarkStore: storeIn, clock,
 }: AppProps) {
   const { exit } = useApp()
+  const {stdin}=useStdin()
   const { rows: terminalHeight, columns: terminalWidth } = useTerminalSize(rows, columns)
-  const listRef = useRef<DOMElement | null>(null)
-  const detailRef = useRef<DOMElement | null>(null)
-  const [inspecting, setInspecting] = useState(false)
-  const [scroll, setScroll] = useState(0)
+  const [mode,setMode]=useState<'actions'|'help'|'filters'|'history'|'details'|'chain'|'bookmarks'|null>(initialState?.reader?'history':null)
+  const [helpOpen,setHelpOpen]=useState(false)
+  useEffect(()=>{
+    /** Recognizes F1 while preserving the active dialog draft. */
+    const onKey=(chunk:Buffer|string)=>{if(['\x1bOP','\x1b[11~'].includes(String(chunk))){if(mode==='help')return;if(mode||confirm||handoff||launcherAsk)setHelpOpen(true);else setMode('help')}}
+    stdin.on('data',onKey);return()=>{stdin.off('data',onKey)}
+  })
+  const [readerUid,setReaderUid]=useState<string|null>(initialState?.reader?.anchor.uid??null)
+  const [readerState,setReaderState]=useState<PickerRestore['reader']>(initialState?.reader??null)
+  const store=useMemo(()=>storeIn??createBookmarkStore(configDir()),[storeIn])
+  const [savedBookmarks,setSavedBookmarks]=useState(()=>store.load())
+  const bookmarkUids=useMemo(()=>new Set(savedBookmarks.state.uids),[savedBookmarks.state])
   const pathCheck = useMemo(() => onPath ?? defaultOnPath(), [onPath])
   // Launcher choices made this run, layered over whatever was saved on disk. A
   // failed save still applies for the rest of the session, because refusing to
@@ -452,55 +466,69 @@ export function App({
     [adapters, liveCfg, pathCheck],
   )
   /** Which client to ask about, and which of its options is highlighted, while the picker waits on an answer. */
-  const [launcherAsk, setLauncherAsk] = useState<{ client: string; options: string[]; index: number } | null>(null)
-  const sessions = useSessions(db, cfg, cwd, shown)
+  const [launcherAsk, setLauncherAsk] = useState<{ client: string; uid:string; options: string[]; index: number } | null>(null)
+  const sessions = useSessions(db, cfg, cwd, shown, now, initialState, bookmarkUids, clock)
+  const readerAllowed=readerUid===null||sessions.snapshot.some(ref=>ref.uid===readerUid&&!cfg.hiddenClients?.includes(ref.client))
+  const readerExtras=useMemo(()=>{
+    if(!readerUid||!readerAllowed)return []
+    const files=db.fileEventsForUid(readerUid)
+    const metadata=db.fileDetailsFor([readerUid]).get(readerUid)
+    const fallback=files.events.length?null:db.filePathsForUid(readerUid)
+    return [...(files.events.length?files.events.map(event=>`${event.kind} ${event.path}`):fallback?.paths??[]),
+      ...(metadata?.detail!=='ordered'?['file operation order unavailable']:[]),
+      ...(files.capped||fallback?.capped||metadata?.eventsTruncated?['file operation log was capped']:[])]
+  },[db,readerUid,readerAllowed])
   const selectedRow = sessions.rows[sessions.selected]
   const handoffTargets = useMemo(
-    () => adapters.filter((adapter) => adapter.id !== selectedRow?.client && canBrief(adapter.manifest)),
+    () => adapters.filter((adapter) => adapter.id !== selectedRow?.client && !cfg.hiddenClients?.includes(adapter.id) && canBrief(adapter.manifest)),
     [adapters, selectedRow?.client],
   )
-  // Inspecting with nothing selected is a mode with nothing in it, whose footer
-  // promises keys that do nothing and whose escape closes something invisible
-  // instead of quitting. Every branch reads this instead of the raw flag, so the
-  // reader cannot be entered or left standing without a row under it.
-  const reading = inspecting && Boolean(selectedRow)
-  // Reading the history is worth most of the screen; the list keeps a few rows
-  // so you can still see what you are reading about. Whichever pane is not
-  // growing gets a fixed height, and both are measured rather than computed,
-  // so no arithmetic here can drift from what Yoga actually laid out.
-  const listHeight = useMeasuredHeight(
-    listRef,
-    Math.max(1, reading ? INSPECT_LIST_ROWS : terminalHeight - CHROME_SEED),
-  )
-  const detailLines = useMeasuredHeight(
-    detailRef,
-    Math.max(1, reading ? terminalHeight - INSPECT_LIST_ROWS - 7 : previewLines(terminalHeight)),
-  )
+  const [statsVisible, setStatsVisible] = useState(initialState?.statsVisible ?? true)
+  const statsAvailable = terminalWidth >= 140 && terminalHeight >= 18
+  const layout=paneLayout(terminalWidth,terminalHeight,4,statsVisible)
+  const stats = useMemo(() => resultStats(sessions.rows, now), [sessions.rows, now])
+  const reading=mode==='history'&&readerAllowed
+  const detailLines = layout.mode === 'compact' ? 1 : previewLines(terminalHeight)
+  const listHeight = Math.max(1, layout.bodyRows - detailLines)
+  const summaryRows = layout.mode === 'compact' ? 1 : Math.max(1, detailLines - 1)
+  const availabilityCache=useRef(new Map<string,string|null>())
   const [confirm, setConfirm] = useState<Confirmation | null>(null)
   const [handoff, setHandoff] = useState<HandoffPicker | null>(null)
   /** null outside note-entry; a string, possibly empty, while typing a custom framing for the highlighted target. */
   const [handoffNote, setHandoffNote] = useState<string | null>(null)
-  const [note, setNote] = useState('')
+  const [note, setNote] = useState(initialNotice??savedBookmarks.warning??'')
   const executing = useRef(false)
   const mounted = useRef(true)
   // The clipboard write still running, if any. Held so the launch can settle it
   // rather than racing the client for the terminal.
   const pendingCopy = useRef<Promise<void> | null>(null)
-  const detail = useMemo(
-    () => buildPreviewLines(db, selectedRow, {
-      columns: terminalWidth, maxLines: detailLines, full: reading, now,
-    }),
-    [db, selectedRow, terminalWidth, detailLines, reading, now],
-  )
-  const maxScroll = Math.max(0, detail.length - detailLines)
-  // Selecting another session, or leaving inspect, starts the reader at the top.
-  const offset = Math.min(scroll, maxScroll)
+  const rich=useMemo(()=>selectedRow?readSessionDetail(db,selectedRow.uid):null,[db,selectedRow?.uid])
+  const expression=compileSearch(sessions.text,'prefix-last')
+  const matchingUid=selectedRow?.matchedUid??selectedRow?.uid
+  const matchingDetail=useMemo(()=>matchingUid&&expression?readSessionDetail(db,matchingUid):null,[db,matchingUid,expression])
+  const evidence=useMemo(()=>matchingUid&&expression?readMatchEvidence(db,matchingUid,expression,matchingDetail?.turns??[]):null,[db,matchingUid,expression,matchingDetail])
+  const detail = useMemo(() => buildSummaryLines(selectedRow, rich, evidence, {
+    columns: layout.previewWidth,
+    maxLines: summaryRows,
+  }), [selectedRow, rich, evidence, layout.previewWidth, summaryRows])
+  useEffect(()=>{
+    onStateChange?.({text:sessions.text,filters:sessions.filters,selectedUid:selectedRow?.uid??null,selectedIndex:sessions.selected,
+      listTop:listWindow(sessions.rows,sessions.selected,listHeight,layout.listWidth,layout.mode!=='compact',bookmarkUids)[0],reader:reading?readerState:null,
+      ...(!statsVisible ? { statsVisible: false } : {})})
+  },[sessions.text,sessions.filters,selectedRow?.uid,sessions.selected,sessions.rows,listHeight,layout.listWidth,layout.mode,bookmarkUids,statsVisible,reading,readerState,onStateChange])
   const clipboardApi = useMemo(
     () => clipboard === undefined ? clipboardFactory() : clipboard,
     [clipboard, clipboardFactory],
   )
 
   useEffect(() => () => { mounted.current = false }, [])
+  useEffect(()=>{
+    if(mode==='history'&&!readerAllowed){setMode(null);setReaderUid(null);setReaderState(null);announce('Reader session is unavailable under current policy; returned to browse')}
+  },[mode,readerAllowed])
+  useEffect(()=>{
+    if(readerAllowed&&initialState?.selectedUid&&!sessions.rows.some(row=>row.uid===initialState.selectedUid)){announce('Selected session no longer matches; nearest result selected')}
+  },[])
+
 
   /**
    * Displays a temporary notification in the footer.
@@ -573,15 +601,15 @@ export function App({
    * activation immediately rather than waiting on the state update it also
    * triggers, so the same keypress that answers the question also acts on it.
    */
-  function activate(chosen?: string): void {
-    const row = selectedRow
+  function activate(chosen?: string, explicitRow?: Row): void {
+    const row = explicitRow ?? selectedRow
     if (!row || executing.current) return
     const adapter = adapterFor(row.client)
     if (!adapter) { announce(`no adapter for ${boundedDisplayText(row.client, 32)}`); return }
 
     const resolved = resolveRowLauncher(adapter, row, chosen)
     if (resolved.kind === 'unavailable') { announce(resolved.message); return }
-    if (resolved.kind === 'ask') { setLauncherAsk({ client: adapter.id, options: resolved.options, index: 0 }); return }
+    if (resolved.kind === 'ask') { setLauncherAsk({ client: adapter.id, uid:row.uid, options: resolved.options, index: 0 }); return }
     const { launcher, tier } = resolved
 
     if (tier === 'resume') {
@@ -591,6 +619,10 @@ export function App({
         return
       }
       if (plan.kind !== 'resume') { announce('adapter plan does not match the resume session'); return }
+      try {
+        const checked=checkResumePlan(plan)
+        if(!checked.ok){announce(checked.reason??'This session cannot be launched');return}
+      }catch{announce('Could not validate the launch');return}
       emit(plan)
       return
     }
@@ -609,6 +641,10 @@ export function App({
       return
     }
     if (plan.kind !== 'brief') { announce('adapter plan does not match the search session'); return }
+    try {
+      const checked=checkResumePlan(plan)
+      if(!checked.ok){announce(checked.reason??'This context session cannot be launched');return}
+    }catch{announce('Could not validate the launch');return}
     setConfirm({ plan, chars: brief.length, client: boundedDisplayText(launcher ?? row.client, 32) })
   }
 
@@ -616,7 +652,11 @@ export function App({
   async function chooseLauncher(client: string, name: string, thenActivate: boolean): Promise<void> {
     setLauncherAsk(null)
     setChoices((current) => ({ ...current, [client]: name }))
-    if (thenActivate) activate(name)
+    if (thenActivate) {
+      const uid=launcherAsk?.uid
+      const ref=uid?db.getRef(uid):null
+      activate(name,ref?{...ref,score:0,collapsed:0}:undefined)
+    }
     try {
       await saveLauncher(client, name)
     } catch {
@@ -634,12 +674,27 @@ export function App({
     announce(`opens in ${adapter.manifest.launchers[next]!.name}`)
   }
 
+  /** Checks target capability without hiding configured choices. */
+  function targetAvailability(target:Adapter):string|null {
+    if(!handoff)return null
+    const key=`${handoff.uid}:${target.id}`
+    if(availabilityCache.current.has(key))return availabilityCache.current.get(key)!
+    let reason:string|null
+    try {
+      const result=buildHandoffPlan(db,handoff.uid,target.id,adapters)
+      if(!result.ok)reason=result.reason
+      else {const checked=checkHandoffPlan(result.plan);reason=checked.ok?null:checked.reason??'Launcher unavailable'}
+    }catch{reason='Could not validate this target'}
+    availabilityCache.current.set(key,reason)
+    return reason
+  }
   /** Offers clients with brief templates, including those with no history yet. */
   function openHandoff(): void {
     if (!selectedRow) return
     const targets = handoffTargets
     if (!targets.length) { announce('no other client available'); return }
     setNote('')
+    availabilityCache.current.clear()
     setHandoff({ uid: selectedRow.uid, source: selectedRow.client, adapters: targets, index: 0 })
   }
 
@@ -648,6 +703,8 @@ export function App({
     if (!handoff) return
     const target = handoff.adapters[handoff.index]
     if (!target) return
+    const unavailable=targetAvailability(target)
+    if(unavailable){announce(unavailable);return}
     try {
       const result = buildHandoffPlan(db, handoff.uid, target.id, adapters, { preamble })
       if (!result.ok) { announce(boundedDisplayText(result.reason, 120)); return }
@@ -746,8 +803,68 @@ export function App({
     pendingCopy.current = writeClipboard(command, 'resume command copied')
   }
 
+  /** Opens a verified match anchor or literal retained-history fallback. */
+  function openHistory(uid:string):void {
+    setReaderUid(uid)
+    const anchor=evidence?.uid===uid?evidence.anchor:null
+    setReaderState({anchor:{uid,ordinal:anchor?.ordinal??null,offset:anchor?.offset??0,fallbackLine:0},findText:anchor?'':sessions.text,hitIndex:-1})
+    setMode('history')
+  }
+  /** Captures current state before releasing Ink and refreshing the index. */
+  function requestRefresh():void {
+    if(!onReindex)return
+    onStateChange?.({text:sessions.text,filters:sessions.filters,selectedUid:selectedRow?.uid??null,selectedIndex:sessions.selected,
+      listTop:listWindow(sessions.rows,sessions.selected,listHeight,layout.listWidth,layout.mode!=='compact',bookmarkUids)[0],reader:reading?readerState:null,
+      ...(!statsVisible ? { statsVisible: false } : {})})
+    executing.current=true;onReindex();exit()
+  }
+  /** Waits for durable storage before changing the visible bookmark state. */
+  async function toggleBookmark(uid:string,remove=false):Promise<void> {
+    try {
+      const state=remove?await store.remove(uid):await store.set(uid,!bookmarkUids.has(uid))
+      if(mounted.current){setSavedBookmarks({...savedBookmarks,state});announce(remove?'Bookmark removed':'Bookmark saved')}
+    }catch(error){announce(error instanceof Error?error.message:'Could not save bookmark')}
+  }
+  /** Routes the registry and keyboard through the existing launch handlers. */
+  function dispatchAction(id:ActionId):void {
+    setMode(null)
+    if(id==='resume')activate()
+    else if(id==='handoff'){
+      if(handoffTargets.length)openHandoff()
+      else if(resolved?.kind==='resolved'&&resolved.tier==='search')activate()
+      else if(selectedRow&&selectedAdapter){
+        try {
+          const result=buildHandoffPlan(db,selectedRow.uid,selectedRow.client,adapters)
+          if(!result.ok){announce(result.reason);return}
+          const checked=checkResumePlan(result.plan)
+          if(!checked.ok){announce(checked.reason??'This context session cannot be launched');return}
+          setConfirm({plan:result.plan,chars:result.briefChars,client:boundedDisplayText(selectedRow.client,32)})
+        }catch{announce('Could not validate the context launch')}
+      }
+    }
+    else if(id==='inspect'&&selectedRow)openHistory(evidence?.uid??selectedRow.uid)
+    else if(id==='inspect-match'&&matchingUid)openHistory(matchingUid)
+    else if(id==='details')setMode('details')
+    else if(id==='chain')setMode('chain')
+    else if(id==='copy-prompt')copyPrompt()
+    else if(id==='copy-command')copyCommand()
+    else if(id==='bookmark'&&selectedRow)void toggleBookmark(selectedRow.uid)
+    else if(id==='manage-bookmarks')setMode('bookmarks')
+    else if(id==='filters')setMode('filters')
+    else if(id==='clear-search')sessions.setText('')
+    else if(id==='refresh')requestRefresh()
+    else if(id==='stats'){
+      if(statsAvailable)setStatsVisible(current=>!current)
+      else announce('Stats need 140 columns and 18 rows')
+    }
+  }
   useInput((input, key) => {
     if (executing.current) return
+    if (key.ctrl && input === 'c') { exit(); return }
+    if(reading&&!helpOpen&&(key.ctrl&&(input==='d'||input==='u'))){
+      if(input==='d')sessions.cycleTimePreset();else sessions.clearTimePreset();setHelpOpen(false);setMode(null);return
+    }
+    if (mode || helpOpen) return
     if (launcherAsk) {
       if (key.escape) { setLauncherAsk(null); return }
       if (key.tab || key.upArrow || key.downArrow) {
@@ -765,7 +882,7 @@ export function App({
     if (handoff && handoffNote !== null) {
       if (key.escape) { setHandoffNote(null) }
       else if (key.ctrl && input === 'c') exit()
-      else if (key.return) { chooseHandoffTarget(handoffNote.trim() || undefined); setHandoffNote(null) }
+      else if (key.return) { chooseHandoffTarget(handoffNote.trim() || undefined) }
       else if (key.backspace || key.delete) setHandoffNote(deleteLastGrapheme(handoffNote))
       else if (input && !key.ctrl && !key.meta) {
         // `input` can be a whole pasted string in one call, so the cap has to
@@ -787,35 +904,24 @@ export function App({
       return
     }
     if (key.ctrl && input === 'c') { exit(); return }
-    if (key.ctrl && input === 'o') {
-      setInspecting((previous) => !previous)
-      setScroll(0)
+    if (key.ctrl && (input === 'd' || input === 'u')) {
+      if (input === 'd') sessions.cycleTimePreset()
+      else sessions.clearTimePreset()
+      setMode(null)
       return
     }
-    if (reading) {
-      // Escape closes what it opened before it closes the picker.
-      if (key.escape) { setInspecting(false); setScroll(0); return }
-      // Clamped where the offset is stored, not only where it is drawn: an
-      // unbounded count turns later up-presses into paying off invisible debt,
-      // and the pane sits still while the key does nothing.
-      if (key.upArrow) { setScroll((at) => Math.max(0, at - 1)); return }
-      if (key.downArrow) { setScroll((at) => Math.min(maxScroll, at + 1)); return }
-      if (key.pageUp) { setScroll((at) => Math.max(0, at - detailLines)); return }
-      if (key.pageDown) { setScroll((at) => Math.min(maxScroll, at + detailLines)); return }
-      // Ink blanks `input` for tab, backspace and delete, so the printable-key
-      // check below cannot see them. They change the query or the scope, which
-      // moves the ground under the reader, so they close it first and then fall
-      // through to do their own job.
-      if (key.tab || key.backspace || key.delete) { setInspecting(false); setScroll(0) }
-      // Anything that changes the list would move the ground under the reader,
-      // so typing leaves the history and goes back to searching.
-      if (input && !key.ctrl && !key.meta) { setInspecting(false); setScroll(0) }
-    }
+    if (key.ctrl && input === 'o') {if(selectedRow)openHistory(evidence?.uid??selectedRow.uid);return}
+    if (key.ctrl && input === 'k') {setMode('actions');return}
+    if (key.ctrl && input === 'g') {setMode('filters');return}
+    if (key.ctrl && input === 'b') {if(selectedRow)void toggleBookmark(selectedRow.uid);return}
+    if (key.ctrl && input === 'e') {if(selectedRow)setMode('chain');return}
+    if (key.ctrl && input === 's') {dispatchAction('stats');return}
+    if (input === '\x1bOP' || input === '\x1b[11~' || input === '[11~') {setMode('help');return}
     if (key.escape) { exit(); return }
-    if (key.upArrow) { sessions.move(-1); setScroll(0); return }
-    if (key.downArrow) { sessions.move(1); setScroll(0); return }
+    if (key.upArrow) { sessions.move(-1); return }
+    if (key.downArrow) { sessions.move(1); return }
     if (key.tab) { sessions.toggleScope(); return }
-    if (key.return) { activate(); return }
+    if (key.return) {if(resolved?.kind==='resolved'&&resolved.tier==='search'&&contextReason&&handoffTargets.length)dispatchAction('handoff');else activate();return}
     if (key.backspace || key.delete) {
       sessions.setText(deleteLastGrapheme(sessions.text))
       return
@@ -823,20 +929,39 @@ export function App({
 
     if (key.ctrl && input === 'p') { copyPrompt(); return }
     if (key.ctrl && input === 'y') { copyCommand(); return }
-    if (key.ctrl && input === 't') { openHandoff(); return }
+    if (key.ctrl && input === 't') { dispatchAction('handoff'); return }
     if (key.ctrl && input === 'l') { flipSelectedLauncher(); return }
     if (key.ctrl && input === 'f') { sessions.cycleClient(); return }
-    if (key.ctrl && input === 'r' && reindexOffered && !executing.current) {
-      executing.current = true
-      onReindex?.()
-      exit()
-      return
-    }
+    if (key.ctrl && input === 'r') {requestRefresh();return}
     if (input && !key.ctrl && !key.meta) {
       sessions.setText(boundedDisplayText(`${sessions.text}${input}`, SEARCH_COLUMNS))
     }
   })
 
+  /** Dismisses the current overlay without resetting committed browse state. */
+  const close=()=>{setHelpOpen(false);setMode(null)}
+  const helpProps={helpOpen,
+    /** Returns from contextual help to its still-mounted dialog. */
+    onHelpClose:()=>setHelpOpen(false)}
+  if(reading&&readerUid)return <History {...helpProps} key={readerUid} detail={readSessionDetail(db,readerUid)} evidence={evidence?.uid===readerUid?evidence:null}
+    initial={readerState} extraLines={readerExtras} rows={terminalHeight} columns={terminalWidth} onPosition={setReaderState} onClose={close} onRefresh={requestRefresh}/>
+  if(helpOpen&&(launcherAsk||confirm||handoff))return <Menu title="Launch help" items={[
+    {id:'choose',label:'Up/Down or Tab choose launcher/target'},
+    {id:'confirm',label:'Enter confirms the displayed action'},
+    {id:'context',label:'Fresh context starts a new session; native state is not transferred'},
+    {id:'provider',label:'The configured provider may receive context; tokens may be used'},
+    {id:'note',label:'Target menu: r review framing, n custom note'},
+    {id:'back',label:'Escape goes back without discarding the current draft'},
+  ]} rows={terminalHeight} columns={terminalWidth} onSelect={()=>{}} onClose={()=>setHelpOpen(false)}/>
+  if(launcherAsk){
+    const visible=Math.max(1,terminalHeight-3)
+    const start=Math.max(0,launcherAsk.index-visible+1)
+    return <Box flexDirection="column" width={terminalWidth} height={terminalHeight} overflow="hidden">
+      <Text bold>Open with</Text>
+      <Box flexGrow={1} flexDirection="column" overflow="hidden">{launcherAsk.options.slice(start,start+visible).map((name,index)=><Text key={name} wrap="truncate-end">{boundedDisplayText(`${start+index===launcherAsk.index?'▸ ':''}${name}`,terminalWidth)}</Text>)}</Box>
+      <Text wrap="truncate-end">tab switch · enter open · esc cancel</Text>
+    </Box>
+  }
   if (confirm) {
     return <BriefConfirmation details={confirm} rows={terminalHeight} columns={terminalWidth} />
   }
@@ -863,7 +988,7 @@ export function App({
         <Text dimColor wrap="truncate-end">Start fresh with the last indexed context.</Text>
         {handoff.adapters.slice(start, start + visible).map((adapter, offset) => (
           <Text key={adapter.id} color={start + offset === handoff.index ? 'cyan' : undefined} wrap="truncate-end">
-            {start + offset === handoff.index ? '▸ ' : '  '}{boundedDisplayText(handoffTargetName(adapter), Math.max(1, terminalWidth - 6))}
+            {start + offset === handoff.index ? '▸ ' : '  '}{boundedDisplayText(`${handoffTargetName(adapter)}${targetAvailability(adapter)?` — ${targetAvailability(adapter)}`:''}`, Math.max(1, terminalWidth - 6))}
           </Text>
         ))}
         <Text dimColor wrap="truncate-end">{handoff.index + 1}/{handoff.adapters.length} · up/down choose, enter continue, r review, n note, esc cancel</Text>
@@ -872,145 +997,125 @@ export function App({
     )
   }
 
-  const shownSearch = boundedDisplayText(sessions.text, SEARCH_COLUMNS)
-  // SEARCH_COLUMNS is the storage cap, not a width. The line has to fit the
-  // terminal as well, or it wraps and takes the extra rows out of the list. The
-  // tail is what is kept: the end of what was just typed stays on screen and the
-  // overflow falls off the left, the way a path keeps its file name.
-  const searchTail = boundedPathTail(shownSearch, Math.max(1, terminalWidth - 2))
-  const shownClient = sessions.client ? boundedDisplayText(sessions.client, 32) : ''
-  const shownNote = boundedDisplayText(note, 120)
-  // A short terminal spends most of its height on chrome, so the spacer rows and
-  // the rule are handed back to the list. The preview is kept at every height:
-  // a list you can read about a session you cannot see is the wrong half to keep.
-  const compact = terminalHeight < COMPACT_CHROME_ROWS
-  const ruleColumns = Math.min(MAX_DISPLAY_COLUMNS, terminalWidth)
-  // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,
-  // decides who yields space. The list takes the slack the preview leaves; both
-  // clip rather than pushing the frame past the last row and scrolling the top away.
-  // Name what is being filtered. "this directory" left the reader guessing
-  // which one, and launching from a parent made it look like it did nothing.
-  const scope = sessions.scope ? projectName(sessions.scope) : 'everywhere'
-  // A stale index is the difference between "that session does not exist" and
-  // "it is not indexed yet", and only one of those is the user's problem. The
-  // age is stated, never the conclusion: discovering whether anything actually
-  // changed costs a full scan, which the picker must not pay on startup. Shown
-  // at every tier, not just once stale, so the color also confirms things are
-  // fine rather than only ever warning.
-  const indexAge = indexedAt !== undefined && Number.isFinite(indexedAt)
-    ? { text: freshlyIndexed(indexedAt, now), color: SEVERITY_COLOR[indexAgeSeverity(now - indexedAt)] }
-    : undefined
-  // Offered once the index is at least stale, not at every tier: a fresh index
-  // has nothing to fix, and offering the key anyway would make it look like it does.
-  const reindexOffered = indexedAt !== undefined && Number.isFinite(indexedAt)
-    && indexAgeSeverity(now - indexedAt) !== 'fresh'
-  // A count that stops at the query's own limit reads as the size of the index,
-  // which for a large one is simply untrue. Say that it runs past instead.
-  const found = sessions.overflowed
-    ? `${SESSION_DISPLAY_LIMIT}+ sessions`
-    : `${sessions.rows.length} session${sessions.rows.length === 1 ? '' : 's'}`
-  const context = [found, scope, shownClient, shownNote].filter(Boolean).join(' · ')
-  // The first key names what enter does to the row under the cursor, so the
-  // hint matches the outcome instead of always promising a resume.
-  const enterLabel = selectedRow && selectedRow.tier !== 'resume' ? 'brief' : 'resume'
-  const narrowed = sessions.scope !== null
-  const empty = sessions.rows.length === 0
-  // A directory with almost nothing in it is the first thing a new user sees,
-  // so it points at the key that widens the search rather than sitting blank.
-  const sparse = !empty && narrowed && sessions.rows.length <= 1
-  // Named, not drawn. A reader who does not already know that ⇥ means tab
-  // cannot find the key, and the hints elsewhere say "press tab" in words.
-  const keys: [string, string][] = reading
-    ? [
-      ['up/down', 'scroll'], ['pgup/pgdn', 'page'],
-      ['enter', enterLabel], ['ctrl+o', 'close'], ['esc', 'close'],
-    ]
-    // Keys that act on a session are not offered when there is no session to
-    // act on; a hint that does nothing is worse than one that is missing.
-    : [
-      ...(selectedRow
-        ? [
-          ['enter', enterLabel], ['ctrl+o', 'history'],
-          ...(handoffTargets.length ? [['ctrl+t', 'handoff']] : []),
-          ...(selectedRow && adapterFor(selectedRow.client)?.manifest.launchers ? [['ctrl+l', 'client']] : []),
-          ['ctrl+p', 'prompt'], ['ctrl+y', 'command'],
-        ] as [string, string][]
-        : []),
-      // An index with no clients in it gives the cycle nothing to step to but
-      // the unfiltered list it is already on. Same rule as above: a hint that
-      // does nothing is worse than one that is missing.
-      ...(sessions.clientCycle.length > 1 ? [['ctrl+f', 'client']] as [string, string][] : []),
-      ...(reindexOffered ? [['ctrl+r', 'reindex']] as [string, string][] : []),
-      ['tab', 'scope'], ['esc', 'quit'],
-    ]
+  const selectedAdapter=selectedRow?adapterFor(selectedRow.client):undefined
+  const resolved=selectedRow&&selectedAdapter?resolveRowLauncher(selectedAdapter,selectedRow):null
+  const resolutionReason=selectedRow?.missing?'Source missing':!selectedAdapter?'No adapter available':resolved?.kind==='unavailable'?resolved.message:null
+  const native=Boolean(selectedRow&&resolved&&resolved.kind==='resolved'&&resolved.tier==='resume')
+  const checkedNative=(()=>{
+    if(!native||!selectedRow||!selectedAdapter||resolved?.kind!=='resolved')return null
+    try {
+      const plan=selectedAdapter.plan(selectedRow,undefined,resolved.launcher)
+      return plan?checkResumePlan(plan):{ok:false,reason:'This session cannot be launched'}
+    }catch{return {ok:false,reason:'Could not validate the launch'}}
+  })()
+  const launchReason=resolutionReason??(checkedNative&&!checkedNative.ok?checkedNative.reason??'This session cannot be launched':null)
 
-  // The root is pinned to the terminal so Yoga, not a hardcoded chrome estimate,
-  // decides who yields space. The list takes the slack the preview leaves; both
-  // clip rather than pushing the frame past the last row and scrolling the top away.
-  return (
-    <Box flexDirection="column" height={terminalHeight} overflow="hidden">
-      <Box flexShrink={0}>
-        <Box flexGrow={1}><Text dimColor wrap="truncate-end">nekyia</Text></Box>
-        <Text dimColor wrap="truncate-end">
-          {context}
-          {indexAge && <Text color={indexAge.color}>{context ? ' · ' : ''}{indexAge.text}</Text>}
-        </Text>
+  const contextReason=(()=>{
+    if(!selectedRow||!selectedAdapter||!canBrief(selectedAdapter.manifest))return 'No context launcher available'
+    if(resolved?.kind==='unavailable')return resolved.message
+    try {
+      if(resolved?.kind==='resolved'&&resolved.tier==='search'){
+        const brief=buildBrief(db,selectedRow.uid)
+        if(!brief)return 'Nothing indexed for this session yet'
+        const plan=selectedAdapter.plan(selectedRow,brief,resolved.launcher)
+        if(!plan||plan.kind!=='brief')return 'This context session cannot be launched'
+        const checked=checkResumePlan(plan)
+        return checked.ok?null:checked.reason??'This context session cannot be launched'
+      }
+      const result=buildHandoffPlan(db,selectedRow.uid,selectedRow.client,adapters)
+      if(!result.ok)return result.reason
+      const checked=checkResumePlan(result.plan)
+      return checked.ok?null:checked.reason??'This context session cannot be launched'
+    }catch{return 'Could not validate the context launch'}
+  })()
+  const actionItems=actionsFor({hasSelection:Boolean(selectedRow),canResume:Boolean(selectedRow&&(native||resolved?.kind==='ask')&&!launchReason),resumeReason:launchReason??(!native&&resolved?.kind!=='ask'?'Use Start fresh with context':null),
+    canHandoff:Boolean(selectedRow&&(contextReason===null||handoffTargets.length)),handoffReason:contextReason,hasMatch:Boolean(evidence),hasPrompt:Boolean(rich?.latestUser),hasCommand:native&&!launchReason,
+    bookmarked:Boolean(selectedRow&&bookmarkUids.has(selectedRow.uid)),hasQuery:Boolean(sessions.text),refreshing:!onReindex,statsVisible,statsAvailable}).map(item=>item.id==='resume'&&resolved?.kind==='ask'?{...item,label:'Choose launcher'}:item)
+  const suggestions=!sessions.rows.length?emptySuggestions({text:sessions.text,filters:sessions.filters},sessions.countMatches):[]
+  if(mode==='actions'&&suggestions.length)return <Menu title="Actions — widen search" {...helpProps} items={[...suggestions.map((item,index)=>({id:`suggestion:${index}`,label:item.label})),...actionItems]} rows={terminalHeight} columns={terminalWidth} onClose={close} onSelect={id=>{
+    if(id.startsWith('suggestion:')){const item=suggestions[Number(id.split(':')[1])];if(item){sessions.setText(item.text);sessions.applyFilters(item.filters);close()}}
+    else dispatchAction(id as ActionId)
+  }}/>
+  if(mode==='actions')return <Actions items={actionItems} {...helpProps} rows={terminalHeight} columns={terminalWidth} onAction={dispatchAction} onClose={close}/>
+  if(mode==='help')return <Menu title="Help — browse shortcuts" items={[
+    {id:'actions',label:'Ctrl+K Actions menu'},{id:'filters',label:'Ctrl+G Filters'},{id:'help',label:'F1 Help'},
+    {id:'search',label:'Printable characters search'},
+    {id:'scope',label:'Tab toggles project scope'},
+    {id:'client',label:'Ctrl+F cycles client in browse'},
+    {id:'time',label:'Ctrl+D cycles time presets'},
+    {id:'clear-time',label:'Ctrl+U clears time'},
+    {id:'launcher',label:'Ctrl+L Choose launcher'},
+    ...actionItems.map(item=>({id:item.id,label:`${item.shortcut??'Actions menu'} ${item.label}`,reason:item.reason})),
+    {id:'reader',label:'History: Ctrl+F find · F3/Shift+F3 hit · Home/End · Esc back'},
+  ]} rows={terminalHeight} columns={terminalWidth} onSelect={()=>{}} onClose={close}/>
+  if(mode==='filters')return <Filters {...helpProps} clock={clock} value={sessions.filters} now={now} cwd={cwd} clients={sessions.clientCycle.filter((client):client is string=>client!==undefined)}
+    branches={[...new Set(sessions.snapshot.filter(ref=>!cfg.hiddenClients?.includes(ref.client)).map(ref=>ref.gitBranch))]} rows={terminalHeight} columns={terminalWidth}
+    onApply={value=>{sessions.applyFilters(value);close()}} onClose={close}/>
+  if(mode==='details'&&rich)return <Details {...helpProps} detail={rich} refData={db.getRef(rich.uid)} launchReason={launchReason} rows={terminalHeight} columns={terminalWidth} onClose={close}/>
+  if(mode==='bookmarks')return <Bookmarks {...helpProps} uids={savedBookmarks.state.uids.filter(uid=>!cfg.hiddenClients?.includes(uid.split(':')[0]!))} refs={sessions.snapshot.filter(ref=>!cfg.hiddenClients?.includes(ref.client))} rows={terminalHeight} columns={terminalWidth} onRemove={uid=>void toggleBookmark(uid,true)} onClose={close}/>
+  if(mode==='chain'&&selectedRow){
+    const members=chainMembers(sessions.snapshot,selectedRow.uid).filter(ref=>!cfg.hiddenClients?.includes(ref.client))
+    const range=sessions.activeTimeRange
+    const matching=new Set(querySnapshot(db,cfg,sessions.snapshot,{text:sessions.text,matchMode:'prefix-last',cwd:sessions.scope??undefined,client:sessions.client,...range,
+      branch:sessions.filters.branch,file:sessions.filters.file?.exact?undefined:sessions.filters.file?.path,exactFile:sessions.filters.file?.exact?resolveFacetPath(sessions.filters.file.path,cwd)??undefined:undefined,
+      bookmarkedUids:sessions.filters.bookmarkedOnly?bookmarkUids:undefined,includeMissing:true,collapse:false,now}).map(row=>row.uid))
+    return <ChainPicker {...helpProps} items={members.map(ref=>({...ref,matchesFilters:matching.has(ref.uid),parentLabel:ref.parentNativeId?`parent ${ref.parentNativeId}${members.filter(member=>member.nativeId===ref.parentNativeId).length>1?' (ambiguous)':members.some(member=>member.nativeId===ref.parentNativeId)?'':' (unknown)'}`:'root'}))}
+      rows={terminalHeight} columns={terminalWidth} onClose={close} onInspect={openHistory} actionForMember={uid=>{
+        const member=members.find(ref=>ref.uid===uid)
+        const adapter=member?adapterFor(member.client):undefined
+        let label=member?.tier==='search'?'Start fresh with context':'Resume session'
+        if(!member||!adapter)return {label,enabled:false,reason:'No adapter available'}
+        const resolution=resolveRowLauncher(adapter,{...member,score:0,collapsed:0})
+        if(resolution.kind==='unavailable')return {label,enabled:false,reason:resolution.message}
+        if(resolution.kind==='ask')return {label:'Choose launcher',enabled:true,reason:null}
+        label=resolution.tier==='search'?'Start fresh with context':'Resume session'
+        if(member.missing&&resolution.tier==='resume')return {label,enabled:false,reason:'Source missing'}
+        try {
+          const brief=resolution.tier==='search'?buildBrief(db,member.uid):undefined
+          const plan=adapter.plan(member,brief??undefined,resolution.launcher)
+          if(!plan)return {label,enabled:false,reason:'This session cannot be launched'}
+          const checked=checkResumePlan(plan)
+          return {label,enabled:checked.ok,reason:checked.ok?null:checked.reason??'Launcher unavailable'}
+        }catch{return {label,enabled:false,reason:'Could not validate the launch'}}
+      }} onResume={uid=>{
+        const row=members.find(member=>member.uid===uid);if(row){close();activate(undefined,{...row,score:0,collapsed:0})}
+      }}/>
+  }
+  const timeFiltered=sessions.filters.time.kind==='custom'||sessions.timePreset!=='all'
+  const filterLabel=[timeFiltered?(sessions.filters.time.kind==='custom'?'Custom time':TIME_LABELS[sessions.timePreset]):'',sessions.filters.sort!=='auto'?sessions.filters.sort:'',
+    sessions.filters.branch!==undefined?`branch:${sessions.filters.branch??'none'}`:'',sessions.filters.file?`file:${sessions.filters.file.path}`:'',sessions.filters.bookmarkedOnly?'Bookmarked':''].filter(Boolean).join(' · ')
+  const found=sessions.overflowed?`${SESSION_DISPLAY_LIMIT}+ sessions`:`${sessions.rows.length} session${sessions.rows.length===1?'':'s'}`
+  const indexAge=indexedAt!==undefined&&Number.isFinite(indexedAt)?freshlyIndexed(indexedAt,now):''
+  const status=[found,filterLabel,rich?qualityBadge(rich.reasons):'',sessions.scope?projectName(sessions.scope):'everywhere',sessions.client, note,indexAge].filter(Boolean).join(' · ')
+  const primary=actionItems.find(item=>item.id===(resolved?.kind==='resolved'&&resolved.tier==='search'?'handoff':'resume'))
+  const keys:[string,string][]=[['ctrl+k','Actions'],['ctrl+g','Filters'],['F1','Help'],...(primary?[['enter',primary.enabled?primary.label:'unavailable']] as [string,string][]:[]),['ctrl+o','History'],...(statsAvailable?[['ctrl+s','Stats']] as [string,string][]:[]),['esc','quit']]
+  const list=<List rows={sessions.rows} selected={sessions.selected} height={listHeight} now={now} columns={layout.listWidth} query={sessions.text} bookmarks={bookmarkUids} wrapSelected={layout.mode!=='compact'}/>
+  const quick=<Preview lines={detail} maxLines={summaryRows}/>
+  const availabilityText = resolved?.kind === 'ask' ? 'Choose launcher'
+    : resolved?.kind === 'resolved' && resolved.tier === 'search'
+      ? !handoffTargets.length && contextReason ? contextReason : 'Start fresh with context'
+      : launchReason ?? 'Resume session available'
+  return <Box flexDirection="column" height={terminalHeight} width={terminalWidth} overflow="hidden">
+    <Text wrap="truncate-end"><Text bold>nekyia</Text>{boundedDisplayText(` · ${status}`,terminalWidth-6)}</Text>
+    <Text wrap="truncate-end" color="cyan">{boundedPathTail(`▸ ${sessions.text||'type to search'}`,terminalWidth)}</Text>
+    {!sessions.rows.length?<Box flexDirection="column" flexGrow={1} overflow="hidden">
+      <EmptyState indexedEmpty={sessions.snapshot.length===0} searching={Boolean(sessions.text)} narrowed={sessions.scope!==null} timeFiltered={timeFiltered}/>
+      {suggestions.map((item,index)=><Text key={item.label} wrap="truncate-end">{`${index+1}. ${item.label} (Actions)`}</Text>)}
+      <Text dimColor wrap="truncate-end">Ctrl+K Actions · Ctrl+G edit/reset filters · Ctrl+R refresh</Text>
+    </Box>:<Box flexDirection="column" flexGrow={1} overflow="hidden">
+      <Box height={listHeight} overflow="hidden">
+        <Box width={layout.listWidth} flexShrink={0}>{list}</Box>
+        {layout.statsWidth>0&&<>
+          <Box width={2} flexShrink={0}><Text dimColor>{'│\n'.repeat(listHeight).trimEnd()}</Text></Box>
+          <StatsPanel stats={stats} columns={layout.statsWidth} rows={listHeight} overflowed={sessions.overflowed}/>
+        </>}
       </Box>
-      <Box flexShrink={0}>
-        <Text color="cyan">{'▸ '}</Text>
-        <Text wrap="truncate-end">{searchTail}</Text>
-        <Text dimColor>{shownSearch ? '' : 'type to search'}</Text>
+      {layout.mode!=='compact'&&<Text dimColor>{'─'.repeat(Math.min(MAX_DISPLAY_COLUMNS,terminalWidth))}</Text>}
+      <Box height={detailLines} flexDirection="column" overflow="hidden">
+        {quick}
+        {layout.mode !== 'compact' && <Text dimColor wrap="truncate-end">{boundedDisplayText(availabilityText, layout.previewWidth)}</Text>}
       </Box>
-      <Box
-        ref={listRef} marginTop={compact ? 0 : 1}
-        flexGrow={reading ? 0 : 1} flexShrink={1}
-        height={reading ? INSPECT_LIST_ROWS : undefined} minHeight={1}
-        flexDirection="column" overflow="hidden"
-      >
-        {empty
-          ? <EmptyState searching={Boolean(sessions.text.trim())} narrowed={narrowed} />
-          : (
-            <List
-              rows={sessions.rows} selected={sessions.selected}
-              height={listHeight} now={now} columns={terminalWidth} query={sessions.text}
-            />
-          )}
-      </Box>
-      {selectedRow ? (
-        <>
-          {compact ? null : (
-            <Box flexShrink={0} marginTop={1}>
-              <Text dimColor>{'─'.repeat(Math.max(1, ruleColumns))}</Text>
-            </Box>
-          )}
-          <Box
-            ref={detailRef}
-            flexGrow={reading ? 1 : 0} flexShrink={1} minHeight={1}
-            height={reading ? undefined : previewLines(terminalHeight)}
-            flexDirection="column" overflow="hidden"
-          >
-            <Preview lines={detail} offset={offset} maxLines={detailLines} />
-          </Box>
-        </>
-      ) : null}
-      {launcherAsk ? (
-        <Text>
-          Open with {launcherAsk.options.map((name, index) => (
-            index === launcherAsk.index ? `[${name}]` : name
-          )).join(' / ')}?  tab switch · enter open · esc cancel
-        </Text>
-      ) : null}
-      {sparse && !reading ? <SparseHint project={scope} /> : null}
-      <Box flexShrink={0} marginTop={1}>
-        <Text wrap="truncate-end">
-          {fitKeys(keys, terminalWidth).map(([key, label], index) => (
-            <Text key={key}>
-              {index ? <Text dimColor>{'   '}</Text> : null}
-              <Text>{key}</Text><Text dimColor>{` ${label}`}</Text>
-            </Text>
-          ))}
-        </Text>
-      </Box>
-    </Box>
-  )
+    </Box>}
+    <Text wrap="truncate-end">{fitKeys(keys,terminalWidth).map(([key,label])=>`${key} ${label}`).join('   ')}</Text>
+  </Box>
 }

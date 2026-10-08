@@ -539,6 +539,110 @@ test('since accepts the spans relTime prints', () => {
 test('since rejects what it cannot read', () => {
   expect(() => parseSince('yesterday')).toThrow('--since')
 })
+test('parseSince retains its API with strict calendar and timezone-aware ISO input', () => {
+  expect(parseSince('2026-10-07T14:00:00+02:00', 0)).toBe(Date.parse('2026-10-07T12:00:00Z'))
+  for (const value of ['2026-02-30', '2026-10-07T14:00:00', '999999999999999999999d']) {
+    expect(() => parseSince(value, 0)).toThrow('--since')
+  }
+})
+
+test('planCli accepts both time bounds on search, blame, and timeline', () => {
+  const now = Date.parse('2026-10-08T12:00:00Z')
+  for (const args of [['search', 'retry'], ['blame', 'src/server.ts'], ['timeline']]) {
+    expect(planCli([...args, '--since', '2026-10-01', '--until', '2026-10-08'], '/work', now))
+      .toMatchObject({ options: { since: 1790812800000, until: 1791417600000 } })
+    expect(planCli([...args, '--since', '7d', '--until', '2d'], '/work', now))
+      .toMatchObject({ options: { since: now - 7 * 86_400_000, until: now - 2 * 86_400_000 } })
+    expect(planCli([...args, '--since', '2026-10-07T14:00:00+02:00', '--until', '2026-10-07T17:00:00+02:00'], '/work', now))
+      .toMatchObject({ options: { since: Date.parse('2026-10-07T12:00:00Z'), until: Date.parse('2026-10-07T15:00:00Z') } })
+    const upperOnly = planCli([...args, '--until', '2026-10-08'], '/work', now)
+    expect('options' in upperOnly && upperOnly.options).toMatchObject({ until: 1791417600000 })
+    expect('options' in upperOnly && Object.hasOwn(upperOnly.options, 'since')).toBe(false)
+    const lowerOnly = planCli([...args, '--since', '2026-10-01'], '/work', now)
+    expect('options' in lowerOnly && lowerOnly.options).toMatchObject({ since: 1790812800000 })
+    expect('options' in lowerOnly && Object.hasOwn(lowerOnly.options, 'until')).toBe(false)
+  }
+})
+
+test('planCli rejects time bounds on every other command including bare show', () => {
+  for (const args of [
+    ['index'], ['last'], ['show', 'claude:a'], ['show'], ['handoff', 'claude:a', '--to', 'codex'],
+    ['doctor'], ['forget', 'claude:a'], ['prune', '--missing'], ['exclude', '/private'],
+  ]) {
+    for (const flag of ['--since', '--until']) {
+      expect(() => planCli([...args, flag, '2026-10-01'], '/work', 0)).toThrow()
+    }
+  }
+})
+
+test('invalid time bounds and windows exit before creating a data directory', () => {
+  const env = environment()
+  for (const args of [['search', 'retry'], ['blame', '/work/src/server.ts'], ['timeline']]) {
+    for (const [flags, reason] of [
+      [['--since', '2026-02-30'], '--since'],
+      [['--until', '2026-10-07T14:00:00'], '--until'],
+      [['--since', '2026-10-08', '--until', '2026-10-08'], '--since must precede --until'],
+      [['--since', '2026-10-08', '--until', '2026-10-01'], '--since must precede --until'],
+    ] as const) {
+      expect(() => planCli([...args, ...flags], '/work', 0)).toThrow(reason)
+      const result = run([...args, ...flags, '--json'], env)
+      expect(result.exitCode).toBe(2)
+      expect(JSON.parse(result.stdout.toString())).toMatchObject({ error: { code: 'invalid-arguments', message: expect.stringContaining(reason) } })
+      expect(existsSync(env.XDG_DATA_HOME)).toBe(false)
+    }
+  }
+})
+
+test('CLI time filters overlap indexed sessions and preserve unbounded JSON contracts', () => {
+  const env = environment()
+  const dir = '/work/time-range-fixture'
+  const file = `${dir}/src/server.ts`
+  const flags = ['--since', '1970-01-01T00:00:02Z', '--until', '1970-01-01T00:00:03Z']
+  const absent = run(['timeline', '--dir', dir, ...flags, '--json'], env)
+  expect(absent.exitCode).toBe(0)
+  expect(JSON.parse(absent.stdout.toString())).toEqual({
+    dir, since: 2000, until: 3000, git: { consulted: false }, sessions: [],
+  })
+  const db = IndexDb.open(join(env.XDG_DATA_HOME, 'nekyia', 'index.db'))
+  try {
+    for (const [nativeId, startedAt, endedAt] of [['crossing', 1000, 4000], ['later', 3000, 5000], ['undated', 0, 0]] as const) {
+      const ref: SessionRef = {
+        uid: `claude:${nativeId}`, client: 'claude', nativeId, cwd: dir,
+        gitBranch: null, title: 'retry time filter', startedAt, endedAt, turns: 1,
+        parentNativeId: null, tier: 'resume', origin: 'manifest',
+        sourcePaths: ['/not-a-transcript.jsonl'], fingerprint: nativeId,
+      }
+      db.upsertHydrated({ ref, prompts: [], prose: [], files: [file], truncated: false,
+        fileDetail: 'ordered', fileEvents: [{ path: file, kind: 'edit', turn: 0 }] })
+    }
+  } finally {
+    db.close()
+  }
+  const unbounded = run(['search', 'retry', '--all', '--json'], env)
+  expect(unbounded.exitCode).toBe(0)
+  const allRows = JSON.parse(unbounded.stdout.toString())
+  expect(Array.isArray(allRows)).toBe(true)
+  expect(allRows).toHaveLength(3)
+  const search = run(['search', 'retry', '--all', ...flags, '--json'], env)
+  expect(search.exitCode).toBe(0)
+  expect(JSON.parse(search.stdout.toString())).toEqual(allRows.filter((row: { uid: string }) => row.uid === 'claude:crossing'))
+  const blame = run(['blame', file, ...flags, '--ids'], env)
+  expect(blame.exitCode).toBe(0)
+  expect(blame.stdout.toString()).toBe('claude:crossing\n')
+  const bounded = run(['timeline', '--dir', dir, ...flags, '--json'], env)
+  expect(bounded.exitCode).toBe(0)
+  const boundedTimeline = JSON.parse(bounded.stdout.toString())
+  expect(boundedTimeline).toMatchObject({ since: 2000, until: 3000 })
+  expect(boundedTimeline.sessions.map((session: { uid: string }) => session.uid)).toEqual(['claude:crossing'])
+  expect(boundedTimeline.sessions[0].events).toHaveLength(1)
+  for (const lower of [[], ['--since', '1970-01-01T00:00:02Z']]) {
+    const result = run(['timeline', '--dir', dir, ...lower, '--json'], env)
+    expect(result.exitCode).toBe(0)
+    const timeline = JSON.parse(result.stdout.toString())
+    expect(Object.keys(timeline).sort()).toEqual(['dir', 'git', 'sessions', 'since'])
+    expect(timeline.sessions).toHaveLength(lower.length === 0 ? 3 : 2)
+  }
+})
 test('timeline rejects a positional argument', () => {
   const result = run(['timeline', 'src/sse.ts'])
   expect(result.exitCode).toBe(2)
@@ -849,12 +953,12 @@ const REJECTED: [string[], string][] = [
   [['show', 'claude:a', '--max-chars', '1.5'], '--max-chars must be a non-negative integer'],
   [['show', 'claude:a', '--max-chars', 'NaN'], '--max-chars must be a non-negative integer'],
   [['timeline', 'src/sse.ts'], 'timeline takes no positional arguments'],
-  [['timeline', '--sort', 'recent'], 'only --dir, --since, --client, --limit, and --json can be used with timeline'],
+  [['timeline', '--sort', 'recent'], 'only --dir, --since, --until, --client, --limit, and --json can be used with timeline'],
   [['timeline', '--since', 'yesterday'], '--since takes a span such as 30m, 12h, 2d, 3w, or a date such as 2026-08-01'],
   [['blame'], 'blame accepts exactly one path'],
   [['blame', 'one.ts', 'two.ts'], 'blame accepts exactly one path'],
-  [['blame', 'one.ts', '--sort', 'recent'], 'only --client, --limit, --ids, and --json can be used with blame'],
-  [['blame', 'one.ts', '--all'], 'only --client, --limit, --ids, and --json can be used with blame'],
+  [['blame', 'one.ts', '--sort', 'recent'], 'only --client, --limit, --ids, --json, --since, and --until can be used with blame'],
+  [['blame', 'one.ts', '--all'], 'only --client, --limit, --ids, --json, --since, and --until can be used with blame'],
   [['blame', 'one\u0001.ts'], 'blame path is too long or contains control characters'],
   [['blame', 'x'.repeat(16_385)], 'blame path is too long or contains control characters'],
   [['search', 'x', '--ids', '--json'], '--ids cannot be combined with --json'],
@@ -862,7 +966,7 @@ const REJECTED: [string[], string][] = [
   [['doctor', '--ids'], 'only --json, --sniff, and --emit-manifest can be used with doctor'],
   [['show', 'claude:a', '--ids'], 'only --max-chars and --json can be used with show'],
   [['index', '--ids'], 'search options cannot be used with index'],
-  [['timeline', '--ids'], 'only --dir, --since, --client, --limit, and --json can be used with timeline'],
+  [['timeline', '--ids'], 'only --dir, --since, --until, --client, --limit, and --json can be used with timeline'],
 ]
 
 test('planCli names the rule an invocation broke', () => {

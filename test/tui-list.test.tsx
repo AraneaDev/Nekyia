@@ -65,6 +65,16 @@ test('visibleWindow keeps a normalized selection on screen', () => {
   expect(visibleWindow(999, 100, 10)).toEqual([90, 100])
 })
 
+test('selected titles wrap while the list remains within its row budget',async()=>{
+ const rows=Array.from({length:20},(_,i)=>row(i))
+ rows[19]={...rows[19]!,title:'Readable title '.repeat(5)+'VISIBLE_END'}
+ const view=render(<List rows={rows} selected={19} height={4} now={NOW} columns={80} wrapSelected/>)
+  await new Promise(resolve=>setTimeout(resolve,30))
+ expect(view.lastFrame()).toContain('VISIBLE_END')
+ expect(view.lastFrame()!.split('\n').length).toBeLessThanOrEqual(4)
+ view.unmount()
+})
+
 test('visibleWindow safely handles empty, zero, negative, fractional and non-finite inputs', () => {
   expect(visibleWindow(0, 0, 10)).toEqual([0, 0])
   expect(visibleWindow(0, 100, 0)).toEqual([0, 0])
@@ -554,4 +564,25 @@ test('the rail shows where the visible rows fall in the whole list', () => {
   // Unless there is barely any track to put it in.
   expect(railThumb(0, 1, 5000)).toEqual([0, 1])
   expect(railThumb(0, 0, 100)).toEqual([0, 0])
+})
+
+test('picker restore follows UID and atomic filters retain query', async () => {
+  const db=IndexDb.open(':memory:')
+  seed(db,{uid:'claude:a',nativeId:'a',endedAt:NOW-1000,gitBranch:'main'})
+  seed(db,{uid:'claude:b',nativeId:'b',endedAt:NOW,gitBranch:'other'})
+  let state:SessionsState
+  function Probe(){
+    state=useSessions(db,DEFAULT_CONFIG,'/',undefined,NOW,{
+      text:'',filters:{scope:null,client:null,time:{kind:'preset',preset:'all'},sort:'auto',bookmarkedOnly:false},
+      selectedUid:'claude:a',selectedIndex:0,listTop:0,reader:null,
+    })
+    return <Text>{state.rows[state.selected]?.uid}</Text>
+  }
+  const view=render(<Probe />)
+  await new Promise(resolve=>setTimeout(resolve,30))
+  expect(view.lastFrame()).toContain('claude:a')
+  withAct(()=>state!.applyFilters({...state!.filters,branch:'other'}))
+  expect(state!.rows.map(item=>item.uid)).toEqual(['claude:b'])
+  expect(state!.text).toBe('')
+  view.unmount();db.close()
 })

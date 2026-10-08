@@ -11,7 +11,7 @@ import type { ExecPlan, SessionRef } from '../src/types'
 const databases: IndexDb[] = []
 afterEach(() => { cleanup(); for (const db of databases.splice(0)) db.close() })
 const tick = () => new Promise((resolve) => setTimeout(resolve, 35))
-const opts = { cwd: '/home/dev/work/proj', now: 1800000000000, clipboard: null }
+const opts = { cwd: '/home/dev/work/proj', now: 1800000000000, clipboard: null, checkResumePlan: () => ({ ok: true }) }
 const available = () => ({ ok: true })
 
 function adapter(id: string, brief = true): Adapter {
@@ -55,7 +55,11 @@ test('ctrl+t chooses another client, confirms the data flow, and emits exactly o
   const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[adapter('claude'), adapter('codex'), adapter('kilo')]}
     checkHandoffPlan={available} onExec={(plan) => plans.push(plan)} {...opts} />)
   await tick()
-  expect(view.lastFrame()).toContain('ctrl+t')
+  expect(view.lastFrame()).toContain('ctrl+k Actions')
+  view.stdin.write('\u000b'); await tick()
+  view.stdin.write('Start fresh'); await tick()
+  expect(view.lastFrame()).toContain('Start fresh with context (ctrl+t)')
+  view.stdin.write('\u001b'); await tick()
   view.stdin.write('\u0014')
   await tick()
   expect(view.lastFrame()).toContain('Hand off')
@@ -205,7 +209,7 @@ test('picker excludes clients without brief templates and does not require exist
     adapters={[adapter('claude'), adapter('no-brief', false)]} onExec={() => {}} {...opts} />)
   single.stdin.write('\u0014')
   await tick()
-  expect(single.lastFrame()).toContain('no other client available')
+  expect(single.lastFrame()).toContain('Start a new briefed session')
   expect(single.lastFrame()).not.toContain('Hand off')
 })
 
@@ -242,7 +246,9 @@ test('planning exceptions, missing indexed content, and validation exceptions ar
     view.stdin.write('\r')
     await tick()
     expect(view.lastFrame()).toContain('Hand off')
-    expect(view.lastFrame()).toContain(failure === 'content' ? 'nothing indexed' : 'could not plan this handoff')
+    expect(view.lastFrame()).toContain(failure === 'content' ? 'nothing indexed' : 'Could not validate this target')
+    view.stdin.write('\u001b'); await tick()
+    expect(view.lastFrame()).toContain('type to search')
     view.unmount()
   }
 })

@@ -1,10 +1,21 @@
 import type { Config } from '../config'
 import type { IndexDb, SearchRef } from './db'
 import type { Presentation } from './launcher'
+import { matchesTimeRange } from './time-range'
+import { compileSearch, type MatchMode } from './search-text'
+import { componentsFor, type Components } from './session-chains'
 
 /** Everything a search can be narrowed or sorted by. Omitted fields mean no constraint. */
 export interface QueryOpts {
   text?: string
+  /** Literal terms by default; the picker may opt into an unfinished final token. */
+  matchMode?: MatchMode
+  /** Undefined leaves branch unconstrained; null selects sessions without branch metadata. */
+  branch?: string | null
+  /** When present, only these exact UIDs match, including an empty set matching nothing. */
+  bookmarkedUids?: ReadonlySet<string>
+  /** Set false to return every matching member before chain collapse. */
+  collapse?: boolean
   cwd?: string
   client?: string
   file?: string
@@ -13,6 +24,8 @@ export interface QueryOpts {
   sort?: 'auto' | 'recent' | 'relevance'
   limit?: number
   includeMissing?: boolean
+  since?: number
+  until?: number
   /**
    * Tier and label overrides for clients whose store more than one client opens.
    *
@@ -185,16 +198,6 @@ function uidsTouchingExactFile(
 }
 
 /**
- * FTS5 punctuation is query syntax. Extract the same kinds of word tokens that
- * unicode61 indexes, then quote them so operators such as OR remain literals.
- */
-function literalFtsQuery(text: string): string | null {
-  const terms = text.match(/[\p{L}\p{N}_]+/gu)
-  if (!terms?.length) return null
-  return terms.map((term) => `"${term.replace(/"/g, '""')}"`).join(' ')
-}
-
-/**
  * Returns the numeric value if it is finite, otherwise returns a fallback value.
  */
 function finite(value: unknown, fallback = 0): number {
@@ -206,78 +209,6 @@ function finite(value: unknown, fallback = 0): number {
  */
 function compareUid(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0
-}
-
-/**
- * Disjoint-set data structure (Union-Find) for tracking connected components.
- */
-class Components {
-  private readonly parents: number[]
-
-  /**
-   * Initializes the union-find structure with the given size.
-   */
-  constructor(size: number) {
-    this.parents = Array.from({ length: size }, (_, index) => index)
-  }
-
-  /**
-   * Finds the root representative of the given index, applying path compression.
-   */
-  find(index: number): number {
-    let root = index
-    while (this.parents[root] !== root) root = this.parents[root]!
-    while (this.parents[index] !== index) {
-      const parent = this.parents[index]!
-      this.parents[index] = root
-      index = parent
-    }
-    return root
-  }
-
-  /**
-   * Merges the components containing the left and right indices.
-   */
-  union(left: number, right: number): void {
-    const leftRoot = this.find(left)
-    const rightRoot = this.find(right)
-    if (leftRoot === rightRoot) return
-    // Stable roots make corrupt cycles and equivalent inputs deterministic.
-    if (leftRoot < rightRoot) this.parents[rightRoot] = leftRoot
-    else this.parents[leftRoot] = rightRoot
-  }
-}
-
-/** Build chain membership from every row, including rows later removed by filters. */
-function chainComponents(rows: readonly SearchRef[]): Components {
-  const components = new Components(rows.length)
-  const byNative = new Map<string, number[]>()
-  for (let index = 0; index < rows.length; index++) {
-    const row = rows[index]!
-    const key = `${row.client}\0${row.nativeId}`
-    const matches = byNative.get(key)
-    if (matches) matches.push(index)
-    else byNative.set(key, [index])
-  }
-
-  const orphanChildren = new Map<string, number>()
-  for (let index = 0; index < rows.length; index++) {
-    const row = rows[index]!
-    if (!row.parentNativeId) continue
-    const parentKey = `${row.client}\0${row.parentNativeId}`
-    const parents = byNative.get(parentKey)
-    if (parents?.length === 1) {
-      components.union(index, parents[0]!)
-    } else if (!parents) {
-      // Two children of an omitted parent are still forks of one conversation.
-      const sibling = orphanChildren.get(parentKey)
-      if (sibling === undefined) orphanChildren.set(parentKey, index)
-      else components.union(index, sibling)
-    }
-    // Duplicate native IDs make the edge ambiguous; keeping it disconnected is
-    // safer than silently merging unrelated conversations.
-  }
-  return components
 }
 
 /**
@@ -335,28 +266,9 @@ function collapseChains(
  */
 export type SessionSnapshot = readonly SearchRef[]
 
-/**
- * The fork-chain components of a snapshot, keyed by the snapshot itself.
- *
- * Union-find over the whole table is the expensive half of a search, and it
- * depends on nothing but the rows. Keying on the array means a snapshot that
- * goes out of scope takes its components with it, and a one-shot `query` gets
- * the same treatment as the picker without either having to say so.
- */
-const snapshotComponents = new WeakMap<SessionSnapshot, Components>()
-
 /** Reads the session table once, in the narrow shape a search consumes. */
 export function readSessionSnapshot(db: IndexDb): SessionSnapshot {
   return db.searchRefs()
-}
-
-/** The snapshot's fork chains, built on first use and reused by every later search over it. */
-function componentsFor(snapshot: SessionSnapshot): Components {
-  const cached = snapshotComponents.get(snapshot)
-  if (cached) return cached
-  const components = chainComponents(snapshot)
-  snapshotComponents.set(snapshot, components)
-  return components
 }
 
 /**
@@ -372,8 +284,8 @@ function search(
   opts: QueryOpts,
 ): Row[] {
   const unsafeOpts = opts as Record<string, unknown>
-  const text = typeof unsafeOpts.text === 'string' ? unsafeOpts.text.trim() : ''
-  const hasText = text.length > 0
+  const text = typeof unsafeOpts.text === 'string' ? unsafeOpts.text : ''
+  const hasText = text.trim().length > 0
   const sort = unsafeOpts.sort === 'recent' || unsafeOpts.sort === 'relevance'
     ? unsafeOpts.sort
     : 'auto'
@@ -383,7 +295,7 @@ function search(
 
   let scores: Map<string, number> | null = null
   if (hasText) {
-    const ftsQuery = literalFtsQuery(text)
+    const ftsQuery = compileSearch(text, unsafeOpts.matchMode === 'prefix-last' ? 'prefix-last' : 'literal')
     if (!ftsQuery) return []
     scores = new Map(db.ftsSearch(ftsQuery).map((hit) => [hit.uid, finite(hit.score)]))
     if (scores.size === 0) return []
@@ -422,9 +334,12 @@ function search(
   const presentation = unsafeOpts.presentation instanceof Map ? unsafeOpts.presentation : null
 
   const kept = allRows.filter((row) => {
+    if (!matchesTimeRange(row.startedAt, row.endedAt, opts)) return false
     if (!includeMissing && row.missing) return false
     if (hiddenClients.has(row.client)) return false
     if (client && row.client !== client) return false
+    if (opts.branch !== undefined && row.gitBranch !== opts.branch) return false
+    if (opts.bookmarkedUids !== undefined && !opts.bookmarkedUids.has(row.uid)) return false
     if (cwd && !underScope(row.cwd, cwd)) return false
     if (fileUids && !fileUids.has(row.uid)) return false
     if (scores && !scores.has(row.uid)) return false
@@ -449,7 +364,7 @@ function search(
     }
   })
 
-  const collapsed = collapseChains(scored, allRows, components)
+  const collapsed = opts.collapse === false ? scored : collapseChains(scored, allRows, components)
   collapsed.sort((left, right) => {
     const score = finite(right.score) - finite(left.score)
     if (score) return score

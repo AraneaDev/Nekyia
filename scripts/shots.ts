@@ -57,7 +57,7 @@ const SHOTS: Shot[] = [
     what: 'the history open and scrolled',
     columns: 132, rows: 34,
     keys: ['Tab', 'C-o', 'Down', 'Down', 'Down'],
-    settled: 'scroll',
+    settled: 'Ctrl+F find',
   },
   {
     name: 'scoped',

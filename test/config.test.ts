@@ -114,9 +114,11 @@ test('preserves finite numeric config values regardless of sign', () => {
   expect(config.maxFileBytes).toBe(-1)
 })
 
-test('auto-reindex on open is unset by default, so the picker never reindexes on its own', () => {
-  expect(DEFAULT_CONFIG.autoReindexAfterHours).toBeUndefined()
-  expect(loadConfig().autoReindexAfterHours).toBeUndefined()
+test('auto-reindex defaults to one hour, including existing configs without the field', () => {
+  expect(loadConfig().autoReindexAfterHours).toBe(1)
+  mkdirSync(configDir(), { recursive: true })
+  writeFileSync(join(configDir(), 'config.json'), JSON.stringify({ halfLifeDays: 7 }))
+  expect(loadConfig().autoReindexAfterHours).toBe(1)
 })
 
 test('a configured auto-reindex age loads, including zero for every open', () => {
@@ -128,10 +130,10 @@ test('a configured auto-reindex age loads, including zero for every open', () =>
   expect(loadConfig().autoReindexAfterHours).toBe(0)
 })
 
-test('an invalid auto-reindex age falls back to unset rather than throwing', () => {
+test('an invalid auto-reindex age falls back to one hour rather than throwing', () => {
   mkdirSync(configDir(), { recursive: true })
   writeFileSync(join(configDir(), 'config.json'), JSON.stringify({ autoReindexAfterHours: 'always' }))
-  expect(loadConfig().autoReindexAfterHours).toBeUndefined()
+  expect(loadConfig().autoReindexAfterHours).toBe(1)
 })
 
 test('uses defaults for non-object top-level json', () => {
