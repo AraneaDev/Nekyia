@@ -9,8 +9,8 @@ import {clearedFilters} from '../src/tui/state'
 import type {SessionDetail} from '../src/core/session-detail'
 const tick=()=>new Promise(resolve=>setTimeout(resolve,15))
 const detail:SessionDetail={uid:'legacy:a',turns:[],latestUser:'😀'.repeat(100),latestReply:'retained reply\n'.repeat(25),ordered:false,fileCount:null,fileCountCapped:false,reasons:['source-missing','legacy-text','reader-cap']}
-test('action, filter, capped legacy history and missing-source details fit every terminal size',async()=>{
- for(const columns of [40,60,80,120,160])for(const rows of [8,12,16,24,40]){
+for(const columns of [40,60,80,120,160])for(const rows of [8,12,16,24,40]){
+ test(`action, filter, capped legacy history and missing-source details fit ${columns} columns by ${rows} rows`,async()=>{
   const variants=[
    <Actions items={[{id:'resume',label:'Resume session',shortcut:'enter',enabled:false,reason:'Source missing'},{id:'filters',label:'Filters',shortcut:'ctrl+g',enabled:true,reason:null}]} rows={rows} columns={columns} onAction={()=>{}} onClose={()=>{}}/>,
    <Filters value={clearedFilters()} now={1800000000000} cwd="/proj" clients={['claude']} branches={['main',null]} rows={rows} columns={columns} onApply={()=>{}} onClose={()=>{}}/>,
@@ -23,5 +23,5 @@ test('action, filter, capped legacy history and missing-source details fit every
    for(const line of lines)expect(Bun.stringWidth(line)).toBeLessThanOrEqual(columns)
    view.unmount()
   }
- }
-})
+ })
+}
