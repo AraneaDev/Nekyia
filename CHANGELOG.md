@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.1](https://github.com/AraneaDev/Nekyia/compare/v1.3.0...v1.3.1) (2026-10-11)
+
+### Fixes
+
+* **ci:** isolate responsive layout cases by terminal size to avoid the macOS test timeout ([f1c8203](https://github.com/AraneaDev/Nekyia/commit/f1c82036493356f5ba3a8fbec6bfa7453409e6f7))
+
 ## [1.3.0](https://github.com/AraneaDev/Nekyia/compare/v1.2.0...v1.3.0) (2026-10-08)
 
 
