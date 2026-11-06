@@ -22,7 +22,7 @@ import { SESSION_DISPLAY_LIMIT, useSessions } from './useSessions'
 import { createHostClipboard, type ClipboardLike } from './clipboard'
 
 import {readSessionDetail, qualityBadge} from '../core/session-detail'
-import {readMatchEvidence} from '../core/search-match'
+import {readMatchEvidence, type MatchEvidence} from '../core/search-match'
 import {compileSearch} from '../core/search-text'
 import {chainMembers} from '../core/session-chains'
 import {querySnapshot, resolveFacetPath, type Row} from '../core/query'
@@ -543,8 +543,21 @@ export function App({
   const rich=useMemo(()=>selectedRow?readSessionDetail(db,selectedRow.uid):null,[db,selectedRow?.uid])
   const expression=compileSearch(sessions.text,'prefix-last')
   const matchingUid=selectedRow?.matchedUid??selectedRow?.uid
-  const matchingDetail=useMemo(()=>matchingUid&&expression?readSessionDetail(db,matchingUid):null,[db,matchingUid,expression])
-  const evidence=useMemo(()=>matchingUid&&expression?readMatchEvidence(db,matchingUid,expression,matchingDetail?.turns??[]):null,[db,matchingUid,expression,matchingDetail])
+  const matchingDetail=useMemo(()=>!sessions.backgroundSearch&&matchingUid&&expression?readSessionDetail(db,matchingUid):null,[db,matchingUid,expression,sessions.backgroundSearch])
+  const synchronousEvidence=useMemo(()=>!sessions.backgroundSearch&&matchingUid&&expression?readMatchEvidence(db,matchingUid,expression,matchingDetail?.turns??[]):null,[db,matchingUid,expression,matchingDetail,sessions.backgroundSearch])
+  const [backgroundEvidence,setBackgroundEvidence]=useState<{uid:string;expression:string;value:MatchEvidence|null}|null>(null)
+  const suppliedEvidence=sessions.matchExpression===expression&&sessions.matchEvidence?.uid===matchingUid?sessions.matchEvidence:null
+  useEffect(()=>{
+    if(!sessions.backgroundSearch||!matchingUid||!expression||sessions.searchPending||suppliedEvidence)return
+    let current=true
+    sessions.requestEvidence(matchingUid,expression).then(value=>{
+      if(current)setBackgroundEvidence({uid:matchingUid,expression,value})
+    }).catch(()=>{if(current)setNote('Could not read matching passage; restart the picker')})
+    return()=>{current=false}
+  },[sessions.backgroundSearch,sessions.searchPending,sessions.requestEvidence,matchingUid,expression,suppliedEvidence])
+  const evidence=sessions.backgroundSearch
+    ? suppliedEvidence??(backgroundEvidence&&backgroundEvidence.uid===matchingUid&&backgroundEvidence.expression===expression?backgroundEvidence.value:null)
+    : synchronousEvidence
   const detail = useMemo(() => buildSummaryLines(selectedRow, rich, evidence, {
     columns: layout.previewWidth,
     maxLines: summaryRows,
@@ -896,6 +909,18 @@ export function App({
       else announce('Stats need 140 columns and 18 rows')
     }
   }
+  const pendingSubmission=useRef<{text:string;filters:typeof sessions.filters}|null>(null)
+  /** Enter targets the latest query even if its read-only worker is still finishing. */
+  function submitSelection():void {
+    if(resolved?.kind==='resolved'&&resolved.tier==='search'&&contextReason&&handoffTargets.length)dispatchAction('handoff')
+    else activate()
+  }
+  useEffect(()=>{
+    const pending=pendingSubmission.current
+    if(!pending)return
+    if(pending.text!==sessions.text||pending.filters!==sessions.filters||mode||helpOpen||confirm||handoff||launcherAsk){pendingSubmission.current=null;return}
+    if(!sessions.searchPending){pendingSubmission.current=null;if(!sessions.searchError)submitSelection()}
+  },[sessions.searchPending,sessions.searchError,sessions.text,sessions.filters,sessions.rows,mode,helpOpen,confirm,handoff,launcherAsk])
   useInput((input, key) => {
     if (executing.current) return
     if (key.ctrl && input === 'c') { exit(); return }
@@ -959,7 +984,7 @@ export function App({
     if (key.upArrow) { sessions.move(-1); return }
     if (key.downArrow) { sessions.move(1); return }
     if (key.tab) { sessions.toggleScope(); return }
-    if (key.return) {if(resolved?.kind==='resolved'&&resolved.tier==='search'&&contextReason&&handoffTargets.length)dispatchAction('handoff');else activate();return}
+    if (key.return) {if(sessions.searchPending)pendingSubmission.current={text:sessions.text,filters:sessions.filters};else submitSelection();return}
     if (key.backspace || key.delete) {
       sessions.setText(deleteLastGrapheme(sessions.text))
       return
@@ -1042,7 +1067,7 @@ export function App({
   const actionItems=actionsFor({hasSelection:Boolean(selectedRow),canResume:Boolean(selectedRow&&(native||resolved?.kind==='ask')&&!launchReason),resumeReason:launchReason??(!native&&resolved?.kind!=='ask'?'Use Start fresh with context':null),
     canHandoff:Boolean(selectedRow&&(contextReason===null||handoffTargets.length)),handoffReason:contextReason,hasMatch:Boolean(evidence),hasPrompt:Boolean(rich?.latestUser),hasCommand:native&&!launchReason,
     bookmarked:Boolean(selectedRow&&bookmarkUids.has(selectedRow.uid)),hasQuery:Boolean(sessions.text),refreshing:!onReindex,statsVisible,statsAvailable}).map(item=>item.id==='resume'&&resolved?.kind==='ask'?{...item,label:'Choose launcher'}:item)
-  const suggestions=!sessions.rows.length?emptySuggestions({text:sessions.text,filters:sessions.filters},sessions.countMatches):[]
+  const suggestions=!sessions.searchPending&&!sessions.searchError&&!sessions.rows.length?(sessions.backgroundSearch&&sessions.text?sessions.suggestions:emptySuggestions({text:sessions.text,filters:sessions.filters},sessions.countMatches)):[]
   if(mode==='actions'&&suggestions.length)return <Menu title="Actions — widen search" {...helpProps} items={[...suggestions.map((item,index)=>({id:`suggestion:${index}`,label:item.label})),...actionItems]} rows={terminalHeight} columns={terminalWidth} onClose={close} onSelect={id=>{
     if(id.startsWith('suggestion:')){const item=suggestions[Number(id.split(':')[1])];if(item){sessions.setText(item.text);sessions.applyFilters(item.filters);close()}}
     else dispatchAction(id as ActionId)
@@ -1106,6 +1131,8 @@ export function App({
     ...(badge?[{text:badge,color:'yellow'}]:[]),
     {text:sessions.scope?projectName(sessions.scope):'everywhere',dim:!sessions.scope},
     ...(sessions.client?[{text:sessions.client,color:clientColor(sessions.client)}]:[]),
+    ...(sessions.searchPending?[{text:'Searching…',dim:true}]:[]),
+    ...(sessions.searchError?[{text:sessions.searchError,color:'red'}]:[]),
     ...(note?[{text:note,color:'yellow'}]:[]),
     ...(indexAge&&indexedAt!==undefined?[{text:indexAge,color:SEVERITY_COLOR[indexAgeSeverity(now-indexedAt)],dim:indexAgeSeverity(now-indexedAt)==='fresh'}]:[]),
   ].map(part=>({...part,text:boundedDisplayText(part.text,terminalWidth)}))
@@ -1134,7 +1161,7 @@ export function App({
       ? <Text wrap="truncate-end"><Text color="cyan" bold>{'▸ '}</Text>{boundedPathTail(sessions.text,Math.max(1,terminalWidth-2))}</Text>
       : <Text wrap="truncate-end"><Text color="cyan" bold>{'▸ '}</Text><Text dimColor>type to search</Text></Text>}
     {!sessions.rows.length?<Box flexDirection="column" flexGrow={1} overflow="hidden">
-      <EmptyState indexedEmpty={sessions.snapshot.length===0} searching={Boolean(sessions.text)} narrowed={sessions.scope!==null} timeFiltered={timeFiltered}/>
+      {sessions.searchPending?<Text dimColor>Searching…</Text>:sessions.searchError?<Text color="red">Search unavailable; restart the picker.</Text>:<EmptyState indexedEmpty={sessions.snapshot.length===0} searching={Boolean(sessions.text)} narrowed={sessions.scope!==null} timeFiltered={timeFiltered}/>}
       {suggestions.map((item,index)=><Text key={item.label} wrap="truncate-end">{`${index+1}. ${item.label} (Actions)`}</Text>)}
       <Text dimColor wrap="truncate-end">Ctrl+K Actions · Ctrl+G edit/reset filters · Ctrl+R refresh</Text>
     </Box>:<Box flexDirection="column" flexGrow={1} overflow="hidden">

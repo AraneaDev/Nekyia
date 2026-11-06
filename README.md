@@ -440,6 +440,12 @@ are excluded from search while the original retained history stays intact. Passa
 windows overlap; individual tokens longer than 4096 characters are omitted from search
 and separate windows, so omission cannot manufacture phrase adjacency.
 
+The picker runs disk-backed typing searches, matching excerpts and empty-result probes
+in one read-only worker so broad prefixes cannot block keyboard input. Pending requests
+coalesce to the latest query, superseded results are discarded, and Enter waits for the
+current result. This adds a worker and a read-only database connection; broad queries
+can still take time to finish even though typing remains responsive.
+
 The next `nek index` upgrades older indexes from cached content, including sessions whose
 original files are unavailable. Search stays read-only and uses legacy ranking until
 that upgrade. The upgrade preserves session IDs, bookmarks, original text and launchers;
