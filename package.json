@@ -1,6 +1,6 @@
 {
   "name": "nekyia",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "Search every agent CLI session on your machine and resume the right one",
   "license": "MIT",
   "repository": {
