@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Database } from 'bun:sqlite'
 import { IndexDb } from '../src/core/db'
 import { query } from '../src/core/query'
 import { DEFAULT_CONFIG } from '../src/config'
@@ -172,4 +173,119 @@ test('forgetting a UID removes its passages even without a session row', () => {
   expect(db.raw().query('SELECT count(*) AS n FROM session_passage WHERE uid = ?').get('ghost')).toEqual({ n: 0 })
   expect(db.ftsSearch('"ghostneedle"')).toEqual([])
   db.close()
+})
+
+/** A version 4 index with real content: the passage tables removed and the stamp set back. */
+function writeV4Index(path: string): void {
+  const db = IndexDb.open(path)
+  try {
+    seed(db, 'a', [{ role: 'user', text: 'Investigate migration' }])
+    db.raw().exec(`
+      DROP TRIGGER passage_insert; DROP TRIGGER passage_delete; DROP TRIGGER passage_session_delete;
+      DROP TABLE passage_fts; DROP TABLE session_passage;
+      CREATE VIRTUAL TABLE session_fts USING fts5(title, prompts, prose, content='session_text', content_rowid='rowid', tokenize='porter unicode61');
+      INSERT INTO session_fts(session_fts) VALUES('rebuild');
+      UPDATE meta SET value = '4' WHERE key = 'schema_version';
+    `)
+  } finally { db.close() }
+}
+
+test('a damaged version 4 index is refused with the reindex hint before migrating', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nekyia-v4-damaged-'))
+  const path = join(dir, 'index.db')
+  try {
+    writeV4Index(path)
+    const damaged = new Database(path)
+    damaged.exec('DROP TABLE session_turn')
+    damaged.close()
+    // The version 5 step reads session_turn; without the check first, this was a raw SQL error.
+    expect(() => IndexDb.open(path, false)).toThrow(/index schema table is missing: session_turn/)
+    expect(() => IndexDb.open(path, false)).toThrow(/delete .*index\.db and run "nekyia index"/)
+    // Refused before any step ran: the file is still a version 4 index.
+    const check = new Database(path, { readonly: true })
+    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '4' })
+    check.close()
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('a healthy version 4 index still migrates', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nekyia-v4-healthy-'))
+  const path = join(dir, 'index.db')
+  try {
+    writeV4Index(path)
+    const db = IndexDb.open(path, false)
+    try {
+      expect(query(db, DEFAULT_CONFIG, { text: 'migration' }).map(r => r.uid)).toEqual(['a'])
+    } finally { db.close() }
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+for (const trigger of ['passage_insert', 'passage_delete', 'passage_session_delete']) {
+  test(`a version 5 index missing ${trigger} is refused on every writable open`, () => {
+    const dir = mkdtempSync(join(tmpdir(), 'nekyia-trigger-'))
+    const path = join(dir, 'index.db')
+    try {
+      IndexDb.open(path).close()
+      const damaged = new Database(path)
+      damaged.exec(`DROP TRIGGER ${trigger}`)
+      damaged.close()
+      const reason = new RegExp(`index search trigger is missing: ${trigger}`)
+      expect(() => IndexDb.open(path, false)).toThrow(reason)
+      expect(() => IndexDb.openExistingWritable(path)).toThrow(reason)
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+}
+
+test('titles are split into bounded passages and an oversized title token is not searchable', () => {
+  const db = IndexDb.open(':memory:')
+  const ref: SessionRef = { uid: 't', client: 'codex', nativeId: 't', cwd: '/project', gitBranch: null,
+    title: 'alpha ' + 'x'.repeat(5000) + ' beta ' + 'word '.repeat(2000), startedAt: 1, endedAt: Date.now(),
+    turns: 0, parentNativeId: null, tier: 'resume', origin: 'manifest', sourcePaths: [], fingerprint: 'x' }
+  db.upsertHydrated({ ref, dialogue: [], prompts: [], prose: [], files: [], truncated: false })
+  const titles = db.raw().query("SELECT length(title) AS n FROM session_passage WHERE uid = 't' AND title != ''").all() as Array<{ n: number }>
+  expect(titles.length).toBeGreaterThan(1)
+  for (const { n } of titles) expect(n).toBeLessThanOrEqual(4096)
+  expect(db.ftsSearch(`"${'x'.repeat(5000)}"`)).toEqual([])
+  expect(db.ftsSearch('"alpha beta"')).toEqual([])
+  expect(db.ftsSearch('"alpha"').map(h => h.uid)).toEqual(['t'])
+  db.close()
+})
+
+test('a passage trigger with the right name but a different body is refused', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nekyia-trigger-body-'))
+  const path = join(dir, 'index.db')
+  try {
+    IndexDb.open(path).close()
+    const damaged = new Database(path)
+    damaged.exec('DROP TRIGGER passage_insert; CREATE TRIGGER passage_insert AFTER INSERT ON session_passage BEGIN SELECT 1; END;')
+    damaged.close()
+    expect(() => IndexDb.open(path, false)).toThrow(/index search trigger does not match: passage_insert/)
+    expect(() => IndexDb.openExistingWritable(path)).toThrow(/index search trigger does not match: passage_insert/)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('an unstamped database that already has tables is refused and left untouched', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nekyia-foreign-'))
+  const path = join(dir, 'other.db')
+  try {
+    const foreign = new Database(path)
+    foreign.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES ('mine')")
+    foreign.close()
+    expect(() => IndexDb.open(path, false)).toThrow(/not a Nekyia index: .*left untouched/)
+    // Never the delete-and-reindex advice: this file may belong to something else.
+    expect(() => IndexDb.open(path, false)).not.toThrow(/delete/)
+    const check = new Database(path, { readonly: true })
+    expect((check.query("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map(r => r.name)).toEqual(['notes'])
+    check.close()
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('an existing empty database file is still initialised as an index', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nekyia-empty-'))
+  const path = join(dir, 'index.db')
+  try {
+    new Database(path).close()
+    const db = IndexDb.open(path, false)
+    try { expect(query(db, DEFAULT_CONFIG, {})).toEqual([]) } finally { db.close() }
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 })
