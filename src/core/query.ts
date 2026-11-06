@@ -359,7 +359,7 @@ function search(
       ...row,
       score: finite(score),
       collapsed: 0,
-      ...(shown ? { tier: shown.tier, clientLabel: shown.label } : {}),
+      ...(shown ? { tier: row.isArchived ? 'search' as const : shown.tier, clientLabel: shown.label } : {}),
       ...(shown?.launcher === undefined ? {} : { launcher: shown.launcher }),
     }
   })

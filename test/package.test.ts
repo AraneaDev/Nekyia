@@ -103,7 +103,7 @@ test('the package contains only publishable runtime material', () => {
   // launcher, and the launcher imports resolve-bun.mjs, which is not a bin
   // entry. Drop 'bin' here and the published package fails on its own import.
   expect(pkg.files).toEqual(['bin', 'src', 'README.md', 'LICENSE'])
-  expect(pkg.engines?.bun).toBe('>=1.1.0')
+  expect(pkg.engines?.bun).toBe('>=1.4.0')
   expect(Object.keys(pkg.dependencies ?? {}).sort()).toEqual(['ink', 'react'])
   expect(Object.keys(pkg.devDependencies ?? {}).sort()).toEqual([
     '@eslint/js', '@stryker-mutator/core', '@types/bun', '@types/react',

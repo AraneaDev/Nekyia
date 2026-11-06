@@ -3,7 +3,8 @@ import { DEFAULT_CONFIG } from '../src/config'
 import { runLast, type LastDependencies } from '../src/commands/last'
 import { buildAdapter } from '../src/core/adapter'
 import type { Adapter } from '../src/core/adapter'
-import type { Row } from '../src/core/query'
+import { query, type Row } from '../src/core/query'
+import { IndexDb } from '../src/core/db'
 import codebuffManifest from '../src/manifests/builtin/codebuff.json'
 import { validateManifest } from '../src/manifests/load'
 import type { ExecPlan } from '../src/types'
@@ -230,4 +231,58 @@ test('last reports client manifests it could not load at all', async () => {
 
   expect(code).toBe(1)
   expect(errors).toEqual(['could not load client manifests: manifest directory vanished'])
+})
+
+test('last resumes plain JSONL with a named resume launcher despite the manifest search tier', async () => {
+  const custom = buildAdapter(validateManifest({
+    schema: 1, id: 'custom', name: 'Custom', roots: ['/nonexistent'],
+    format: 'jsonl-transcript', tier: 'search', jsonl: { glob: '*.jsonl', variant: 'claude' },
+    launchers: {
+      a: { name: 'A', tier: 'resume', resume: { cmd: 'a', args: ['--resume', '{id}'] } },
+      b: { name: 'B', tier: 'search', brief: { cmd: 'b', args: ['{prompt}'] } },
+    },
+  }))
+  const db = IndexDb.open(':memory:')
+  const ref = { ...row({ client: 'custom', tier: 'search' }), sourcePaths: ['/synthetic/plain.jsonl'], fingerprint: 'plain' }
+  db.upsertRef(ref)
+  db.upsertDoc({ ref, prompts: ['synthetic prompt'], prose: [], files: [], truncated: false })
+  const plans: ExecPlan[] = []
+  const code = await runLast(dependencies({
+    openDb: () => db,
+    buildAdapters: () => ({ adapters: [custom], diagnostics: [] }),
+    query,
+    onPath: (command) => command === 'a',
+    runPlan: async (plan) => { plans.push(plan); return 0 },
+  }))
+  expect(code).toBe(0)
+  expect(plans[0]).toMatchObject({ kind: 'resume', cmd: 'a', args: ['--resume', 'new'] })
+})
+
+test('last briefs an archived session even when its launcher could resume a plain one', async () => {
+  // Launcher `a` can resume and brief. Only the archive provenance reaching
+  // the launch decision makes `last` choose the brief: an installed resume
+  // command cannot open an archive-only source.
+  const custom = buildAdapter(validateManifest({
+    schema: 1, id: 'custom', name: 'Custom', roots: ['/nonexistent'],
+    format: 'jsonl-transcript', tier: 'search', jsonl: { glob: '*.jsonl', variant: 'claude' },
+    launchers: {
+      a: { name: 'A', tier: 'resume', resume: { cmd: 'a', args: ['--resume', '{id}'] }, brief: { cmd: 'a', args: ['{prompt}'] } },
+      b: { name: 'B', tier: 'search', brief: { cmd: 'b', args: ['{prompt}'] } },
+    },
+  }))
+  const db = IndexDb.open(':memory:')
+  const ref = { ...row({ client: 'custom', tier: 'resume' }), sourcePaths: ['/synthetic/archived.jsonl.zst'], fingerprint: 'archived' }
+  db.upsertRef(ref)
+  db.upsertDoc({ ref, prompts: ['synthetic prompt'], prose: [], files: [], truncated: false })
+  const plans: ExecPlan[] = []
+  const code = await runLast(dependencies({
+    openDb: () => db,
+    buildAdapters: () => ({ adapters: [custom], diagnostics: [] }),
+    query,
+    loadConfig: () => ({ ...DEFAULT_CONFIG, launchers: { custom: 'a' } }),
+    onPath: (command) => command === 'a',
+    runPlan: async (plan) => { plans.push(plan); return 0 },
+  }))
+  expect(code).toBe(0)
+  expect(plans[0]).toMatchObject({ kind: 'brief', cmd: 'a' })
 })

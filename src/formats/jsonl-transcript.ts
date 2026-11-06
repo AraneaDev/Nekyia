@@ -8,6 +8,7 @@ import { MAX_SESSION_FILE_EVENTS, MAX_SESSION_FILES, isSafeNativeId, makeUid } f
 import type { Diagnostic, DialogueTurn, FileEvent, FileEventKind, SessionDoc, SessionRef } from '../types'
 import { collectPatchEntries, collectPaths, type PatchEntry } from './paths'
 import { userPromptText } from '../render'
+import { readTranscriptPrefix, transcriptChunks } from './transcript-stream'
 
 const HEAD_BYTES = 16 * 1024
 /**
@@ -245,7 +246,7 @@ function recordFileCalls(
  * Derives a safe native identifier from a given generic filename.
  */
 function nativeIdFromFilename(path: string): string {
-  const name = basename(path)
+  const name = basename(path).replace(/\.jsonl\.zst$/, '.jsonl')
   if (name.endsWith('.jsonl')) return name.slice(0, -'.jsonl'.length)
   return name.slice(0, name.length - extname(name).length)
 }
@@ -261,7 +262,7 @@ function nativeIdFromFilename(path: string): string {
  * last dash", so an unrelated file that happens to sit under the glob cannot
  * mint a session out of its own name.
  */
-const CODEX_ROLLOUT_ID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
+const CODEX_ROLLOUT_ID = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl(?:\.zst)?$/i
 
 /**
  * Extracts a Codex session identifier from a filename.
@@ -303,13 +304,6 @@ function warn(client: string, path: string | null, error: unknown): Diagnostic {
     path,
     message: error instanceof Error ? error.message : String(error),
   }
-}
-
-/**
- * Reads a specific number of leading bytes from a file.
- */
-async function readHead(path: string, maxBytes: number): Promise<string> {
-  return Bun.file(path).slice(0, maxBytes).text()
 }
 
 /**
@@ -714,7 +708,7 @@ async function rowsFromStream(
   }
 
   try {
-    for await (const chunk of Bun.file(path).stream()) {
+    for await (const chunk of transcriptChunks(path)) {
       await consume(decoder.decode(chunk, { stream: true }))
     }
     await consume(decoder.decode())
@@ -965,7 +959,7 @@ const CLAUDE_TOOL_KINDS: Record<string, FileEventKind> = {
  */
 function hydrateClaude(
   row: JsonObject,
-  overCap: boolean,
+  budget: AssistantBudget,
   prompts: string[],
   prose: string[],
   dialogue: DialogueTurn[],
@@ -997,7 +991,7 @@ function hydrateClaude(
     dialogue.push({ role: 'user', text: asked })
   } else {
     if (!text) return 0
-    if (!overCap) {
+    if (retainAssistant(budget, text)) {
       prose.push(text)
       dialogue.push({ role: 'assistant', text })
     }
@@ -1010,7 +1004,7 @@ function hydrateClaude(
  */
 function hydrateCodex(
   row: JsonObject,
-  overCap: boolean,
+  budget: AssistantBudget,
   prompts: string[],
   prose: string[],
   dialogue: DialogueTurn[],
@@ -1062,7 +1056,7 @@ function hydrateCodex(
   if (payload.role === 'assistant') {
     const text = textOfType(payload.content, 'output_text')
     if (!text) return 0
-    if (!overCap) {
+    if (retainAssistant(budget, text)) {
       prose.push(text)
       dialogue.push({ role: 'assistant', text })
     }
@@ -1076,7 +1070,7 @@ function hydrateCodex(
  */
 function hydrateGeneric(
   row: JsonObject,
-  overCap: boolean,
+  budget: AssistantBudget,
   prompts: string[],
   prose: string[],
   dialogue: DialogueTurn[],
@@ -1095,7 +1089,7 @@ function hydrateGeneric(
     dialogue.push({ role: 'user', text: asked })
   }
   else if (assistantRoles.has(role)) {
-    if (!overCap) {
+    if (retainAssistant(budget, text)) {
       prose.push(text)
       dialogue.push({ role: 'assistant', text })
     }
@@ -1103,7 +1097,24 @@ function hydrateGeneric(
   return 1
 }
 
-/** Reads line-per-record transcripts, either through a client-specific variant or a manifest-described generic shape. */
+/** Retained assistant text has a separate budget from source and prompt bytes. */
+interface AssistantBudget {
+  remaining: number
+  truncated: boolean
+}
+
+/** Budget assistant UTF-8 text independently of raw tool traffic; never split a message. */
+function retainAssistant(budget: AssistantBudget, text: string): boolean {
+  const bytes = Buffer.byteLength(text, 'utf8')
+  if (bytes > budget.remaining) {
+    budget.truncated = true
+    return false
+  }
+  budget.remaining -= bytes
+  return true
+}
+
+/** Streams plain and zstd-compressed transcripts without retaining tool output. */
 export const jsonlTranscript: FormatModule = {
   /**
    * Discovers JSONL transcripts matching the given manifest in the root directory.
@@ -1116,13 +1127,27 @@ export const jsonlTranscript: FormatModule = {
     }
 
     try {
-      const glob = new Glob(manifest.jsonl.glob)
-      for await (const path of glob.scan({ cwd: root, absolute: true, onlyFiles: true })) {
+      const paths = new Set<string>()
+      for (const pattern of [manifest.jsonl.glob, `${manifest.jsonl.glob}.zst`]) {
+        for await (const path of new Glob(pattern).scan({ cwd: root, absolute: true, onlyFiles: true })) {
+          paths.add(path)
+        }
+      }
+      const seen = new Set<string>()
+      const orderedPaths = [...paths].sort((a, b) =>
+        Number(a.endsWith('.jsonl.zst')) - Number(b.endsWith('.jsonl.zst')) || a.localeCompare(b))
+      for (const path of orderedPaths) {
+        // A compressed copy beside its plain transcript is the same session, and
+        // the plain one already won. Reading it anyway costs I/O, and a corrupt
+        // copy would warn, which marks the whole client non-authoritative and
+        // stops genuinely removed sessions from being marked missing.
+        if (path.endsWith('.jsonl.zst') && paths.has(path.slice(0, -'.zst'.length))) continue
         try {
           const file = Bun.file(path)
           const stat = await file.stat()
           const headBytes = manifest.jsonl.variant === 'codex' ? CODEX_HEAD_BYTES : HEAD_BYTES
-          const parsed = parseHead(await readHead(path, headBytes))
+          const { text: head, truncated: headTruncated } = await readTranscriptPrefix(path, headBytes)
+          const parsed = parseHead(head)
           if (parsed.malformed) diagnostics.push(warn(manifest.id, path, 'malformed JSONL row'))
           const ref = manifest.jsonl.variant === 'claude'
             ? discoverClaude(
@@ -1133,7 +1158,7 @@ export const jsonlTranscript: FormatModule = {
               parsed.rows.length === 0
                 && !parsed.malformed
                 && parsed.incompleteFinalLine
-                && stat.size > HEAD_BYTES,
+                && headTruncated,
               diagnostics,
             )
             : manifest.jsonl.variant === 'codex'
@@ -1142,11 +1167,15 @@ export const jsonlTranscript: FormatModule = {
                 path,
                 stat,
                 parsed.rows,
-                parsed.incompleteFinalLine && stat.size > headBytes,
+                parsed.incompleteFinalLine && headTruncated,
                 diagnostics,
               )
               : discoverGeneric(manifest, path, stat, parsed.rows, diagnostics)
-          if (ref) refs.push(ref)
+          if (ref && !seen.has(ref.uid)) {
+            seen.add(ref.uid)
+            if (path.endsWith('.jsonl.zst')) ref.tier = 'search'
+            refs.push(ref)
+          }
         } catch (error) {
           diagnostics.push(warn(manifest.id, path, error))
         }
@@ -1166,7 +1195,10 @@ export const jsonlTranscript: FormatModule = {
     }
     const path = ref.sourcePaths[0]
     if (!path) throw new Error(`session has no source path: ${ref.uid}`)
-    const overCap = (await Bun.file(path).stat()).size > config.maxFileBytes
+    const budget: AssistantBudget = {
+      remaining: Number.isFinite(config.maxFileBytes) ? Math.max(0, Math.floor(config.maxFileBytes)) : 0,
+      truncated: false,
+    }
     const prompts: string[] = []
     const prose: string[] = []
     // The same text as `prompts` and `prose`, kept in the order it was said.
@@ -1179,12 +1211,12 @@ export const jsonlTranscript: FormatModule = {
 
     const oversizedRow = await rowsFromStream(path, (row) => {
       turns += manifest.jsonl.variant === 'claude'
-        ? hydrateClaude(row, overCap, prompts, prose, dialogue, log)
+        ? hydrateClaude(row, budget, prompts, prose, dialogue, log)
         : manifest.jsonl.variant === 'codex'
-          ? hydrateCodex(row, overCap, prompts, prose, dialogue, log)
+          ? hydrateCodex(row, budget, prompts, prose, dialogue, log)
           : hydrateGeneric(
             row,
-            overCap,
+            budget,
             prompts,
             prose,
             dialogue,
@@ -1207,7 +1239,7 @@ export const jsonlTranscript: FormatModule = {
       fileEvents: ordered ? log.events : undefined,
       fileDetail: ordered ? 'ordered' : 'paths',
       fileEventsTruncated: log.eventsTruncated,
-      truncated: overCap || oversizedRow || log.filesTruncated,
+      truncated: budget.truncated || oversizedRow || log.filesTruncated,
     }
   },
 }

@@ -303,3 +303,34 @@ test('an empty session that read cleanly is still committed', async () => {
   expect(db.getRef(ref.uid)?.fingerprint).toBe('new-fingerprint')
   db.close()
 })
+
+test('a failed read of a newly archived session moves its source but keeps the entry and fingerprint', async () => {
+  const db = IndexDb.open(':memory:')
+  const plain: SessionRef = { ...r('claude', 'arch'), tier: 'resume', sourcePaths: ['/p/arch.jsonl'], fingerprint: 'old' }
+  db.upsertHydrated(doc(plain, 'kept prompt'))
+  const archived: SessionRef = { ...plain, tier: 'search', sourcePaths: ['/p/arch.jsonl.zst'], fingerprint: 'new' }
+  for (const failing of [
+    fakeAdapter('claude', () => { throw new Error('corrupt archive') }),
+    fakeAdapter('claude', (ref) => ({ ...doc(ref), prompts: [], degraded: true })),
+  ]) {
+    const diagnostics = await hydrateAll(db, DEFAULT_CONFIG, [failing], [archived])
+    expect(diagnostics.some(item => item.message.startsWith('hydrate failed'))).toBe(true)
+    const stored = db.getRef(archived.uid)!
+    expect(stored.sourcePaths).toEqual(['/p/arch.jsonl.zst'])
+    expect(stored.tier).toBe('search')
+    // The old fingerprint is what makes the next scan retry the archive.
+    expect(stored.fingerprint).toBe('old')
+    expect(db.ftsSearch('"kept"').map(hit => hit.uid)).toEqual([archived.uid])
+  }
+  db.close()
+})
+
+test('a failed read of a plain session leaves its stored source alone', async () => {
+  const db = IndexDb.open(':memory:')
+  const plain: SessionRef = { ...r('claude', 'plain'), tier: 'resume', sourcePaths: ['/p/plain.jsonl'], fingerprint: 'old' }
+  db.upsertHydrated(doc(plain))
+  await hydrateAll(db, DEFAULT_CONFIG, [fakeAdapter('claude', () => { throw new Error('io') })],
+    [{ ...plain, sourcePaths: ['/q/plain.jsonl'], fingerprint: 'new' }])
+  expect(db.getRef(plain.uid)!.sourcePaths).toEqual(['/p/plain.jsonl'])
+  db.close()
+})

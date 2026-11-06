@@ -10,7 +10,7 @@ const CLI_URL = new URL('../src/cli.ts', import.meta.url)
 
 const MISSING_BUN = `nekyia needs Bun, and no runnable 'bun' was found on your PATH.
 
-Install Bun 1.1.0 or newer from https://bun.sh, then run nekyia again.
+Install Bun 1.4.0 or newer from https://bun.sh, then run nekyia again.
 If Bun is already installed, add its bin directory to your PATH.`
 
 /** Re-execs the CLI through Bun, or explains why that is not possible. */

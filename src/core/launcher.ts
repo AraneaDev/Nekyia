@@ -1,6 +1,6 @@
 import type { Config } from '../config'
 import type { LauncherSpec, Manifest } from '../manifests/load'
-import type { Tier } from '../types'
+import { isArchivedSession, type ArchiveSource, type Tier } from '../types'
 import { resolveCommand } from './resume'
 
 /** Whether a command can be found on PATH. Injected so resolution never depends on the host in tests. */
@@ -125,9 +125,12 @@ export function resolveForLaunch(
   config: Config,
   onPath: OnPath,
   chosen?: string,
+  source?: ArchiveSource,
 ): ResolveForLaunch {
+  /** An installed launcher's resume command cannot restore an archive-only source. */
+  const effectiveTier = (tier: Tier): Tier => isArchivedSession(source) ? 'search' : tier
   const launchers = manifest.launchers
-  if (!launchers) return { kind: 'resolved', launcher: undefined, tier: rowTier }
+  if (!launchers) return { kind: 'resolved', launcher: undefined, tier: effectiveTier(rowTier) }
   const state = chosen !== undefined && launchers[chosen]
     ? { kind: 'chosen' as const, name: chosen, spec: launchers[chosen]! }
     : resolveLauncher(manifest, config, onPath)
@@ -135,8 +138,8 @@ export function resolveForLaunch(
     return { kind: 'unavailable', message: `none of ${state.options.join(', ')} is on PATH` }
   }
   if (state.kind === 'ask') return { kind: 'ask', options: state.options }
-  if (state.kind === 'chosen') return { kind: 'resolved', launcher: state.name, tier: state.spec.tier }
+  if (state.kind === 'chosen') return { kind: 'resolved', launcher: state.name, tier: effectiveTier(state.spec.tier) }
   // Unreachable: resolveLauncher only answers 'single' when manifest.launchers
   // is absent, and this line is reached only when it is present.
-  return { kind: 'resolved', launcher: undefined, tier: rowTier }
+  return { kind: 'resolved', launcher: undefined, tier: effectiveTier(rowTier) }
 }

@@ -1,5 +1,5 @@
 import type { Config } from '../config'
-import type { Diagnostic, SessionDoc, SessionRef } from '../types'
+import { isArchivedSession, type Diagnostic, type SessionDoc, type SessionRef } from '../types'
 import type { Adapter } from './adapter'
 import type { IndexDb } from './db'
 
@@ -61,6 +61,28 @@ function readNothing(doc: SessionDoc): boolean {
     && doc.prose.length === 0
     && doc.files.length === 0
     && (doc.dialogue?.length ?? 0) === 0
+}
+
+/**
+ * After a failed read, moves an archived session's source onto the kept entry.
+ *
+ * The previous document and fingerprint stay, so search keeps its copy and the
+ * next scan retries. Only an archive source is recorded: launch capability is
+ * derived from it, and a plain path left behind would offer a native resume that
+ * cannot open the archive.
+ */
+function keepArchiveCapability(db: IndexDb, ref: SessionRef, diagnostics: Diagnostic[]): void {
+  if (!isArchivedSession(ref)) return
+  try {
+    db.recordArchivedSource(ref)
+  } catch (error) {
+    diagnostics.push({
+      client: ref.client,
+      level: 'warn',
+      path: ref.sourcePaths[0] ?? null,
+      message: `could not record archive source: ${errorMessage(error)}`,
+    })
+  }
 }
 
 /**
@@ -145,6 +167,7 @@ export async function hydrateAll(
               path: ref.sourcePaths[0] ?? null,
               message: 'hydrate failed: nothing could be read, so the previous entry was kept',
             })
+            keepArchiveCapability(db, ref, diagnostics[index]!)
           } else {
             db.upsertHydrated(doc)
           }
@@ -155,6 +178,7 @@ export async function hydrateAll(
             path: ref.sourcePaths[0] ?? null,
             message: `hydrate failed: ${errorMessage(error)}`,
           })
+          keepArchiveCapability(db, ref, diagnostics[index]!)
         }
         completed[index] = true
         reportCompleted()

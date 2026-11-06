@@ -487,13 +487,11 @@ test('an index that never recorded an extraction is left alone rather than re-re
   db.close()
 })
 
-test('a reader change re-reads only the sessions that reader produced', () => {
-  // The fingerprint every built-in client was indexed under before Codex
-  // learned to read its branch. Any other value here re-reads that client's
-  // whole history on the next index, for a change it does not depend on.
+test('a JSONL reader change re-reads JSONL clients while other readers stay unchanged', () => {
+  // Non-JSONL clients retain their prior extraction fingerprint; changed
+  // JSONL readers must re-read existing sessions under the new text budget.
   const unchanged: Record<string, string> = {
     agy: '193270a4512140593f92d7fdbf9acccc77829973ba0c66ee5c83084f9eb39d14',
-    claude: '193734f9650a5629517a47ff29beccdd3d5ed2ba69dbafd9ff115a18932665aa',
     codebuff: 'c5734bcac2e7e0fcf5af7ff9adfd04898fa65149afd862bf0ec6c6bddc4ac413',
     copilot: '547eab08b75a76687ebed2ae90e32e8b872cf6df901d6f08e40c5850233d8df4',
     cursor: '37f82d7cfcd9bac607892d0dce3b5f6d742fb43440c043ac7caa635962269419',
@@ -509,7 +507,8 @@ test('a reader change re-reads only the sessions that reader produced', () => {
     return [manifest.id, extractionFingerprint(manifest, DEFAULT_CONFIG)]
   }))
 
-  const { codex, ...others } = now
+  const { codex, claude, ...others } = now
   expect(others).toEqual(unchanged)
   expect(codex).not.toBe(codexBefore)
+  expect(claude).not.toBe('193734f9650a5629517a47ff29beccdd3d5ed2ba69dbafd9ff115a18932665aa')
 })

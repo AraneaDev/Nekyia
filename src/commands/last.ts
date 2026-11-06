@@ -73,7 +73,7 @@ function planFor(
   // the picker uses, so `last` must run it too rather than guessing the
   // manifest's nominal tier. `resolveForLaunch` is the one place that
   // resolution and its refusal wording live.
-  const resolved = resolveForLaunch(adapter.manifest, row.tier, cfg, onPath)
+  const resolved = resolveForLaunch(adapter.manifest, row.tier, cfg, onPath, undefined, row)
   if (resolved.kind === 'unavailable') return { plan: null, reason: resolved.message }
   if (resolved.kind === 'ask') {
     return {

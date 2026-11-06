@@ -348,16 +348,20 @@ function parseSourcePaths(value: string): string[] {
  *
  * `sourcePaths` and `fingerprint` exist for discovery and hydration, which
  * resolve a session back to the files it came from. A search reads every row in
- * the index on every keystroke and reads neither field, so it selects the
- * narrower shape rather than paying a JSON parse per row for values it drops.
+ * the index on every keystroke, so it selects the narrower shape rather than
+ * parsing complete provenance in JavaScript. SQL projects only the archive
+ * capability from the first source path so presentation cannot enable resume.
  *
  * `truncated` and `degraded` are left out for the same reason: nothing a result
  * row renders mentions them, and only the handover, which reads one session at a
  * time through `getRef`, has anything to say about them. Leaving them out also
- * keeps the select list identical to the one a version 1 index answers, so a
+ * keeps the projection compatible with the columns in a version 1 index, so a
  * search over an index this build has not migrated yet still works.
  */
-export type SearchRef = Omit<StoredRef, 'sourcePaths' | 'fingerprint' | 'truncated' | 'degraded'>
+export type SearchRef = Omit<StoredRef, 'sourcePaths' | 'fingerprint' | 'truncated' | 'degraded'> & {
+  /** Derived from the first persisted source path, without materializing provenance in JS. */
+  isArchived?: boolean
+}
 
 /**
  * One indexed file facet, returned without transcript content.
@@ -383,12 +387,15 @@ export interface FileEventRow {
 /**
  * A subset of SessionRow optimized for search performance without JSON or hydration fields.
  */
-type SearchRow = Omit<SessionRow, 'source_paths' | 'fingerprint' | 'truncated' | 'degraded'>
+type SearchRow = Omit<SessionRow, 'source_paths' | 'fingerprint' | 'truncated' | 'degraded'> & { is_archived?: number }
 
 /** The columns `searchRefs` selects, in the order `SearchRow` declares them. */
 const SEARCH_COLUMNS = `
   uid, client, native_id, cwd, git_branch, title, started_at, ended_at,
-  turns, parent_native_id, tier, origin, missing
+  turns, parent_native_id, tier, origin, missing,
+  CASE WHEN json_valid(source_paths)
+    THEN COALESCE(substr(json_extract(source_paths, '$[0]'), -10) = '.jsonl.zst', 0)
+    ELSE 0 END AS is_archived
 `
 
 /** Maps the narrow index row onto the shared session shape, keeping snake_case confined to this module. */
@@ -407,6 +414,7 @@ function rowToSearchRef(row: SearchRow): SearchRef {
     tier: row.tier,
     origin: row.origin,
     missing: Boolean(row.missing),
+    ...(row.is_archived === undefined ? {} : { isArchived: Boolean(row.is_archived) }),
   }
 }
 
@@ -665,6 +673,20 @@ export class IndexDb {
    */
   upsertRef(ref: SessionRef): void {
     this.writeRef(ref)
+  }
+
+  /**
+   * Records that an already indexed session now exists only as an archive,
+   * without touching its document or fingerprint.
+   *
+   * For a session whose new archive could not be read: the previous document is
+   * still the best search copy, and the old fingerprint is what makes the next
+   * scan retry. But the old plain source path would keep offering a native
+   * resume that cannot open an archive, so the source and tier move now.
+   */
+  recordArchivedSource(ref: SessionRef): void {
+    this.db.query('UPDATE session SET source_paths = ?, tier = ? WHERE uid = ?')
+      .run(JSON.stringify(ref.sourcePaths), ref.tier, ref.uid)
   }
 
   /**

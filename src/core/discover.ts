@@ -35,11 +35,11 @@ const EXTRACTION_VERSION = 1
  * so every other reader hashes exactly what it did before and none of their
  * sessions is re-read for a change they cannot see.
  *
- * Codex 2: the branch is read from the session metadata.
+ * JSONL 3: archive discovery and retained assistant byte budgets.
  */
 function readerVersion(manifest: Manifest): number {
-  return manifest.format === 'jsonl-transcript' && manifest.jsonl?.variant === 'codex'
-    ? 2
+  return manifest.format === 'jsonl-transcript'
+    ? 3
     : EXTRACTION_VERSION
 }
 

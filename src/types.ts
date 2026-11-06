@@ -226,3 +226,14 @@ export function parseUid(uid: string): { client: ClientId; nativeId: string } {
     nativeId: uid.slice(separator + 1),
   }
 }
+
+/** Source capability independent of a launcher's mutable presentation tier. */
+export interface ArchiveSource {
+  isArchived?: boolean
+  sourcePaths?: readonly string[]
+}
+
+/** Full refs carry provenance; narrow search refs carry the equivalent derived flag. */
+export function isArchivedSession(source?: ArchiveSource): boolean {
+  return source?.isArchived === true || source?.sourcePaths?.[0]?.endsWith('.jsonl.zst') === true
+}

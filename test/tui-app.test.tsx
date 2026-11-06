@@ -2123,3 +2123,37 @@ test('an active range remains visible beside a long project name at eighty colum
     for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(80)
   } finally { view.unmount(); db.close() }
 })
+
+test.each([false, true])('an archived named-launcher JSONL session starts a brief after picker presentation overrides (both installed: %s)', async (bothInstalled) => {
+  const db = IndexDb.open(':memory:')
+  seed(db, {
+    uid: 'custom:c1', client: 'custom', nativeId: 'c1', tier: 'search',
+    sourcePaths: ['/synthetic/session.jsonl.zst'],
+  })
+  const custom = buildAdapter(validateManifest({
+    schema: 1, id: 'custom', name: 'Custom', roots: ['/nonexistent'],
+    format: 'jsonl-transcript', tier: 'search', jsonl: { glob: '*.jsonl', variant: 'claude' },
+    launchers: {
+      a: { name: 'A', tier: 'resume', resume: { cmd: 'a', args: ['--resume', '{id}'] }, brief: { cmd: 'a', args: ['{prompt}'] } },
+      b: { name: 'B', tier: 'search', brief: { cmd: 'b', args: ['{prompt}'] } },
+    },
+  }))
+  const plans: ExecPlan[] = []
+  const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[custom]}
+    onExec={(plan) => plans.push(plan)} onPath={(command) => command === 'a' || (bothInstalled && command === 'b')}
+    saveLauncher={async () => {}} {...opts} />)
+  view.stdin.write('\r')
+  await tick()
+  if (bothInstalled) {
+    expect(view.lastFrame()).toContain('Open with')
+    view.stdin.write('\r')
+    await tick()
+  }
+  expect(plans).toEqual([])
+  view.stdin.write('\r')
+  await tick()
+  expect(plans[0]?.kind).toBe('brief')
+  expect(plans[0]?.cmd).toBe('a')
+  view.unmount()
+  db.close()
+})

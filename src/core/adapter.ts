@@ -7,18 +7,20 @@ import { readSidecar, type SidecarEntry } from '../formats/prompt-sidecar'
 import { FORMAT_MODULES } from '../formats/registry'
 import type { CommandSpec, Manifest, ManifestSource } from '../manifests/load'
 import { expandRoot, loadManifests, renderArgs } from '../manifests/load'
-import type { Diagnostic, ExecPlan, Origin, SessionDoc, SessionRef, Tier } from '../types'
+import { isArchivedSession } from '../types'
+import type { ArchiveSource, Diagnostic, ExecPlan, Origin, SessionDoc, SessionRef, Tier } from '../types'
 
 /**
  * The part of a session a launch is planned from.
  *
- * `plan` renders only the native id and the recorded directory into a client's
- * command template. Asking for those two rather than a whole `SessionRef` lets
- * the search path plan a launch from rows that never read the provenance
- * columns, instead of carrying fields it would have to invent.
+ * `plan` renders the native id and recorded directory into a client's command
+ * template and checks the source's archive capability. Search rows carry a
+ * derived flag rather than the complete provenance needed for hydration.
  */
-export interface PlanTarget {
+export interface PlanTarget extends ArchiveSource {
   nativeId: string
+  /** Presentation only; source capability determines whether native resume is possible. */
+  tier?: Tier
   /** Null for a session that recorded no directory; `plan` then falls back to the manifest's own cwd. */
   cwd: string | null
 }
@@ -342,7 +344,10 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
 
         for (const item of local) {
           const current = selected.get(item.ref.uid)
-          if (!current || (!current.primary && item.primary)) selected.set(item.ref.uid, item)
+          const preferPlain = manifest.format === 'jsonl-transcript'
+            && current?.ref.sourcePaths[0]?.endsWith('.jsonl.zst')
+            && !item.ref.sourcePaths[0]?.endsWith('.jsonl.zst')
+          if (!current || (!current.primary && item.primary) || preferPlain) selected.set(item.ref.uid, item)
         }
       }
 
@@ -394,6 +399,7 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
         const source = commandSource(manifest, promptText, launcher)
         if (!source) return null
         const useResume = source.tier === 'resume' && !!source.resume && !promptText
+          && !isArchivedSession(ref)
         const spec = useResume ? source.resume! : source.brief
         if (!spec) return null
         const sessionCwd = ref.cwd

@@ -23,7 +23,14 @@ Nekyia indexes and searches past CLI agent sessions locally in your terminal usi
 bun install -g nekyia
 ```
 
-Needs [Bun](https://bun.sh/) 1.1 or newer. Then run `nek`.
+Needs [Bun](https://bun.sh/) 1.4 or newer. Then run `nek`.
+
+JSONL stores also include `.jsonl.zst` archives. Archives remain searchable and
+can supply handoff context; native resume requires a plain transcript. When both
+exist for one session, Nekyia prefers the plain file. JSONL `maxFileBytes` budgets
+retained assistant UTF-8 text, preserving complete messages and user prompts; raw
+tool traffic does not consume it. Oversized rows remain subject to the separate
+row safety limit. Hydration rejects sources exceeding 2 GiB decompressed.
 
 > **Nekyia** (Νέκυια) is the rite in the _Odyssey_ through which Odysseus calls up
 > the dead and asks them what they know. This tool does something less dramatic
@@ -55,7 +62,7 @@ them. Everything stays local, with no model-written summaries or tool-output ind
 
 ## Installation
 
-Nekyia requires [Bun](https://bun.sh/) 1.1 or newer. It runs on Bun, not on Node, and the
+Nekyia requires [Bun](https://bun.sh/) 1.4 or newer. It runs on Bun, not on Node, and the
 command says so plainly if Bun is missing rather than failing on an import.
 
 ### From npm
