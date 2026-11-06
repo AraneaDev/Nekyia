@@ -121,6 +121,27 @@ const SCHEMA_V1 = `
  * than a column repeats the previous SESSION_COLUMNS entry and adds the table
  * to `validateExistingSchema` behind the version that introduced it.
  */
+/**
+ * The triggers that keep `passage_fts` in step with `session_passage`.
+ *
+ * One definition serves both the migration that creates them and the validation
+ * that checks them, so a trigger with the right name but a different body (a
+ * wrong event, table or FTS operation) is refused rather than trusted. The text
+ * is the version 1.4.0 shipped, so indexes it converted keep matching.
+ */
+const PASSAGE_TRIGGER_SQL: Readonly<Record<string, string>> = {
+  passage_insert: `CREATE TRIGGER passage_insert AFTER INSERT ON session_passage BEGIN
+        INSERT INTO passage_fts(rowid, title, prompt, reply) VALUES (new.rowid, new.title, new.prompt, new.reply);
+      END`,
+  passage_delete: `CREATE TRIGGER passage_delete AFTER DELETE ON session_passage BEGIN
+        INSERT INTO passage_fts(passage_fts, rowid, title, prompt, reply)
+          VALUES ('delete', old.rowid, old.title, old.prompt, old.reply);
+      END`,
+  passage_session_delete: `CREATE TRIGGER passage_session_delete AFTER DELETE ON session BEGIN
+        DELETE FROM session_passage WHERE uid = old.uid;
+      END`,
+}
+
 const MIGRATIONS: Record<number, (db: Database) => void> = {
   /**
    * Migrates from schema version 0 to 1 (initial setup).
@@ -189,17 +210,8 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
       CREATE VIRTUAL TABLE passage_fts USING fts5(
         title, prompt, reply, content='session_passage', content_rowid='rowid', tokenize='porter unicode61'
       );
-      CREATE TRIGGER passage_insert AFTER INSERT ON session_passage BEGIN
-        INSERT INTO passage_fts(rowid, title, prompt, reply) VALUES (new.rowid, new.title, new.prompt, new.reply);
-      END;
-      CREATE TRIGGER passage_delete AFTER DELETE ON session_passage BEGIN
-        INSERT INTO passage_fts(passage_fts, rowid, title, prompt, reply)
-          VALUES ('delete', old.rowid, old.title, old.prompt, old.reply);
-      END;
-      CREATE TRIGGER passage_session_delete AFTER DELETE ON session BEGIN
-        DELETE FROM session_passage WHERE uid = old.uid;
-      END;
     `)
+    for (const sql of Object.values(PASSAGE_TRIGGER_SQL)) db.exec(sql)
     const turns = db.query('SELECT role, text FROM session_turn WHERE uid = ? ORDER BY ordinal')
     // Keep large text out of the eager read, including on Bun versions without SQLite iterators.
     const ids = db.query('SELECT uid FROM session_text').all() as Array<{ uid: string }>
@@ -238,12 +250,13 @@ const SESSION_COLUMNS: Record<number, string[]> = {
   5: [...SESSION_COLUMNS_V1, 'degraded', 'file_detail', 'file_events_truncated'],
 }
 
-/** The triggers that keep `passage_fts` in step with its content, and the table each fires on. */
-const PASSAGE_TRIGGERS: ReadonlyArray<readonly [string, string]> = [
-  ['passage_insert', 'session_passage'],
-  ['passage_delete', 'session_passage'],
-  ['passage_session_delete', 'session'],
-]
+/**
+ * Collapses SQL to a comparable form: SQLite keeps a trigger's text as written,
+ * so only whitespace and letter case may differ between equivalent definitions.
+ */
+function normalizedSql(sql: string): string {
+  return sql.replace(/\s+/g, ' ').replace(/\s*;\s*$/u, '').trim().toLowerCase()
+}
 
 /**
  * Reads the stamped schema version, or 0 for an index that has never been stamped.
@@ -499,6 +512,15 @@ export class IndexDb {
       // A fresh file (stamp 0) has nothing to check yet: the ladder creates it.
       const stamped = storedSchemaVersion(db)
       if (stamped >= MIN_SCHEMA_VERSION && stamped < SCHEMA_VERSION) IndexDb.validateExistingSchema(db)
+      // An index is stamped in the same transaction that creates its tables, so
+      // an unstamped file that already has tables is not one of ours, or is one
+      // this build cannot vouch for. Migrating it would write Nekyia's schema into
+      // someone else's database before anything refused it.
+      if (stamped === 0 && db.query("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' LIMIT 1").get()) {
+        // Not `schemaError`: its advice is to delete the file, which is the wrong
+        // thing to tell anyone about a database that may belong to something else.
+        throw new Error(`not a Nekyia index: ${db.filename || 'the file'} has tables but no schema version, so it was left untouched`)
+      }
 
       const index = new IndexDb(db)
       index.migrate()
@@ -566,11 +588,14 @@ export class IndexDb {
       // Passages reach `passage_fts` only through these triggers. Without one,
       // writes still commit while search silently stops seeing new or removed
       // text, so a missing trigger is as fatal as a missing table.
-      for (const [trigger, on] of PASSAGE_TRIGGERS) {
+      for (const [trigger, expected] of Object.entries(PASSAGE_TRIGGER_SQL)) {
         const found = db.query(
-          "SELECT 1 AS present FROM sqlite_master WHERE type = 'trigger' AND name = ? AND tbl_name = ?",
-        ).get(trigger, on)
+          "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+        ).get(trigger) as { sql: string | null } | null
         if (!found) throw schemaError(`index search trigger is missing: ${trigger}`, db)
+        if (normalizedSql(found.sql ?? '') !== normalizedSql(expected)) {
+          throw schemaError(`index search trigger does not match: ${trigger}`, db)
+        }
       }
     }
     return version

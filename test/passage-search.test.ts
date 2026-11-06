@@ -250,3 +250,42 @@ test('titles are split into bounded passages and an oversized title token is not
   expect(db.ftsSearch('"alpha"').map(h => h.uid)).toEqual(['t'])
   db.close()
 })
+
+test('a passage trigger with the right name but a different body is refused', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nekyia-trigger-body-'))
+  const path = join(dir, 'index.db')
+  try {
+    IndexDb.open(path).close()
+    const damaged = new Database(path)
+    damaged.exec('DROP TRIGGER passage_insert; CREATE TRIGGER passage_insert AFTER INSERT ON session_passage BEGIN SELECT 1; END;')
+    damaged.close()
+    expect(() => IndexDb.open(path, false)).toThrow(/index search trigger does not match: passage_insert/)
+    expect(() => IndexDb.openExistingWritable(path)).toThrow(/index search trigger does not match: passage_insert/)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('an unstamped database that already has tables is refused and left untouched', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nekyia-foreign-'))
+  const path = join(dir, 'other.db')
+  try {
+    const foreign = new Database(path)
+    foreign.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT); INSERT INTO notes (body) VALUES ('mine')")
+    foreign.close()
+    expect(() => IndexDb.open(path, false)).toThrow(/not a Nekyia index: .*left untouched/)
+    // Never the delete-and-reindex advice: this file may belong to something else.
+    expect(() => IndexDb.open(path, false)).not.toThrow(/delete/)
+    const check = new Database(path, { readonly: true })
+    expect((check.query("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map(r => r.name)).toEqual(['notes'])
+    check.close()
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('an existing empty database file is still initialised as an index', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nekyia-empty-'))
+  const path = join(dir, 'index.db')
+  try {
+    new Database(path).close()
+    const db = IndexDb.open(path, false)
+    try { expect(query(db, DEFAULT_CONFIG, {})).toEqual([]) } finally { db.close() }
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
