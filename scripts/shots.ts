@@ -53,6 +53,15 @@ const SHOTS: Shot[] = [
     settled: '\u25b8 the',
   },
   {
+    name: 'passage',
+    what: 'a quoted phrase matched inside a reply',
+    columns: 132, rows: 24,
+    // The phrase is in the conversation, not the title, so the preview has to
+    // show the passage it came from: the reason passage search exists.
+    keys: ['Tab', ':"delivery id"'],
+    settled: '\u25b8 "delivery id"',
+  },
+  {
     name: 'inspect',
     what: 'the history open and scrolled',
     columns: 132, rows: 34,
