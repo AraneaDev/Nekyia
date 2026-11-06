@@ -25,13 +25,6 @@ bun install -g nekyia
 
 Needs [Bun](https://bun.sh/) 1.4 or newer. Then run `nek`.
 
-JSONL stores also include `.jsonl.zst` archives. Archives remain searchable and
-can supply handoff context; native resume requires a plain transcript. When both
-exist for one session, Nekyia prefers the plain file. JSONL `maxFileBytes` budgets
-retained assistant UTF-8 text, preserving complete messages and user prompts; raw
-tool traffic does not consume it. Oversized rows remain subject to the separate
-row safety limit. Hydration rejects sources exceeding 2 GiB decompressed.
-
 > **Nekyia** (Νέκυια) is the rite in the _Odyssey_ through which Odysseus calls up
 > the dead and asks them what they know. This tool does something less dramatic
 > with old agent sessions: it brings back the useful context, and an account of
@@ -48,7 +41,7 @@ them. Everything stays local, with no model-written summaries or tool-output ind
 
 ## Features
 
-- **One Search Surface**: query Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode, Kilo Code, Codebuff, Freebuff, goose, and Antigravity histories together
+- **One Search Surface**: query Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode, Kilo Code, Codebuff, Freebuff, goose, and Antigravity histories together, including compressed `.jsonl.zst` transcripts
 - **Verified Resume**: attach to the selected session by ID only where that exact command was tested
 - **Deterministic Handovers**: start search-tier clients with every indexed user prompt, each message kept whole and in order, touched files, branch context, bounded assistant prose, and a note of whatever had to be left out
 - **Two-Phase Indexing**: discover cheap fingerprints first, then hydrate only sessions that changed
@@ -96,12 +89,20 @@ examples below use `nek`.
 
 ### Upgrading to 1.4
 
+1.4 needs Bun 1.4 or newer, for its built-in zstd support. Run `bun upgrade` first if
+`bun --version` reports something older.
+
 1.4 searches conversation passages and needs a newer index format. The first index run
 after upgrading converts the existing index from the content it already holds, so sessions
 whose original files are gone are kept. That run is `nek index`, or the picker's own
-refresh when the index is older than `autoReindexAfterHours`. Until then search still works, with the older
-ranking. The conversion is one-way: 1.3 and earlier cannot open the converted index. See
-[How it works](#how-it-works) for details.
+refresh when the index is older than `autoReindexAfterHours`. Until then search still
+works, with the older ranking. The conversion is one-way: 1.3 and earlier cannot open the
+converted index.
+
+The same run also re-reads every Claude Code and Codex session, because 1.4 keeps
+assistant replies that earlier versions dropped from long transcripts. Expect that first
+run to take longer than usual and the index to grow. See [How it works](#how-it-works)
+for details.
 
 ## Quick start
 
@@ -439,6 +440,12 @@ With one of them installed it uses that one. With both, the first Enter on one o
 chats asks, and ctrl+l flips the choice afterwards. Freebuff takes no prompt argument, so
 it cannot receive a handover; Codebuff can.
 
+Claude Code and Codex transcripts are also read when compressed as `.jsonl.zst`, for
+example by an archiving script. A compressed session is searchable and can seed a
+handover, but it is listed as Search tier: the clients themselves cannot reopen an
+archive, so Nekyia never offers native resume for one. When a session exists both plain
+and compressed, the plain file wins.
+
 The goose adapter was written from goose's published source and CLI reference rather
 than from a local install, so it is derived rather than observed. Its documented resume
 flag, `goose session --resume --session-id <id>`, is deliberately not wired up: this
@@ -455,6 +462,14 @@ to recover tool state or file snapshots, and sending a handover can cost tokens.
 Nekyia separates indexing into two phases. Discovery reads bounded metadata and stable
 fingerprints. Hydration runs only for new or changed sessions, streams or projects the
 relevant content, and commits metadata plus search facets atomically to SQLite.
+
+Plain and `.jsonl.zst` transcripts stream through the same parser; discovery reads only
+a bounded decompressed prefix, and hydration rejects a source over 2 GiB decompressed. For
+JSONL, `maxFileBytes` budgets the assistant text that is kept, not the raw transcript
+size, so large tool output no longer crowds replies out of search. User prompts are always
+kept whole, oversized rows stay under the separate row safety limit, and anything left out
+is reported as truncated. If an archive turns out to be damaged past its prefix, the
+previously indexed copy is kept and the next index run tries again.
 
 Search ranks bounded passages within each conversation, then returns one result per
 session or fork chain with evidence from its strongest matching passage. Long sessions
