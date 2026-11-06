@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/AraneaDev/Nekyia/compare/v1.3.2...v1.4.0) (2026-11-06)
+
+
+### Features
+
+* improve search relevance with matching passages ([#95](https://github.com/AraneaDev/Nekyia/issues/95)) ([c3ed407](https://github.com/AraneaDev/Nekyia/commit/c3ed4073a1f41b94de13fded49818607a429368a))
+* index compressed transcripts and retain bounded assistant text ([#94](https://github.com/AraneaDev/Nekyia/issues/94)) ([34de916](https://github.com/AraneaDev/Nekyia/commit/34de91676377cf01c94be06f117a5fe8f756edd7))
+
 ## [1.3.2](https://github.com/AraneaDev/Nekyia/compare/v1.3.1...v1.3.2) (2026-11-06)
 
 
