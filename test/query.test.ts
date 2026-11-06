@@ -108,6 +108,7 @@ test('the search path reads the narrow row shape and never resolves provenance',
   expect(rows).toHaveLength(1)
   // The picker searches on every keystroke, so the row it gets back must not
   // carry a field that costs a JSON parse per row and that nothing renders.
+  expect(rows[0]!.isArchived).toBe(false)
   expect(Object.keys(rows[0]!)).not.toContain('sourcePaths')
   expect(Object.keys(db.searchRefs()[0]!)).not.toContain('sourcePaths')
   expect(refReads).toBe(0)
@@ -546,5 +547,17 @@ test('related sessions reuse cycle-safe client-scoped chains with ambiguous IDs 
   expect(uids('unknown')).toEqual([])
   // Repeated membership reads are stable over the same caller-held snapshot.
   expect(uids('claude:b')).toEqual(['claude:a', 'claude:b'])
+  db.close()
+})
+
+test('archive capability survives narrow search rows and launcher presentation overlays', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { sourcePaths: ['/synthetic/a.jsonl.zst'], tier: 'search' })
+  const rows = query(db, DEFAULT_CONFIG, {
+    now: NOW,
+    presentation: new Map([['claude', { tier: 'resume' as const, label: 'custom' }]]),
+  })
+  expect(rows[0]).toHaveProperty('isArchived', true)
+  expect(rows[0]!.tier).toBe('search')
   db.close()
 })

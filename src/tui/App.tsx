@@ -629,7 +629,7 @@ export function App({
    * `nekyia last`.
    */
   function resolveRowLauncher(adapter: Adapter, row: NonNullable<typeof selectedRow>, chosen?: string): RowLauncher {
-    return resolveForLaunch(adapter.manifest, row.tier, liveCfg, pathCheck, chosen)
+    return resolveForLaunch(adapter.manifest, row.tier, liveCfg, pathCheck, chosen, row)
   }
 
   /**

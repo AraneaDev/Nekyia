@@ -385,9 +385,10 @@ test('archived sources cannot plan native resume but can hand off a brief', asyn
     brief: { cmd: 'claude', args: ['{prompt}'] },
   }))
   const ref = (await adapter.discover()).refs[0]!
-  const archived = { ...ref, tier: 'search' as const, sourcePaths: ['/synthetic/session.jsonl.zst'] }
+  const archived = { ...ref, tier: 'resume' as const, sourcePaths: ['/synthetic/session.jsonl.zst'] }
   expect(adapter.plan(archived)?.kind).not.toBe('resume')
   expect(adapter.plan(archived, 'earlier context')?.kind).toBe('brief')
+  expect(adapter.plan({ nativeId: ref.nativeId, cwd: ref.cwd, tier: 'resume', isArchived: true })?.kind).not.toBe('resume')
 })
 
 test('plain JSONL transcripts win over archived copies in an earlier configured root', async () => {
