@@ -21,6 +21,16 @@ export type Scope = string | null
  * silently counted as exactly this many.
  */
 export const SESSION_DISPLAY_LIMIT = 500
+/**
+ * How long the search waits for typing to pause before it runs, in milliseconds.
+ *
+ * A one- or two-letter prefix expands to nearly every term in a large index, and
+ * ranking that many hits costs a few hundred milliseconds. Run per keystroke,
+ * that work sits between each key and the next frame, so the field itself
+ * stutters. Waiting for a pause keeps the field echoing every key at once and
+ * skips the short, expensive prefixes a typed word passes through on the way.
+ */
+export const SEARCH_SETTLE_MS = 120
 const EMPTY_BOOKMARKS: ReadonlySet<string> = new Set()
 const TIME_PRESETS: readonly TimePreset[] = ['all', 'today', 'yesterday', '7d', '30d']
 
@@ -33,8 +43,19 @@ export interface SessionsState {
   rows: Row[]
   /** True when the search matched more sessions than `rows` can show. */
   overflowed: boolean
+  /** What the search field shows: every key, immediately. */
   text: string
-  setText: (text: string) => void
+  /**
+   * The text `rows` were searched with. Trails `text` while typing has not yet
+   * paused, and equals it whenever `pending` is false.
+   */
+  queryText: string
+  /** True while `rows` still answer an older `text` than the field shows. */
+  pending: boolean
+  /** Runs the search for the current text now, instead of waiting for the pause. */
+  settle: () => void
+  /** `immediate` skips the pause, for text set as a whole rather than typed. */
+  setText: (text: string, immediate?: boolean) => void
   scope: Scope
   setScope: (scope: Scope) => void
   /** Narrows to the selected session's project, or widens back to everything. */
@@ -119,6 +140,7 @@ function initialScope(db: IndexDb, cfg: Config, snapshot: SessionSnapshot, cwd: 
 /** Query state shared by the picker and its keyboard bindings. */
 export function useSessions(
   db: IndexDb, cfg: Config, cwd: string, presentation?: Map<string, Presentation>, now?: number, initial?: PickerRestore, bookmarks: ReadonlySet<string> = EMPTY_BOOKMARKS, clock: () => number = () => now ?? Date.now(),
+  settleMs = 0,
 ): SessionsState {
   // The picker holds one index handle for its whole run, so the session table is
   // read once here and every keystroke reuses those rows and the fork chains
@@ -159,6 +181,21 @@ export function useSessions(
   }, [indexedClients, hiddenClientsKey])
 
   const [text, setTextState] = useState(initial?.text ?? '')
+  // With no pause configured the query follows the field on every key, exactly
+  // as it did before the pause existed, so the state below is only consulted
+  // when one is.
+  const deferring = Number.isFinite(settleMs) && settleMs > 0
+  const [settledText, setSettledText] = useState(text)
+  const queryText = deferring ? settledText : text
+  const pending = queryText !== text
+  const textRef = useRef(text)
+  textRef.current = text
+  useEffect(() => {
+    if (!deferring || settledText === text) return
+    const timer = setTimeout(() => { setSettledText(text); setSelectedState(0) }, settleMs)
+    return () => clearTimeout(timer)
+  }, [deferring, settleMs, text, settledText])
+  const settle = useCallback(() => { setSettledText(textRef.current); setSelectedState(0) }, [])
   const [filters, setFilters] = useState<PickerFilters>(() => initial?.filters ?? {
     ...clearedFilters(), scope: initialScope(db, queryConfig, snapshot, cwd),
   })
@@ -176,8 +213,8 @@ export function useSessions(
     matchMode: 'prefix-last' as const, includeMissing: true, presentation, now: selectionNow,
   }), [selectionNow, bookmarks, presentation, cwd])
   const found = useMemo(() => querySnapshot(db, queryConfig, snapshot, {
-    ...options(text, filters), limit: SESSION_DISPLAY_LIMIT + 1,
-  }), [db, queryConfig, snapshot, options, text, filters])
+    ...options(queryText, filters), limit: SESSION_DISPLAY_LIMIT + 1,
+  }), [db, queryConfig, snapshot, options, queryText, filters])
   const overflowed = found.length > SESSION_DISPLAY_LIMIT
   const rows = useMemo(() => found.slice(0, SESSION_DISPLAY_LIMIT), [found])
   const [selectedState, setSelectedState] = useState(() => restoreSelection(
@@ -202,7 +239,12 @@ export function useSessions(
   const update = useCallback((fn: (f: PickerFilters) => PickerFilters) => {
     setFilters(fn); setSelectedState(0)
   }, [])
-  const setText = useCallback((value: string) => { setTextState(value); setSelectedState(0) }, [])
+  const setText = useCallback((value: string, immediate = false) => {
+    setTextState(value); setSelectedState(0)
+    // An emptied field lists everything, which needs no text search and so has
+    // nothing worth waiting to skip.
+    if (immediate || !value) setSettledText(value)
+  }, [])
   const setScope = useCallback((value: Scope) => update(f => ({...f,scope:value})), [update])
   const toggleScope = useCallback(() => update(f => ({...f,scope:f.scope !== null ? null :
     rowsRef.current[selectedRef.current]?.cwd || cwd || null})), [update,cwd])
@@ -225,6 +267,6 @@ export function useSessions(
   const countMatches = useCallback((value:string,f:PickerFilters) => querySnapshot(db,queryConfig,snapshot,{
     ...options(value,f),limit:1,
   }).length,[db,queryConfig,snapshot,options])
-  return {rows,overflowed,text,setText,scope,setScope,toggleScope,client,setClient,clientCycle,cycleClient,
+  return {rows,overflowed,text,queryText,pending,settle,setText,scope,setScope,toggleScope,client,setClient,clientCycle,cycleClient,
     timePreset,activeTimeRange,cycleTimePreset,clearTimePreset,selected,setSelected,move,filters,applyFilters,snapshot,countMatches}
 }

@@ -535,6 +535,42 @@ test('filter changes and non-finite terminal height never activate a stale row',
   db.close()
 })
 
+test('Enter pressed before a settling search resumes the session the typed text matches', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', title: 'alpha', endedAt: NOW })
+  seed(db, { uid: 'claude:b', nativeId: 'b', title: 'beta', endedAt: NOW - 1000 })
+  const plans: ExecPlan[] = []
+  const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={(plan) => plans.push(plan)} searchSettleMs={10_000} {...opts} />)
+  await tick()
+  // Without settling first, Enter would land on alpha, the top row before the search.
+  view.stdin.write('beta')
+  await tick()
+  expect(view.lastFrame()).toContain('beta')
+  view.stdin.write('\r')
+  await tick()
+  expect(plans[0]?.args).toEqual(['--resume', 'b'])
+  view.unmount()
+  db.close()
+})
+
+test('a settling search keeps the field responsive and fills the list once typing pauses', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:a', nativeId: 'a', title: 'alpha' })
+  seed(db, { uid: 'claude:b', nativeId: 'b', title: 'beta' })
+  const view = render(<App db={db} cfg={DEFAULT_CONFIG} adapters={adapters} onExec={() => {}} searchSettleMs={60} {...opts} />)
+  await tick()
+  view.stdin.write('bet')
+  await tick(10)
+  // The typed text shows straight away while the earlier rows are still listed.
+  expect(view.lastFrame()).toContain('bet')
+  expect(view.lastFrame()).toContain('alpha')
+  await tick(120)
+  expect(view.lastFrame()).not.toContain('alpha')
+  expect(view.lastFrame()).toContain('beta')
+  view.unmount()
+  db.close()
+})
+
 test('adapter planning failures are contained in the picker', async () => {
   const db = IndexDb.open(':memory:')
   seed(db)

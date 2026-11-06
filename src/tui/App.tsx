@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Box, Text, useApp, useInput, useStdin } from 'ink'
+import { Box, Text, useApp, useInput, useStdin, type Key } from 'ink'
 import { configDir, saveLauncherChoice, type Config } from '../config'
 import { canBrief, type Adapter } from '../core/adapter'
 import { buildBrief } from '../core/brief'
@@ -427,6 +427,12 @@ export interface AppProps {
   onStateChange?: (state: PickerRestore) => void
   initialNotice?: string
   bookmarkStore?: BookmarkStore
+  /**
+   * How long the search waits for typing to pause, in milliseconds. 0, the
+   * default, searches on every key; the interactive picker passes
+   * `SEARCH_SETTLE_MS` so a large index never stalls the field.
+   */
+  searchSettleMs?: number
 }
 
 /** The picker: search, scoping, client filtering, history inspection, and launch. */
@@ -434,7 +440,7 @@ export function App({
   db, cfg, adapters, cwd, now, onExec, onReindex, clipboard,
   clipboardFactory = createHostClipboard, rows, columns, indexedAt,
   checkHandoffPlan = checkPlan, checkResumePlan = checkPlan, onPath, saveLauncher = saveLauncherChoice,
-  initialState, onStateChange, initialNotice, bookmarkStore: storeIn, clock,
+  initialState, onStateChange, initialNotice, bookmarkStore: storeIn, clock, searchSettleMs = 0,
 }: AppProps) {
   const { exit } = useApp()
   const {stdin}=useStdin()
@@ -464,7 +470,7 @@ export function App({
   )
   /** Which client to ask about, and which of its options is highlighted, while the picker waits on an answer. */
   const [launcherAsk, setLauncherAsk] = useState<{ client: string; uid:string; options: string[]; index: number } | null>(null)
-  const sessions = useSessions(db, cfg, cwd, shown, now, initialState, bookmarkUids, clock)
+  const sessions = useSessions(db, cfg, cwd, shown, now, initialState, bookmarkUids, clock, searchSettleMs)
   const readerAllowed=readerUid===null||sessions.snapshot.some(ref=>ref.uid===readerUid&&!cfg.hiddenClients?.includes(ref.client))
   const readerExtras=useMemo(()=>{
     if(!readerUid||!readerAllowed)return []
@@ -541,7 +547,9 @@ export function App({
   // rather than racing the client for the terminal.
   const pendingCopy = useRef<Promise<void> | null>(null)
   const rich=useMemo(()=>selectedRow?readSessionDetail(db,selectedRow.uid):null,[db,selectedRow?.uid])
-  const expression=compileSearch(sessions.text,'prefix-last')
+  // Evidence follows the text the rows were searched with, not the field, so a
+  // snippet is never read for a query whose rows are not on screen yet.
+  const expression=compileSearch(sessions.queryText,'prefix-last')
   const matchingUid=selectedRow?.matchedUid??selectedRow?.uid
   const matchingDetail=useMemo(()=>matchingUid&&expression?readSessionDetail(db,matchingUid):null,[db,matchingUid,expression])
   const evidence=useMemo(()=>matchingUid&&expression?readMatchEvidence(db,matchingUid,expression,matchingDetail?.turns??[]):null,[db,matchingUid,expression,matchingDetail])
@@ -549,6 +557,11 @@ export function App({
     columns: layout.previewWidth,
     maxLines: summaryRows,
   }), [selectedRow, rich, evidence, layout.previewWidth, summaryRows])
+  // Each suggestion is a whole extra search, so they are worked out once per
+  // settled query and filter set, not on every render the empty list sits through.
+  const noRows=sessions.rows.length===0
+  const suggestions=useMemo(()=>noRows&&!sessions.pending?emptySuggestions({text:sessions.queryText,filters:sessions.filters},sessions.countMatches):[],
+    [noRows,sessions.pending,sessions.queryText,sessions.filters,sessions.countMatches])
   useEffect(()=>{
     onStateChange?.({text:sessions.text,filters:sessions.filters,selectedUid:selectedRow?.uid??null,selectedIndex:sessions.selected,
       listTop:listWindow(sessions.rows,sessions.selected,listHeight,layout.listWidth,layout.mode!=='compact',bookmarkUids)[0],reader:reading?readerState:null,
@@ -889,15 +902,36 @@ export function App({
     else if(id==='bookmark'&&selectedRow)void toggleBookmark(selectedRow.uid)
     else if(id==='manage-bookmarks')setMode('bookmarks')
     else if(id==='filters')setMode('filters')
-    else if(id==='clear-search')sessions.setText('')
+    else if(id==='clear-search')sessions.setText('',true)
     else if(id==='refresh')requestRefresh()
     else if(id==='stats'){
       if(statsAvailable)setStatsVisible(current=>!current)
       else announce('Stats need 140 columns and 18 rows')
     }
   }
-  useInput((input, key) => {
+  // A key that acts on the list while the search is still waiting for typing to
+  // pause would act on rows that are about to be replaced: Enter straight after
+  // the last letter would resume whatever matched the text before it. Such a key
+  // settles the search first and is handled again once the new rows render.
+  const replay = useRef<{ input: string; key: Key } | null>(null)
+  useEffect(() => {
+    const deferred = replay.current
+    if (!deferred || sessions.pending) return
+    replay.current = null
+    handleInput(deferred.input, deferred.key)
+  })
+  /** True for the keys that only edit the search field, which never need settled rows. */
+  const editsSearch = (input: string, key: Key) =>
+    key.backspace || key.delete || Boolean(input && !key.ctrl && !key.meta && !key.escape && !key.return && !key.tab
+      && !key.upArrow && !key.downArrow && !key.leftArrow && !key.rightArrow && !key.pageUp && !key.pageDown)
+  /** The picker's keyboard handling, reachable both from Ink and from a replayed key. */
+  function handleInput(input: string, key: Key) {
     if (executing.current) return
+    if (sessions.pending && !(key.ctrl && input === 'c') && !editsSearch(input, key)) {
+      replay.current = { input, key }
+      sessions.settle()
+      return
+    }
     if (key.ctrl && input === 'c') { exit(); return }
     if(reading&&!helpOpen&&(key.ctrl&&(input==='d'||input==='u'))){
       if(input==='d')sessions.cycleTimePreset();else sessions.clearTimePreset();setHelpOpen(false);setMode(null);return
@@ -974,7 +1008,8 @@ export function App({
     if (input && !key.ctrl && !key.meta) {
       sessions.setText(boundedDisplayText(`${sessions.text}${input}`, SEARCH_COLUMNS))
     }
-  })
+  }
+  useInput(handleInput)
 
   /** Dismisses the current overlay without resetting committed browse state. */
   const close=()=>{setHelpOpen(false);setMode(null)}
@@ -1042,9 +1077,8 @@ export function App({
   const actionItems=actionsFor({hasSelection:Boolean(selectedRow),canResume:Boolean(selectedRow&&(native||resolved?.kind==='ask')&&!launchReason),resumeReason:launchReason??(!native&&resolved?.kind!=='ask'?'Use Start fresh with context':null),
     canHandoff:Boolean(selectedRow&&(contextReason===null||handoffTargets.length)),handoffReason:contextReason,hasMatch:Boolean(evidence),hasPrompt:Boolean(rich?.latestUser),hasCommand:native&&!launchReason,
     bookmarked:Boolean(selectedRow&&bookmarkUids.has(selectedRow.uid)),hasQuery:Boolean(sessions.text),refreshing:!onReindex,statsVisible,statsAvailable}).map(item=>item.id==='resume'&&resolved?.kind==='ask'?{...item,label:'Choose launcher'}:item)
-  const suggestions=!sessions.rows.length?emptySuggestions({text:sessions.text,filters:sessions.filters},sessions.countMatches):[]
   if(mode==='actions'&&suggestions.length)return <Menu title="Actions — widen search" {...helpProps} items={[...suggestions.map((item,index)=>({id:`suggestion:${index}`,label:item.label})),...actionItems]} rows={terminalHeight} columns={terminalWidth} onClose={close} onSelect={id=>{
-    if(id.startsWith('suggestion:')){const item=suggestions[Number(id.split(':')[1])];if(item){sessions.setText(item.text);sessions.applyFilters(item.filters);close()}}
+    if(id.startsWith('suggestion:')){const item=suggestions[Number(id.split(':')[1])];if(item){sessions.setText(item.text,true);sessions.applyFilters(item.filters);close()}}
     else dispatchAction(id as ActionId)
   }}/>
   if(mode==='actions')return <Actions items={actionItems} {...helpProps} rows={terminalHeight} columns={terminalWidth} onAction={dispatchAction} onClose={close}/>
@@ -1069,7 +1103,7 @@ export function App({
   if(mode==='chain'&&selectedRow){
     const members=chainMembers(sessions.snapshot,selectedRow.uid).filter(ref=>!cfg.hiddenClients?.includes(ref.client))
     const range=sessions.activeTimeRange
-    const matching=new Set(querySnapshot(db,cfg,sessions.snapshot,{text:sessions.text,matchMode:'prefix-last',cwd:sessions.scope??undefined,client:sessions.client,...range,
+    const matching=new Set(querySnapshot(db,cfg,sessions.snapshot,{text:sessions.queryText,matchMode:'prefix-last',cwd:sessions.scope??undefined,client:sessions.client,...range,
       branch:sessions.filters.branch,file:sessions.filters.file?.exact?undefined:sessions.filters.file?.path,exactFile:sessions.filters.file?.exact?resolveFacetPath(sessions.filters.file.path,cwd)??undefined:undefined,
       bookmarkedUids:sessions.filters.bookmarkedOnly?bookmarkUids:undefined,includeMissing:true,collapse:false,now}).map(row=>row.uid))
     return <ChainPicker {...helpProps} items={members.map(ref=>({...ref,matchesFilters:matching.has(ref.uid),parentLabel:ref.parentNativeId?`parent ${ref.parentNativeId}${members.filter(member=>member.nativeId===ref.parentNativeId).length>1?' (ambiguous)':members.some(member=>member.nativeId===ref.parentNativeId)?'':' (unknown)'}`:'root'}))}
@@ -1117,7 +1151,7 @@ export function App({
   // displaced and Filters still fits beside it at eighty columns.
   const primaryLabel=primary?.label==='Resume session'?'Resume':primary?.label==='Start fresh with context'?'Start fresh':primary?.label
   const keys:[string,string][]=[...(primaryLabel&&selectedRow?[['enter',primaryLabel]] as [string,string][]:[]),['ctrl+k','Actions'],['ctrl+g','Filters'],['F1','Help'],['ctrl+o','History'],...(statsAvailable?[['ctrl+s','Stats']] as [string,string][]:[]),['esc','quit']]
-  const list=<List rows={sessions.rows} selected={sessions.selected} height={listHeight} now={now} columns={layout.listWidth} query={sessions.text} bookmarks={bookmarkUids} wrapSelected={layout.mode!=='compact'}/>
+  const list=<List rows={sessions.rows} selected={sessions.selected} height={listHeight} now={now} columns={layout.listWidth} query={sessions.queryText} bookmarks={bookmarkUids} wrapSelected={layout.mode!=='compact'}/>
   const quick=<Preview lines={detail} maxLines={summaryRows}/>
   const availabilityText = resolved?.kind === 'ask' ? 'Choose launcher'
     : resolved?.kind === 'resolved' && resolved.tier === 'search'
