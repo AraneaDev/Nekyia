@@ -676,6 +676,20 @@ export class IndexDb {
   }
 
   /**
+   * Records that an already indexed session now exists only as an archive,
+   * without touching its document or fingerprint.
+   *
+   * For a session whose new archive could not be read: the previous document is
+   * still the best search copy, and the old fingerprint is what makes the next
+   * scan retry. But the old plain source path would keep offering a native
+   * resume that cannot open an archive, so the source and tier move now.
+   */
+  recordArchivedSource(ref: SessionRef): void {
+    this.db.query('UPDATE session SET source_paths = ?, tier = ? WHERE uid = ?')
+      .run(JSON.stringify(ref.sourcePaths), ref.tier, ref.uid)
+  }
+
+  /**
    * Drops old document contents and reconstructs full-text search entries, turns, and file events.
    */
   private writeDoc(doc: SessionDoc): void {

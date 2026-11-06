@@ -1851,3 +1851,61 @@ test('archive decoder failure preserves the last searchable document and fingerp
     }
   })
 })
+
+test('a BOM-prefixed transcript whose first row outgrows the head still falls back to its filename', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'projects', 'synthetic')
+    mkdirSync(directory, { recursive: true })
+    const id = '22222222-3333-4444-5555-666666666666'
+    const row = JSON.stringify({ type: 'user', sessionId: id, cwd: '/w', message: { role: 'user', content: 'x'.repeat(40 * 1024) } })
+    // Decoding drops the three BOM bytes, so the decoded head is shorter than
+    // the bytes read; the head must still count as cut off.
+    writeFileSync(join(directory, `${id}.jsonl`), Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(`${row}\n`)]))
+    const { refs } = await jsonlTranscript.discover(claude, root)
+    expect(refs.map(ref => ref.uid)).toEqual([`claude:${id}`])
+  })
+})
+
+test('a transcript prefix knows an exact-length file from a longer one', async () => {
+  await inTempDir(async (root) => {
+    const { readTranscriptPrefix } = await import('../src/formats/transcript-stream')
+    for (const [name, compress] of [['exact.jsonl', false], ['exact.jsonl.zst', true]] as const) {
+      const exact = join(root, name)
+      writeFileSync(exact, compress ? Bun.zstdCompressSync('0123456789') : '0123456789')
+      expect(await readTranscriptPrefix(exact, 10)).toEqual({ text: '0123456789', truncated: false })
+      const longer = join(root, `longer-${name}`)
+      writeFileSync(longer, compress ? Bun.zstdCompressSync('0123456789A') : '0123456789A')
+      expect(await readTranscriptPrefix(longer, 10)).toEqual({ text: '0123456789', truncated: true })
+    }
+  })
+})
+
+test('a head read stops before a corrupt tail that full decompression would reach', async () => {
+  await inTempDir(async (root) => {
+    const { readTranscriptHead, transcriptChunks } = await import('../src/formats/transcript-stream')
+    // Barely compressible, so the archive spans many file reads, then garbage.
+    // A bounded read cancels long before the garbage; an eager one throws on it.
+    const noise = Array.from({ length: 400_000 }, (_, i) => ((i * 2654435761) >>> 0).toString(36)).join(' ')
+    const path = join(root, 'tail.jsonl.zst')
+    writeFileSync(path, Buffer.concat([Buffer.from(Bun.zstdCompressSync(`bounded head\n${noise}`)), Buffer.alloc(4096, 0x5a)]))
+    expect(await readTranscriptHead(path, 12)).toBe('bounded head')
+    const drain = async () => { for await (const _chunk of transcriptChunks(path)) { /* drain */ } }
+    await expect(drain()).rejects.toThrow()
+  })
+})
+
+test('a corrupt compressed copy beside its plain transcript is not read', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'projects', 'synthetic')
+    mkdirSync(directory, { recursive: true })
+    const id = '33333333-4444-5555-6666-777777777777'
+    writeJsonl(join(directory, `${id}.jsonl`), [
+      { type: 'user', sessionId: id, cwd: '/w', timestamp: '2026-01-01T00:00:00Z', message: { role: 'user', content: 'plain copy' } },
+    ])
+    writeFileSync(join(directory, `${id}.jsonl.zst`), new Uint8Array([1, 2, 3]))
+    const { refs, diagnostics } = await jsonlTranscript.discover(claude, root)
+    expect(refs.map(ref => ref.sourcePaths[0])).toEqual([join(directory, `${id}.jsonl`)])
+    // Any warning would mark the client non-authoritative for missing-session detection.
+    expect(diagnostics.filter(item => item.level !== 'ok')).toEqual([])
+  })
+})

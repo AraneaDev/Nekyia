@@ -8,7 +8,7 @@ import { MAX_SESSION_FILE_EVENTS, MAX_SESSION_FILES, isSafeNativeId, makeUid } f
 import type { Diagnostic, DialogueTurn, FileEvent, FileEventKind, SessionDoc, SessionRef } from '../types'
 import { collectPatchEntries, collectPaths, type PatchEntry } from './paths'
 import { userPromptText } from '../render'
-import { readTranscriptHead, transcriptChunks } from './transcript-stream'
+import { readTranscriptPrefix, transcriptChunks } from './transcript-stream'
 
 const HEAD_BYTES = 16 * 1024
 /**
@@ -1137,12 +1137,16 @@ export const jsonlTranscript: FormatModule = {
       const orderedPaths = [...paths].sort((a, b) =>
         Number(a.endsWith('.jsonl.zst')) - Number(b.endsWith('.jsonl.zst')) || a.localeCompare(b))
       for (const path of orderedPaths) {
+        // A compressed copy beside its plain transcript is the same session, and
+        // the plain one already won. Reading it anyway costs I/O, and a corrupt
+        // copy would warn, which marks the whole client non-authoritative and
+        // stops genuinely removed sessions from being marked missing.
+        if (path.endsWith('.jsonl.zst') && paths.has(path.slice(0, -'.zst'.length))) continue
         try {
           const file = Bun.file(path)
           const stat = await file.stat()
           const headBytes = manifest.jsonl.variant === 'codex' ? CODEX_HEAD_BYTES : HEAD_BYTES
-          const head = await readTranscriptHead(path, headBytes)
-          const headTruncated = Buffer.byteLength(head, 'utf8') >= headBytes
+          const { text: head, truncated: headTruncated } = await readTranscriptPrefix(path, headBytes)
           const parsed = parseHead(head)
           if (parsed.malformed) diagnostics.push(warn(manifest.id, path, 'malformed JSONL row'))
           const ref = manifest.jsonl.variant === 'claude'
