@@ -52,7 +52,7 @@ them. Everything stays local, with no model-written summaries or tool-output ind
 - **Verified Resume**: attach to the selected session by ID only where that exact command was tested
 - **Deterministic Handovers**: start search-tier clients with every indexed user prompt, each message kept whole and in order, touched files, branch context, bounded assistant prose, and a note of whatever had to be left out
 - **Two-Phase Indexing**: discover cheap fingerprints first, then hydrate only sessions that changed
-- **Fast Local Search**: SQLite FTS5 combines weighted prompt relevance with recency decay
+- **Fast Local Search**: SQLite FTS5 ranks the best-matching passage of each conversation, blends in recency, and supports quoted phrases, while typing stays responsive on large indexes
 - **Exact File History**: ask which sessions touched one file, resolved against each session's own directory
 - **Directory Timelines**: see every file operation recorded under a directory, grouped by session, with each path marked against what git already has
 - **Interactive and Scriptable**: use the virtualized Ink picker or plain, JSON-capable CLI commands
@@ -93,6 +93,15 @@ bun link
 
 All three install paths expose `nekyia` and the shorter `nek`, which do the same thing. The
 examples below use `nek`.
+
+### Upgrading to 1.4
+
+1.4 searches conversation passages and needs a newer index format. The first index run
+after upgrading converts the existing index from the content it already holds, so sessions
+whose original files are gone are kept. That run is `nek index`, or the picker's own
+refresh when the index is older than `autoReindexAfterHours`. Until then search still works, with the older
+ranking. The conversion is one-way: 1.3 and earlier cannot open the converted index. See
+[How it works](#how-it-works) for details.
 
 ## Quick start
 
@@ -207,10 +216,17 @@ and client. Changing the range resets the cursor and closes the history.
 
 ![The Nekyia picker: a list of sessions from several agent CLIs, and beneath it the selected session's directory, branch, prompts and touched files](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/picker.svg)
 
-Typing filters as you go. The unfinished last word matches prefixes: `retry ten`
-finds `tenant`; a trailing space or punctuation completes the word. CLI searches
-keep their literal defaults. The selected preview shows native search evidence from
-the title, prompt, or reply, including matches in related sessions. Inspecting a
+Typing filters as you go. The search runs once you pause for a moment, so the field
+keeps up however fast you type. The unfinished last word matches prefixes once it has
+three characters: `retry ten` finds `tenant`, while `ui` or `db` match only those
+words until you type more. Chinese, Japanese and Korean words match prefixes from the
+first character. A trailing space or punctuation completes the word. Words match from
+their start, not from the middle: `char` finds `characters`, `rac` does not.
+
+Wrap words in double quotes to require them next to each other: `"delivery id"`
+matches that phrase and not a session that mentions *delivery* and *id* apart. CLI
+searches keep their literal defaults. The selected preview shows native search evidence
+from the title, prompt, or reply, including matches in related sessions. Inspecting a
 verified match jumps to its retained turn; unavailable locations are labeled.
 
 `ctrl+g` opens Filters: project, client, time, sort, exact branch, file path
@@ -231,6 +247,11 @@ unordered-text labels. A compact quality badge links through Actions to Session
 details with the full source, completeness and availability explanations.
 
 ![Searching: the query is lit inside each matching title, and the row under the cursor is marked in the gutter](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/search.svg)
+
+A match does not have to be in the title. Search looks through the conversation itself,
+and the preview shows the passage that matched and where it came from:
+
+![A quoted search for "delivery id": one session whose title does not contain the phrase, with the preview showing the reply passage where it was said, highlighted](https://raw.githubusercontent.com/AraneaDev/Nekyia/main/docs/media/passage.svg)
 
 Narrowing to one project names it, so you always know what is being searched:
 
@@ -263,7 +284,7 @@ deterministic handover, and starts a new client session with that context.
 
 | Key | What it does |
 | --- | --- |
-| type | Search as you go with unfinished last-word prefix matching |
+| type | Search as you go; the unfinished last word matches prefixes from three characters, and `"double quotes"` match a phrase |
 | `ctrl+k` / F1 | Searchable Actions menu / contextual help |
 | `ctrl+g` | Edit filters, individual resets, and custom time bounds |
 | `ctrl+b` | Bookmark or unbookmark the exact selected session |
@@ -447,12 +468,16 @@ are excluded from search while the original retained history stays intact. Passa
 windows overlap; individual tokens longer than 4096 characters are omitted from search
 and separate windows, so omission cannot manufacture phrase adjacency.
 
-The picker retains the upstream 120 ms typing pause and short-prefix rules. Settled
-disk-backed searches, matching excerpts and empty-result probes run in one read-only
-worker, so a query that starts after the pause cannot block keyboard input. Pending requests
-coalesce to the latest query, superseded results are discarded, and Enter waits for the
-current result. This adds a worker and a read-only database connection; broad queries
-can still take time to finish even though typing remains responsive.
+The picker searches after a 120 ms pause in typing rather than on every key, and an
+unfinished word shorter than three characters is matched whole: a one- or two-letter
+prefix expands to nearly every term in a large index and costs a hundred milliseconds or
+more to rank, where the whole word costs about one. Searches, matching excerpts and
+empty-result suggestions then run in one read-only worker, so even a broad query cannot
+block keyboard input. Pending requests coalesce to the latest query and superseded
+results are discarded. A key that acts on the list, such as Enter or Ctrl+O, waits for
+the current result, so it never lands on rows from an older query. This adds a worker
+and a read-only database connection; broad queries can still take time to finish even
+though typing remains responsive.
 
 The next `nek index` upgrades older indexes from cached content, including sessions whose
 original files are unavailable. Search stays read-only and uses legacy ranking until
