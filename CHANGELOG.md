@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/AraneaDev/Nekyia/compare/v1.4.0...v1.4.1) (2026-11-06)
+
+
+### Fixes
+
+* harden passage index validation and bound title passages ([#103](https://github.com/AraneaDev/Nekyia/issues/103)) ([0bf67a5](https://github.com/AraneaDev/Nekyia/commit/0bf67a591bbe9506b49458d4b0f520652a632117))
+
 ## [1.4.0](https://github.com/AraneaDev/Nekyia/compare/v1.3.2...v1.4.0) (2026-11-06)
 
 
