@@ -22,7 +22,7 @@ import { SESSION_DISPLAY_LIMIT, useSessions } from './useSessions'
 import { createHostClipboard, type ClipboardLike } from './clipboard'
 
 import {readSessionDetail, qualityBadge} from '../core/session-detail'
-import {readMatchEvidence} from '../core/search-match'
+import {readMatchEvidence, type MatchEvidence} from '../core/search-match'
 import {compileSearch} from '../core/search-text'
 import {chainMembers} from '../core/session-chains'
 import {querySnapshot, resolveFacetPath, type Row} from '../core/query'
@@ -547,21 +547,34 @@ export function App({
   // rather than racing the client for the terminal.
   const pendingCopy = useRef<Promise<void> | null>(null)
   const rich=useMemo(()=>selectedRow?readSessionDetail(db,selectedRow.uid):null,[db,selectedRow?.uid])
-  // Evidence follows the text the rows were searched with, not the field, so a
-  // snippet is never read for a query whose rows are not on screen yet.
   const expression=compileSearch(sessions.queryText,'prefix-last')
   const matchingUid=selectedRow?.matchedUid??selectedRow?.uid
-  const matchingDetail=useMemo(()=>matchingUid&&expression?readSessionDetail(db,matchingUid):null,[db,matchingUid,expression])
-  const evidence=useMemo(()=>matchingUid&&expression?readMatchEvidence(db,matchingUid,expression,matchingDetail?.turns??[]):null,[db,matchingUid,expression,matchingDetail])
+  const matchingDetail=useMemo(()=>!sessions.backgroundSearch&&matchingUid&&expression?readSessionDetail(db,matchingUid):null,[db,matchingUid,expression,sessions.backgroundSearch])
+  const synchronousEvidence=useMemo(()=>!sessions.backgroundSearch&&matchingUid&&expression?readMatchEvidence(db,matchingUid,expression,matchingDetail?.turns??[]):null,[db,matchingUid,expression,matchingDetail,sessions.backgroundSearch])
+  const [backgroundEvidence,setBackgroundEvidence]=useState<{uid:string;expression:string;value:MatchEvidence|null}|null>(null)
+  const suppliedEvidence=sessions.matchExpression===expression&&sessions.matchEvidence?.uid===matchingUid?sessions.matchEvidence:null
+  useEffect(()=>{
+    if(!sessions.backgroundSearch||!matchingUid||!expression||sessions.searchPending||suppliedEvidence)return
+    let current=true
+    sessions.requestEvidence(matchingUid,expression).then(value=>{
+      if(current)setBackgroundEvidence({uid:matchingUid,expression,value})
+    }).catch(()=>{if(current){setBackgroundEvidence({uid:matchingUid,expression,value:null});setNote('Could not read matching passage; restart the picker')}})
+    return()=>{current=false}
+  },[sessions.backgroundSearch,sessions.searchPending,sessions.requestEvidence,matchingUid,expression,suppliedEvidence])
+  const evidence=sessions.backgroundSearch
+    ? suppliedEvidence??(backgroundEvidence&&backgroundEvidence.uid===matchingUid&&backgroundEvidence.expression===expression?backgroundEvidence.value:null)
+    : synchronousEvidence
+  // Whether the selected row's evidence lookup has answered, a null answer
+  // included. Until it has, the reader cannot know which turn to open at.
+  const evidenceSettled=!sessions.backgroundSearch||!matchingUid||!expression||Boolean(suppliedEvidence)
+    ||(backgroundEvidence?.uid===matchingUid&&backgroundEvidence.expression===expression)
   const detail = useMemo(() => buildSummaryLines(selectedRow, rich, evidence, {
     columns: layout.previewWidth,
     maxLines: summaryRows,
   }), [selectedRow, rich, evidence, layout.previewWidth, summaryRows])
-  // Each suggestion is a whole extra search, so they are worked out once per
-  // settled query and filter set, not on every render the empty list sits through.
-  const noRows=sessions.rows.length===0
-  const suggestions=useMemo(()=>noRows&&!sessions.pending?emptySuggestions({text:sessions.queryText,filters:sessions.filters},sessions.countMatches):[],
-    [noRows,sessions.pending,sessions.queryText,sessions.filters,sessions.countMatches])
+  const suggestions=useMemo(()=>!sessions.pending&&!sessions.searchError&&!sessions.rows.length
+    ?(sessions.backgroundSearch&&sessions.queryText?sessions.suggestions:emptySuggestions({text:sessions.queryText,filters:sessions.filters},sessions.countMatches)):[],
+    [sessions.pending,sessions.searchError,sessions.rows.length,sessions.backgroundSearch,sessions.queryText,sessions.suggestions,sessions.filters,sessions.countMatches])
   useEffect(()=>{
     onStateChange?.({text:sessions.text,filters:sessions.filters,selectedUid:selectedRow?.uid??null,selectedIndex:sessions.selected,
       listTop:listWindow(sessions.rows,sessions.selected,listHeight,layout.listWidth,layout.mode!=='compact',bookmarkUids)[0],reader:reading?readerState:null,
@@ -576,9 +589,15 @@ export function App({
   useEffect(()=>{
     if(mode==='history'&&!readerAllowed){setMode(null);setReaderUid(null);setReaderState(null);announce('Reader session is unavailable under current policy; returned to browse')}
   },[mode,readerAllowed])
+  // Judged against the first settled result, not the first frame: a restored
+  // search runs in the background, so its rows are empty until it answers and
+  // the selection would always look lost.
+  const restoreChecked=useRef(false)
   useEffect(()=>{
+    if(restoreChecked.current||sessions.pending||sessions.searchError)return
+    restoreChecked.current=true
     if(readerAllowed&&initialState?.selectedUid&&!sessions.rows.some(row=>row.uid===initialState.selectedUid)){announce('Selected session no longer matches; nearest result selected')}
-  },[])
+  },[sessions.pending,sessions.searchError,sessions.rows,readerAllowed,initialState])
 
 
   /**
@@ -854,6 +873,25 @@ export function App({
     pendingCopy.current = writeClipboard(command, 'resume command copied')
   }
 
+  // A history request made before the selected row's evidence has answered,
+  // held as the row it was made on, so the reader opens at the match rather
+  // than at the top. Dropped if the cursor has moved on by then.
+  const pendingInspect=useRef<{row:string;match:boolean}|null>(null)
+  useEffect(()=>{
+    const wanted=pendingInspect.current
+    if(!wanted||!evidenceSettled)return
+    pendingInspect.current=null
+    if(selectedRow?.uid!==wanted.row||mode||helpOpen)return
+    if(wanted.match){if(matchingUid)openHistory(matchingUid)}
+    else openHistory(evidence?.uid??wanted.row)
+  })
+  /** Opens history at the match once the selected row's evidence is known. */
+  function inspect(match:boolean):void {
+    if(!selectedRow)return
+    if(!evidenceSettled){pendingInspect.current={row:selectedRow.uid,match};return}
+    if(match){if(matchingUid)openHistory(matchingUid)}
+    else openHistory(evidence?.uid??selectedRow.uid)
+  }
   /** Opens a verified match anchor or literal retained-history fallback. */
   function openHistory(uid:string):void {
     setReaderUid(uid)
@@ -893,8 +931,8 @@ export function App({
         }catch{announce('Could not validate the context launch')}
       }
     }
-    else if(id==='inspect'&&selectedRow)openHistory(evidence?.uid??selectedRow.uid)
-    else if(id==='inspect-match'&&matchingUid)openHistory(matchingUid)
+    else if(id==='inspect')inspect(false)
+    else if(id==='inspect-match')inspect(true)
     else if(id==='details')setMode('details')
     else if(id==='chain')setMode('chain')
     else if(id==='copy-prompt')copyPrompt()
@@ -909,30 +947,27 @@ export function App({
       else announce('Stats need 140 columns and 18 rows')
     }
   }
-  // A key that acts on the list while the search is still waiting for typing to
-  // pause would act on rows that are about to be replaced: Enter straight after
-  // the last letter would resume whatever matched the text before it. Such a key
-  // settles the search first and is handled again once the new rows render.
-  const replay = useRef<{ input: string; key: Key } | null>(null)
-  useEffect(() => {
-    const deferred = replay.current
-    if (!deferred || sessions.pending) return
-    replay.current = null
-    handleInput(deferred.input, deferred.key)
+  /** Enter targets the latest query even if its read-only worker is still finishing. */
+  function submitSelection():void {
+    if(resolved?.kind==='resolved'&&resolved.tier==='search'&&contextReason&&handoffTargets.length)dispatchAction('handoff')
+    else activate()
+  }
+  const replay=useRef<{input:string;key:Key;text:string;filters:typeof sessions.filters}|null>(null)
+  useEffect(()=>{
+    const deferred=replay.current
+    if(!deferred)return
+    if(deferred.text!==sessions.text||deferred.filters!==sessions.filters||mode||helpOpen||launcherAsk||confirm||handoff){replay.current=null;return}
+    if(sessions.pending)return
+    replay.current=null
+    handleInput(deferred.input,deferred.key)
   })
-  /** True for the keys that only edit the search field, which never need settled rows. */
-  const editsSearch = (input: string, key: Key) =>
-    key.backspace || key.delete || Boolean(input && !key.ctrl && !key.meta && !key.escape && !key.return && !key.tab
-      && !key.upArrow && !key.downArrow && !key.leftArrow && !key.rightArrow && !key.pageUp && !key.pageDown)
-  /** The picker's keyboard handling, reachable both from Ink and from a replayed key. */
-  function handleInput(input: string, key: Key) {
+  /** Only text edits can proceed without settling the current result. */
+  const editsSearch=(input:string,key:Key)=>key.backspace||key.delete||Boolean(input&&!key.ctrl&&!key.meta&&!key.escape&&!key.return&&!key.tab
+    &&!key.upArrow&&!key.downArrow&&!key.leftArrow&&!key.rightArrow&&!key.pageUp&&!key.pageDown)
+  /** Replay actions only after both the upstream pause and background query have finished. */
+  function handleInput(input:string,key:Key) {
     if (executing.current) return
-    if (sessions.pending && !(key.ctrl && input === 'c') && !editsSearch(input, key)) {
-      replay.current = { input, key }
-      sessions.settle()
-      return
-    }
-    if (key.ctrl && input === 'c') { exit(); return }
+    if (key.ctrl && input === 'c') { replay.current=null; exit(); return }
     if(reading&&!helpOpen&&(key.ctrl&&(input==='d'||input==='u'))){
       if(input==='d')sessions.cycleTimePreset();else sessions.clearTimePreset();setHelpOpen(false);setMode(null);return
     }
@@ -975,25 +1010,31 @@ export function App({
       else if (input === 'n') { setHandoffNote(''); setNote('') }
       return
     }
-    if (key.ctrl && input === 'c') { exit(); return }
+    if (key.ctrl && input === 'c') { replay.current=null; exit(); return }
+    // An overlay's Escape/Enter must not replay as a browse action after that overlay closes.
+    if(sessions.pending&&!key.escape&&!(key.ctrl&&input==='c')&&!editsSearch(input,key)){
+      replay.current={input,key,text:sessions.text,filters:sessions.filters}
+      sessions.settle()
+      return
+    }
     if (key.ctrl && (input === 'd' || input === 'u')) {
       if (input === 'd') sessions.cycleTimePreset()
       else sessions.clearTimePreset()
       setMode(null)
       return
     }
-    if (key.ctrl && input === 'o') {if(selectedRow)openHistory(evidence?.uid??selectedRow.uid);return}
+    if (key.ctrl && input === 'o') {inspect(false);return}
     if (key.ctrl && input === 'k') {setMode('actions');return}
     if (key.ctrl && input === 'g') {setMode('filters');return}
     if (key.ctrl && input === 'b') {if(selectedRow)void toggleBookmark(selectedRow.uid);return}
     if (key.ctrl && input === 'e') {if(selectedRow)setMode('chain');return}
     if (key.ctrl && input === 's') {dispatchAction('stats');return}
     if (input === '\x1bOP' || input === '\x1b[11~' || input === '[11~') {setMode('help');return}
-    if (key.escape) { exit(); return }
+    if (key.escape) { replay.current=null; exit(); return }
     if (key.upArrow) { sessions.move(-1); return }
     if (key.downArrow) { sessions.move(1); return }
     if (key.tab) { sessions.toggleScope(); return }
-    if (key.return) {if(resolved?.kind==='resolved'&&resolved.tier==='search'&&contextReason&&handoffTargets.length)dispatchAction('handoff');else activate();return}
+    if (key.return) {submitSelection();return}
     if (key.backspace || key.delete) {
       sessions.setText(deleteLastGrapheme(sessions.text))
       return
@@ -1077,8 +1118,9 @@ export function App({
   const actionItems=actionsFor({hasSelection:Boolean(selectedRow),canResume:Boolean(selectedRow&&(native||resolved?.kind==='ask')&&!launchReason),resumeReason:launchReason??(!native&&resolved?.kind!=='ask'?'Use Start fresh with context':null),
     canHandoff:Boolean(selectedRow&&(contextReason===null||handoffTargets.length)),handoffReason:contextReason,hasMatch:Boolean(evidence),hasPrompt:Boolean(rich?.latestUser),hasCommand:native&&!launchReason,
     bookmarked:Boolean(selectedRow&&bookmarkUids.has(selectedRow.uid)),hasQuery:Boolean(sessions.text),refreshing:!onReindex,statsVisible,statsAvailable}).map(item=>item.id==='resume'&&resolved?.kind==='ask'?{...item,label:'Choose launcher'}:item)
+
   if(mode==='actions'&&suggestions.length)return <Menu title="Actions — widen search" {...helpProps} items={[...suggestions.map((item,index)=>({id:`suggestion:${index}`,label:item.label})),...actionItems]} rows={terminalHeight} columns={terminalWidth} onClose={close} onSelect={id=>{
-    if(id.startsWith('suggestion:')){const item=suggestions[Number(id.split(':')[1])];if(item){sessions.setText(item.text,true);sessions.applyFilters(item.filters);close()}}
+    if(id.startsWith('suggestion:')){const item=suggestions[Number(id.split(':')[1])];if(item){sessions.setText(item.text);sessions.applyFilters(item.filters);close()}}
     else dispatchAction(id as ActionId)
   }}/>
   if(mode==='actions')return <Actions items={actionItems} {...helpProps} rows={terminalHeight} columns={terminalWidth} onAction={dispatchAction} onClose={close}/>
@@ -1140,6 +1182,8 @@ export function App({
     ...(badge?[{text:badge,color:'yellow'}]:[]),
     {text:sessions.scope?projectName(sessions.scope):'everywhere',dim:!sessions.scope},
     ...(sessions.client?[{text:sessions.client,color:clientColor(sessions.client)}]:[]),
+    ...(sessions.pending?[{text:'Searching…',dim:true}]:[]),
+    ...(sessions.searchError?[{text:sessions.searchError,color:'red'}]:[]),
     ...(note?[{text:note,color:'yellow'}]:[]),
     ...(indexAge&&indexedAt!==undefined?[{text:indexAge,color:SEVERITY_COLOR[indexAgeSeverity(now-indexedAt)],dim:indexAgeSeverity(now-indexedAt)==='fresh'}]:[]),
   ].map(part=>({...part,text:boundedDisplayText(part.text,terminalWidth)}))
@@ -1168,7 +1212,7 @@ export function App({
       ? <Text wrap="truncate-end"><Text color="cyan" bold>{'▸ '}</Text>{boundedPathTail(sessions.text,Math.max(1,terminalWidth-2))}</Text>
       : <Text wrap="truncate-end"><Text color="cyan" bold>{'▸ '}</Text><Text dimColor>type to search</Text></Text>}
     {!sessions.rows.length?<Box flexDirection="column" flexGrow={1} overflow="hidden">
-      <EmptyState indexedEmpty={sessions.snapshot.length===0} searching={Boolean(sessions.text)} narrowed={sessions.scope!==null} timeFiltered={timeFiltered}/>
+      {sessions.pending?<Text dimColor>Searching…</Text>:sessions.searchError?<Text color="red">Search unavailable; restart the picker.</Text>:<EmptyState indexedEmpty={sessions.snapshot.length===0} searching={Boolean(sessions.text)} narrowed={sessions.scope!==null} timeFiltered={timeFiltered}/>}
       {suggestions.map((item,index)=><Text key={item.label} wrap="truncate-end">{`${index+1}. ${item.label} (Actions)`}</Text>)}
       <Text dimColor wrap="truncate-end">Ctrl+K Actions · Ctrl+G edit/reset filters · Ctrl+R refresh</Text>
     </Box>:<Box flexDirection="column" flexGrow={1} overflow="hidden">

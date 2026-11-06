@@ -22,6 +22,9 @@ for (const [text, mode, expression] of [
   ['東', 'prefix-last', '"東"*'],
   ['とう', 'prefix-last', '"とう"*'],
   ['서', 'prefix-last', '"서"*'],
+  ['"app engine" r', 'prefix-last', '"app engine" "r"'],
+  ['"app engine" ref', 'prefix-last', '"app engine" "ref"*'],
+  ['"東"', 'prefix-last', '"東"'],
   ['!!!', 'prefix-last', null],
   ['', 'literal', null],
 ] as const) {

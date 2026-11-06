@@ -190,20 +190,20 @@ test('open rejects a newer schema version without overwriting it', () => {
   try {
     const raw=new Database(path, { create: true })
     raw.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)')
-    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '5')
+    raw.query('INSERT INTO meta (key, value) VALUES (?, ?)').run('schema_version', '6')
     raw.close()
-    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 5')
+    expect(() => { opened=IndexDb.open(path) }).toThrow('unsupported schema version: 6')
     const check=new Database(path)
-    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '5' })
+    expect(check.query("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({ value: '6' })
     check.close()
   } finally {
     opened?.close(); rmSync(dir, { recursive: true, force: true })
   }
 })
 
-test('a fresh index is stamped at schema version 4', () => {
+test('a fresh index is stamped at schema version 5', () => {
   const db=IndexDb.open(':memory:')
-  expect(db.schemaVersion()).toBe(4); db.close()
+  expect(db.schemaVersion()).toBe(5); db.close()
 })
 test('schema version 4 adds the file event table', () => {
   const db=IndexDb.open(':memory:')
@@ -403,7 +403,7 @@ test('a real version 1 index migrates to the current schema with every row intac
 
     const db = IndexDb.open(path, false)
     try {
-      expect(storedVersion(path)).toBe('4')
+      expect(storedVersion(path)).toBe('5')
       expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded', 'file_detail', 'file_events_truncated'])
       expect(tableNames(path)).toContain('session_turn')
       expect(tableNames(path)).toContain('session_file_event')
@@ -423,7 +423,7 @@ test('a real version 1 index migrates to the current schema with every row intac
       expect(db.allUids()).toEqual(['claude:old'])
       expect(db.ftsSearch('legacyprompt').map((hit) => hit.uid)).toEqual(['claude:old'])
       expect(db.uidsTouchingFile('src/legacy')).toEqual(['claude:old'])
-      expect(db.schemaVersion()).toBe(4)
+      expect(db.schemaVersion()).toBe(5)
     } finally {
       db.close()
     }
@@ -445,7 +445,7 @@ test('a migrated index and a freshly created one have the same session columns',
     IndexDb.open(fresh.path).close()
     expect(sessionColumns(migrated.path)).toEqual(sessionColumns(fresh.path))
     expect(tableNames(migrated.path)).toEqual(tableNames(fresh.path))
-    expect(storedVersion(fresh.path)).toBe('4')
+    expect(storedVersion(fresh.path)).toBe('5')
   } finally {
     rmSync(migrated.dir, { recursive: true, force: true })
     rmSync(fresh.dir, { recursive: true, force: true })
@@ -508,8 +508,8 @@ test('a real version 2 index migrates to the current schema with every row and f
 
     const db = IndexDb.open(path, false)
     try {
-      expect(storedVersion(path)).toBe('4')
-      expect(db.schemaVersion()).toBe(4)
+      expect(storedVersion(path)).toBe('5')
+      expect(db.schemaVersion()).toBe(5)
       // The version 3 step only adds a table; version 4 adds both a table and
       // the two file-detail columns.
       expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'degraded', 'file_detail', 'file_events_truncated'])

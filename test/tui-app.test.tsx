@@ -801,6 +801,9 @@ test('runPick closes the database and never checks a plan when Ink exit fails', 
   const db = { close: () => { events.push('close') } } as unknown as IndexDb
   const code = await runPick({
     isTTY: () => true,
+    indexPath: () => '/synthetic/index.db',
+    indexedAt: () => undefined,
+    ensureIndex: async () => { throw new Error('unexpected indexing') },
     needsConsent: () => false,
     indexExists: () => true,
     openDb: () => db,

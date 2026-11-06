@@ -3,6 +3,9 @@ import { homedir } from 'node:os'
 import { dirname } from 'node:path'
 import type { Config } from '../config'
 import type { IndexDb } from '../core/db'
+import { emptySuggestions, type EmptySuggestion } from './empty-state'
+import { BackgroundSearch, type SearchAnswer } from './search-background'
+import type { MatchEvidence } from '../core/search-match'
 import type { Presentation } from '../core/launcher'
 import { querySnapshot, readSessionSnapshot, resolveFacetPath, type Row, type SessionSnapshot } from '../core/query'
 import { presetTimeRange, type TimePreset, type TimeRange } from '../core/time-range'
@@ -41,20 +44,19 @@ export interface SessionsState {
   snapshot: SessionSnapshot
   countMatches: (text: string, filters: PickerFilters) => number
   rows: Row[]
+  backgroundSearch: boolean
+  searchPending: boolean
+  searchError: string | null
+  matchEvidence: MatchEvidence | null
+  matchExpression: string | null
+  suggestions: EmptySuggestion[]
+  requestEvidence: (uid: string, expression: string) => Promise<MatchEvidence | null>
   /** True when the search matched more sessions than `rows` can show. */
   overflowed: boolean
-  /** What the search field shows: every key, immediately. */
   text: string
-  /**
-   * The text `rows` were searched with. Trails `text` while typing has not yet
-   * paused, and equals it whenever `pending` is false.
-   */
   queryText: string
-  /** True while `rows` still answer an older `text` than the field shows. */
   pending: boolean
-  /** Runs the search for the current text now, instead of waiting for the pause. */
   settle: () => void
-  /** `immediate` skips the pause, for text set as a whole rather than typed. */
   setText: (text: string, immediate?: boolean) => void
   scope: Scope
   setScope: (scope: Scope) => void
@@ -187,7 +189,7 @@ export function useSessions(
   const deferring = Number.isFinite(settleMs) && settleMs > 0
   const [settledText, setSettledText] = useState(text)
   const queryText = deferring ? settledText : text
-  const pending = queryText !== text
+  const typingPending = queryText !== text
   const textRef = useRef(text)
   textRef.current = text
   useEffect(() => {
@@ -212,9 +214,60 @@ export function useSessions(
     bookmarkedUids: f.bookmarkedOnly ? bookmarks : undefined,
     matchMode: 'prefix-last' as const, includeMissing: true, presentation, now: selectionNow,
   }), [selectionNow, bookmarks, presentation, cwd])
-  const found = useMemo(() => querySnapshot(db, queryConfig, snapshot, {
+  const path = db.raw().filename
+  const backgroundSearch = Boolean(path && path !== ':memory:')
+  const backgroundClient = useRef<BackgroundSearch | null>(null)
+  const startupFailure = useRef<string | null>(null)
+  useEffect(() => {
+    if (!backgroundSearch) return
+    let service: BackgroundSearch
+    try { service = new BackgroundSearch(path, snapshot); startupFailure.current = null }
+    catch (error) { startupFailure.current = error instanceof Error ? error.message : String(error); return }
+    backgroundClient.current = service
+    return () => { service.close(); if (backgroundClient.current === service) backgroundClient.current = null }
+  }, [path, snapshot, backgroundSearch])
+  const request = useMemo(() => ({ cfg: queryConfig, opts: {
     ...options(queryText, filters), limit: SESSION_DISPLAY_LIMIT + 1,
-  }), [db, queryConfig, snapshot, options, queryText, filters])
+  }, suggestions: emptySuggestions({text:queryText, filters}, () => 1).map(item => ({item,
+    opts: {...options(item.text,item.filters),limit:1},
+  })) }), [queryConfig, options, queryText, filters])
+  const [answer, setAnswer] = useState<{request: typeof request; value: SearchAnswer | null; error: string | null} | null>(null)
+  const restoredSelection = useRef(false)
+  useEffect(() => {
+    if (!backgroundSearch || !queryText) return
+    let current = true
+    if (!backgroundClient.current) {
+      setAnswer({request,value:null,error:startupFailure.current??'Background search unavailable; restart the picker'})
+      return
+    }
+    backgroundClient.current.request({ kind: 'search', ...request,
+      preferredUid: !restoredSelection.current && queryText === initial?.text ? initial.selectedUid : null,
+    }).then(value => {
+      if (!current || !value) return
+      if (!restoredSelection.current) {
+        restoredSelection.current = true
+        setSelectedState(restoreSelection(value.rows.map(row => row.uid), queryText === initial?.text ? initial.selectedUid : null, queryText === initial?.text ? initial.selectedIndex : 0))
+      }
+      setAnswer({ request, value, error: null })
+    }).catch(error => {
+      if (current) setAnswer({ request, value: null, error: error instanceof Error ? error.message : String(error) })
+    })
+    return () => { current = false }
+  }, [backgroundSearch, queryText, request])
+  const searchPending = backgroundSearch && Boolean(queryText) && answer?.request !== request
+  const pending = typingPending || searchPending
+  const searchError = backgroundSearch && answer?.request === request ? answer.error : null
+  const found = useMemo(() => backgroundSearch && queryText
+    ? answer?.request === request ? answer.value?.rows ?? [] : []
+    : querySnapshot(db, queryConfig, snapshot, { ...options(queryText, filters), limit: SESSION_DISPLAY_LIMIT + 1 }),
+  [db, queryConfig, snapshot, options, queryText, filters, backgroundSearch, request, answer])
+  const requestEvidence = useCallback(async (uid: string, expression: string) => {
+    const value = await backgroundClient.current?.request({ kind: 'evidence', uid, expression })
+    return value?.evidence ?? null
+  }, [])
+  const matchEvidence = answer?.request === request ? answer.value?.evidence ?? null : null
+  const suggestions = answer?.request === request ? answer.value?.suggestions ?? [] : []
+  const matchExpression = answer?.request === request ? answer.value?.expression ?? null : null
   const overflowed = found.length > SESSION_DISPLAY_LIMIT
   const rows = useMemo(() => found.slice(0, SESSION_DISPLAY_LIMIT), [found])
   const [selectedState, setSelectedState] = useState(() => restoreSelection(
@@ -267,6 +320,6 @@ export function useSessions(
   const countMatches = useCallback((value:string,f:PickerFilters) => querySnapshot(db,queryConfig,snapshot,{
     ...options(value,f),limit:1,
   }).length,[db,queryConfig,snapshot,options])
-  return {rows,overflowed,text,queryText,pending,settle,setText,scope,setScope,toggleScope,client,setClient,clientCycle,cycleClient,
+  return {rows,suggestions,backgroundSearch,searchPending,searchError,matchEvidence,matchExpression,requestEvidence,overflowed,text,queryText,pending,settle,setText,scope,setScope,toggleScope,client,setClient,clientCycle,cycleClient,
     timePreset,activeTimeRange,cycleTimePreset,clearTimePreset,selected,setSelected,move,filters,applyFilters,snapshot,countMatches}
 }

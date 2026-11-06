@@ -1141,6 +1141,15 @@ test('searching still answers on a broken config, but says the config was not ho
 function downgradeIndex(env: Record<string, string>, version: string): void {
   const raw = new Database(join(env.XDG_DATA_HOME, 'nekyia', 'index.db'))
   try {
+    raw.exec(`
+      DROP TRIGGER IF EXISTS passage_insert; DROP TRIGGER IF EXISTS passage_delete;
+      DROP TRIGGER IF EXISTS passage_session_delete;
+      DROP TABLE IF EXISTS passage_fts; DROP TABLE IF EXISTS session_passage;
+      CREATE VIRTUAL TABLE session_fts USING fts5(
+        title, prompts, prose, content='session_text', content_rowid='rowid', tokenize='porter unicode61'
+      );
+      INSERT INTO session_fts(session_fts) VALUES('rebuild');
+    `)
     raw.exec('DROP TABLE IF EXISTS session_file_event')
     raw.exec('DROP TABLE IF EXISTS session_turn')
     raw.exec('ALTER TABLE session DROP COLUMN file_events_truncated')
