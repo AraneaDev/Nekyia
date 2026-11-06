@@ -3,11 +3,12 @@ export type MatchMode = 'literal' | 'prefix-last'
 
 /** Compile user words into quoted FTS terms, without allowing user query syntax. */
 export function compileSearch(text: string, mode: MatchMode): string | null {
-  const terms = [...text.matchAll(/[\p{L}\p{N}_]+/gu)]
-  if (!terms.length) return null
-  return terms.map((term, index) => {
-    const prefix = mode === 'prefix-last' && index === terms.length - 1
-      && term.index + term[0].length === text.length
-    return `"${term[0]}"${prefix ? '*' : ''}`
-  }).join(' ')
+  const parts = [...text.matchAll(/"([^"\n]+)"|([\p{L}\p{N}_]+)/gu)]
+  const terms = parts.flatMap(part => {
+    const words = (part[1] ?? part[2]!).match(/[\p{L}\p{N}_]+/gu)
+    if (!words?.length) return []
+    const prefix = !part[1] && mode === 'prefix-last' && part.index + part[0].length === text.length
+    return [`"${words.join(' ')}"${prefix ? '*' : ''}`]
+  })
+  return terms.length ? terms.join(' ') : null
 }

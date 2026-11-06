@@ -35,7 +35,7 @@ test('title and reply evidence choose native highlighted field with safe legacy 
   expect(readMatchEvidence(db, 'a', '"special"', turns)?.field).toBe('title')
   expect(readMatchEvidence(db, 'a', '"recovery"', turns)?.field).toBe('reply')
   expect(readMatchEvidence(db, 'a', '"recovery"', [])?.anchor).toBeNull()
-  db.raw().exec('DROP TABLE session_fts')
+  db.raw().exec('DROP TABLE passage_fts')
   expect(readMatchEvidence(db, 'a', '"recovery"', turns)).toBeNull()
   db.close()
 })
@@ -46,11 +46,11 @@ test('control and pretend marker injection cannot survive native snippet display
   expect(evidence.spans.map(s => evidence.text.slice(s.start, s.end))).toContain('needle')
   db.close()
 })
-test('very long FTS tokens are bounded and cannot produce false anchors', () => {
+test('oversized tokens are omitted from passages without inventing source anchors', () => {
   const db = fixture('A title', 'needle ' + 'x'.repeat(300_000))
   const evidence = readMatchEvidence(db, 'a', '"needle"', readSessionDetail(db, 'a').turns)!
   expect(evidence.text.length).toBeLessThanOrEqual(8192)
-  expect(evidence.anchor).toBeNull()
+  expect(evidence.anchor).toEqual({ ordinal: 0, offset: 0 })
   db.close()
 })
 
