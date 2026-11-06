@@ -201,7 +201,11 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
       END;
     `)
     const turns = db.query('SELECT role, text FROM session_turn WHERE uid = ? ORDER BY ordinal')
-    for (const row of db.query('SELECT uid, title, prompts, prose FROM session_text').iterate() as Iterable<TextRow & { uid: string }>) {
+    // Keep large text out of the eager read, including on Bun versions without SQLite iterators.
+    const ids = db.query('SELECT uid FROM session_text').all() as Array<{ uid: string }>
+    const text = db.query('SELECT uid, title, prompts, prose FROM session_text WHERE uid = ?')
+    for (const { uid } of ids) {
+      const row = text.get(uid) as TextRow & { uid: string }
       const dialogue = turns.all(row.uid) as DialogueTurn[]
       for (const [role, text] of [['user', row.prompts], ['assistant', row.prose]] as const) {
         if (text && dialogue.filter(turn => turn.role === role).map(turn => turn.text).join('\n') !== text) {
