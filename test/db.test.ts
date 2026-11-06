@@ -552,9 +552,8 @@ test('an index whose stamp disagrees with its shape is refused instead of stampe
   try {
     // A real state reachable from an unreleased development branch: stamped 2,
     // already carrying `session_turn`, but never given the `degraded` column.
-    // `migrate` trusts the stamp, so it replays the version 3 step as a no-op
-    // create and then genuinely runs the version 4 step before validation
-    // catches the missing column.
+    // Checked against that stamp before migrating, the missing column is caught
+    // before any step runs.
     writeV1Index(path)
     const raw = new Database(path)
     try {
@@ -586,9 +585,10 @@ test('an index whose stamp disagrees with its shape is refused instead of stampe
     }
 
     // The column really is still missing, so every later open refuses too rather
-    // than handing out an index that claims to be current. The version 4 step
-    // did commit its own column additions before validation ran.
-    expect(sessionColumns(path)).toEqual([...V1_COLUMNS, 'file_detail', 'file_events_truncated'])
+    // than handing out an index that claims to be current. The file is checked
+    // against its stamp before any step runs, so the refusal leaves it exactly
+    // as it was: no later step commits its additions onto a damaged index.
+    expect(sessionColumns(path)).toEqual(V1_COLUMNS)
     expect(() => IndexDb.open(path, false)).toThrow('index schema columns do not match: session')
   } finally {
     rmSync(dir, { recursive: true, force: true })

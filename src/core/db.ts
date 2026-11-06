@@ -238,6 +238,13 @@ const SESSION_COLUMNS: Record<number, string[]> = {
   5: [...SESSION_COLUMNS_V1, 'degraded', 'file_detail', 'file_events_truncated'],
 }
 
+/** The triggers that keep `passage_fts` in step with its content, and the table each fires on. */
+const PASSAGE_TRIGGERS: ReadonlyArray<readonly [string, string]> = [
+  ['passage_insert', 'session_passage'],
+  ['passage_delete', 'session_passage'],
+  ['passage_session_delete', 'session'],
+]
+
 /**
  * Reads the stamped schema version, or 0 for an index that has never been stamped.
  *
@@ -485,6 +492,14 @@ export class IndexDb {
       db.exec('PRAGMA journal_mode=WAL')
       db.exec('PRAGMA synchronous=NORMAL')
 
+      // An existing index below the current version is checked against the shape
+      // its own stamp promises before any step touches it. A step that reads a
+      // table the file should have but does not would otherwise fail with a raw
+      // SQL error, not the delete-and-reindex message `schemaError` gives.
+      // A fresh file (stamp 0) has nothing to check yet: the ladder creates it.
+      const stamped = storedSchemaVersion(db)
+      if (stamped >= MIN_SCHEMA_VERSION && stamped < SCHEMA_VERSION) IndexDb.validateExistingSchema(db)
+
       const index = new IndexDb(db)
       index.migrate()
       // `migrate` trusts the stamp and runs only the steps above it, so a file
@@ -546,6 +561,17 @@ export class IndexDb {
       || !ftsSql.includes(`content='${content}'`)
       || !ftsSql.includes("content_rowid='rowid'")) {
       throw schemaError('index search schema does not match', db)
+    }
+    if (version >= 5) {
+      // Passages reach `passage_fts` only through these triggers. Without one,
+      // writes still commit while search silently stops seeing new or removed
+      // text, so a missing trigger is as fatal as a missing table.
+      for (const [trigger, on] of PASSAGE_TRIGGERS) {
+        const found = db.query(
+          "SELECT 1 AS present FROM sqlite_master WHERE type = 'trigger' AND name = ? AND tbl_name = ?",
+        ).get(trigger, on)
+        if (!found) throw schemaError(`index search trigger is missing: ${trigger}`, db)
+      }
     }
     return version
   }

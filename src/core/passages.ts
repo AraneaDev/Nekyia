@@ -72,8 +72,11 @@ function* boundedChunks(text: string): Generator<string> {
 export function writePassages(db: Database, uid: string, title: string, dialogue: readonly DialogueTurn[]): void {
   db.query('DELETE FROM session_passage WHERE uid = ?').run(uid)
   const insert = db.query('INSERT INTO session_passage (uid, title, prompt, reply) VALUES (?, ?, ?, ?)')
-  const heading = searchableText(title)
-  if (heading) insert.run(uid, heading, '', '')
+  // Titles get the same bounds as dialogue: no passage over the window size, and
+  // no oversized token left searchable to manufacture phrase adjacency.
+  for (const heading of chunks(searchableText(title))) {
+    if (heading.trim()) insert.run(uid, heading, '', '')
+  }
   const seen = new Set<string>()
   for (const turn of dialogue) {
     if (turn.role !== 'user' && turn.role !== 'assistant') continue
