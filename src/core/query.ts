@@ -353,7 +353,7 @@ function search(
       ? endedAt
       : sort === 'relevance'
         ? relevance
-        : relevance * recencyDecay(endedAt, now, halfLifeDays)
+        : relevance * (0.85 + 0.15 * recencyDecay(endedAt, now, halfLifeDays))
     const shown = presentation?.get(row.client)
     return {
       ...row,

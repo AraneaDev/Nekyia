@@ -237,6 +237,15 @@ test('forget and prune CLI report real outcomes and delete the selected rows', (
 function downgradeIndex(version: 1 | 2): void {
   const raw = new Database(indexPath())
   try {
+    raw.exec(`
+      DROP TRIGGER IF EXISTS passage_insert; DROP TRIGGER IF EXISTS passage_delete;
+      DROP TRIGGER IF EXISTS passage_session_delete;
+      DROP TABLE IF EXISTS passage_fts; DROP TABLE IF EXISTS session_passage;
+      CREATE VIRTUAL TABLE session_fts USING fts5(
+        title, prompts, prose, content='session_text', content_rowid='rowid', tokenize='porter unicode61'
+      );
+      INSERT INTO session_fts(session_fts) VALUES('rebuild');
+    `)
     raw.exec('DROP TABLE IF EXISTS session_file_event')
     raw.exec('DROP TABLE IF EXISTS session_turn')
     raw.exec('ALTER TABLE session DROP COLUMN file_events_truncated')

@@ -75,7 +75,7 @@ bun install -g nekyia
 
 <!-- x-release-please-start-version -->
 ```bash
-bun install -g github:AraneaDev/Nekyia#v1.3.1
+bun install -g github:AraneaDev/Nekyia#v1.3.2
 ```
 <!-- x-release-please-end -->
 
@@ -435,10 +435,29 @@ Nekyia separates indexing into two phases. Discovery reads bounded metadata and 
 fingerprints. Hydration runs only for new or changed sessions, streams or projects the
 relevant content, and commits metadata plus search facets atomically to SQLite.
 
-Search weights titles, user prompts, and selected assistant prose differently, then can
-blend relevance with recency. Fork chains collapse to one visible result. Tool output is
-excluded because command results and file dumps are noisy, large, and likely to contain
-private material that does not belong in search.
+Search ranks bounded passages within each conversation, then returns one result per
+session or fork chain with evidence from its strongest matching passage. Long sessions
+are not penalized for unrelated discussion, and repeated identical passages do not earn
+extra weight. Terms distributed across turns still match, below focused passages.
+Double quotes require adjacent words: `nek search '"app engine search"' --all`.
+
+Auto sorting gives recency a bounded preference (up to 15%); relevance sorting uses only
+text scores, and recent sorting remains newest-first. Recognized leading harness blocks
+are excluded from search while the original retained history stays intact. Passage
+windows overlap; individual tokens longer than 4096 characters are omitted from search
+and separate windows, so omission cannot manufacture phrase adjacency.
+
+The picker retains the upstream 120 ms typing pause and short-prefix rules. Settled
+disk-backed searches, matching excerpts and empty-result probes run in one read-only
+worker, so a query that starts after the pause cannot block keyboard input. Pending requests
+coalesce to the latest query, superseded results are discarded, and Enter waits for the
+current result. This adds a worker and a read-only database connection; broad queries
+can still take time to finish even though typing remains responsive.
+
+The next `nek index` upgrades older indexes from cached content, including sessions whose
+original files are unavailable. Search stays read-only and uses legacy ranking until
+that upgrade. The upgrade preserves session IDs, bookmarks, original text and launchers;
+older Nekyia versions cannot open the upgraded index. Tool output remains excluded.
 
 The index normally lives at `~/.local/share/nekyia/index.db`; configuration lives at
 `~/.config/nekyia/config.json`. Nekyia honours `XDG_DATA_HOME` and `XDG_CONFIG_HOME`.

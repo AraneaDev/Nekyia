@@ -2,6 +2,7 @@ import Database from 'bun:sqlite'
 import { lstatSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { DialogueTurn, SessionDoc, SessionRef } from '../types'
+import { legacySearchTurns, writePassages } from './passages'
 
 /**
  * A session as the index holds it: the discovered reference, whether its source
@@ -27,7 +28,7 @@ export interface FtsHit {
   score: number
 }
 
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 /** The oldest stamped schema this build still opens. Older indexes are migrated up to SCHEMA_VERSION. */
 const MIN_SCHEMA_VERSION = 1
 /**
@@ -176,6 +177,44 @@ const MIGRATIONS: Record<number, (db: Database) => void> = {
       ALTER TABLE session ADD COLUMN file_events_truncated INTEGER NOT NULL DEFAULT 0;
     `)
   },
+  /** Backfill passages from retained history without rereading unavailable source transcripts. */
+  5: (db) => {
+    db.exec(`
+      DROP TABLE session_fts;
+      CREATE TABLE session_passage (
+        rowid INTEGER PRIMARY KEY, uid TEXT NOT NULL,
+        title TEXT NOT NULL, prompt TEXT NOT NULL, reply TEXT NOT NULL
+      );
+      CREATE INDEX session_passage_uid_idx ON session_passage(uid);
+      CREATE VIRTUAL TABLE passage_fts USING fts5(
+        title, prompt, reply, content='session_passage', content_rowid='rowid', tokenize='porter unicode61'
+      );
+      CREATE TRIGGER passage_insert AFTER INSERT ON session_passage BEGIN
+        INSERT INTO passage_fts(rowid, title, prompt, reply) VALUES (new.rowid, new.title, new.prompt, new.reply);
+      END;
+      CREATE TRIGGER passage_delete AFTER DELETE ON session_passage BEGIN
+        INSERT INTO passage_fts(passage_fts, rowid, title, prompt, reply)
+          VALUES ('delete', old.rowid, old.title, old.prompt, old.reply);
+      END;
+      CREATE TRIGGER passage_session_delete AFTER DELETE ON session BEGIN
+        DELETE FROM session_passage WHERE uid = old.uid;
+      END;
+    `)
+    const turns = db.query('SELECT role, text FROM session_turn WHERE uid = ? ORDER BY ordinal')
+    // Keep large text out of the eager read, including on Bun versions without SQLite iterators.
+    const ids = db.query('SELECT uid FROM session_text').all() as Array<{ uid: string }>
+    const text = db.query('SELECT uid, title, prompts, prose FROM session_text WHERE uid = ?')
+    for (const { uid } of ids) {
+      const row = text.get(uid) as TextRow & { uid: string }
+      const dialogue = turns.all(row.uid) as DialogueTurn[]
+      for (const [role, text] of [['user', row.prompts], ['assistant', row.prose]] as const) {
+        if (text && dialogue.filter(turn => turn.role === role).map(turn => turn.text).join('\n') !== text) {
+          dialogue.push(...legacySearchTurns(role, text))
+        }
+      }
+      writePassages(db, row.uid, row.title ?? '', dialogue)
+    }
+  },
 }
 
 const SESSION_COLUMNS_V1 = [
@@ -196,6 +235,7 @@ const SESSION_COLUMNS: Record<number, string[]> = {
   // Version 3 added the `session_turn` table, not a `session` column.
   3: [...SESSION_COLUMNS_V1, 'degraded'],
   4: [...SESSION_COLUMNS_V1, 'degraded', 'file_detail', 'file_events_truncated'],
+  5: [...SESSION_COLUMNS_V1, 'degraded', 'file_detail', 'file_events_truncated'],
 }
 
 /**
@@ -474,14 +514,18 @@ export class IndexDb {
       meta: ['key', 'value'],
       session: SESSION_COLUMNS[version]!,
       session_text: ['rowid', 'uid', 'title', 'prompts', 'prose'],
-      session_fts: ['title', 'prompts', 'prose'],
       session_file: ['uid', 'path'],
     }
+    if (version < 5) expected.session_fts = ['title', 'prompts', 'prose']
     if (version >= TURN_SCHEMA_VERSION) {
       expected.session_turn = ['uid', 'ordinal', 'role', 'text']
     }
     if (version >= FILE_EVENT_SCHEMA_VERSION) {
       expected.session_file_event = ['uid', 'ordinal', 'turn', 'path', 'kind']
+    }
+    if (version >= 5) {
+      expected.session_passage = ['rowid', 'uid', 'title', 'prompt', 'reply']
+      expected.passage_fts = ['title', 'prompt', 'reply']
     }
     for (const [table, columns] of Object.entries(expected)) {
       const object = db.query(
@@ -494,11 +538,12 @@ export class IndexDb {
         throw schemaError(`index schema columns do not match: ${table}`, db)
       }
     }
-    const fts = db.query("SELECT sql FROM sqlite_master WHERE name = 'session_fts'")
-      .get() as { sql: string | null } | null
+    const table = version < 5 ? 'session_fts' : 'passage_fts'
+    const content = version < 5 ? 'session_text' : 'session_passage'
+    const fts = db.query('SELECT sql FROM sqlite_master WHERE name = ?').get(table) as { sql: string | null } | null
     const ftsSql = fts?.sql?.replace(/\s+/g, ' ').toLowerCase() ?? ''
-    if (!ftsSql.startsWith('create virtual table session_fts using fts5(')
-      || !ftsSql.includes("content='session_text'")
+    if (!ftsSql.startsWith(`create virtual table ${table} using fts5(`)
+      || !ftsSql.includes(`content='${content}'`)
       || !ftsSql.includes("content_rowid='rowid'")) {
       throw schemaError('index search schema does not match', db)
     }
@@ -634,33 +679,24 @@ export class IndexDb {
    * Drops old document contents and reconstructs full-text search entries, turns, and file events.
    */
   private writeDoc(doc: SessionDoc): void {
-    const old = this.db.query(
-      'SELECT rowid, title, prompts, prose FROM session_text WHERE uid = ?',
-    ).get(doc.ref.uid) as TextRow | null
-
-    if (old) {
-      this.db.query(`
-        INSERT INTO session_fts(session_fts, rowid, title, prompts, prose)
-        VALUES ('delete', ?, ?, ?, ?)
-      `).run(old.rowid, old.title, old.prompts, old.prose)
-      this.db.query('DELETE FROM session_text WHERE uid = ?').run(doc.ref.uid)
-    }
+    this.db.query('DELETE FROM session_text WHERE uid = ?').run(doc.ref.uid)
 
     const title = doc.ref.title ?? ''
     const prompts = doc.prompts.join('\n')
     const prose = doc.prose.join('\n')
-    const inserted = this.db.query(
+    this.db.query(
       'INSERT INTO session_text (uid, title, prompts, prose) VALUES (?, ?, ?, ?)',
     ).run(doc.ref.uid, title, prompts, prose)
-
-    this.db.query(`
-      INSERT INTO session_fts(rowid, title, prompts, prose) VALUES (?, ?, ?, ?)
-    `).run(inserted.lastInsertRowid, title, prompts, prose)
 
     this.db.query('DELETE FROM session_file WHERE uid = ?').run(doc.ref.uid)
     const insertFile = this.db.query('INSERT INTO session_file (uid, path) VALUES (?, ?)')
     for (const path of new Set(doc.files)) insertFile.run(doc.ref.uid, path)
 
+    writePassages(this.db, doc.ref.uid, title, [
+      ...doc.dialogue ?? [],
+      ...doc.prompts.map(text => ({ role: 'user' as const, text })),
+      ...doc.prose.map(text => ({ role: 'assistant' as const, text })),
+    ])
     this.writeTurns(doc.ref.uid, doc.dialogue)
     this.writeFileEvents(doc)
 
@@ -854,18 +890,67 @@ export class IndexDb {
    * Performs a full-text search across all indexed sessions and returns matches ordered by relevance score.
    */
   ftsSearch(query: string): FtsHit[] {
-    return this.db.query(`
-      SELECT st.uid, -bm25(session_fts, 8.0, 4.0, 1.0) AS score
-      FROM session_fts
-      JOIN session_text AS st ON st.rowid = session_fts.rowid
-      WHERE session_fts MATCH ?
-      ORDER BY score DESC
+    if (this.schemaVersion() < 5) {
+      return this.db.query(`
+        SELECT st.uid, -bm25(session_fts, 8.0, 4.0, 1.0) AS score
+        FROM session_fts JOIN session_text AS st ON st.rowid = session_fts.rowid
+        WHERE session_fts MATCH ? ORDER BY score DESC
+      `).all(query) as FtsHit[]
+    }
+    // bm25 must be evaluated before grouping: FTS5 auxiliary functions cannot
+    // run in an aggregate context. Best passage avoids rewarding transcript length.
+    const hits = this.db.query(`
+      WITH hits AS MATERIALIZED (
+        SELECT p.uid, -bm25(passage_fts, 8.0, 4.0, 1.0) AS score
+        FROM passage_fts JOIN session_passage p ON p.rowid = passage_fts.rowid
+        WHERE passage_fts MATCH ?
+      ) SELECT uid, max(score) AS score FROM hits GROUP BY uid
     `).all(query) as FtsHit[]
+    const best = new Map(hits.map(hit => [hit.uid, hit.score]))
+    const units = query.match(/"[^"]+"\*?/gu) ?? []
+    if (units.length > 1) {
+      // A lower-ranked fallback preserves queries distributed over several
+      // turns. Intersect searchable terms, never the unfiltered original text.
+      let eligible: Set<string> | null = null
+      for (const unit of units) {
+        const matches = this.db.query(`
+          SELECT DISTINCT p.uid FROM passage_fts
+          JOIN session_passage p ON p.rowid = passage_fts.rowid WHERE passage_fts MATCH ?
+        `).all(unit) as Array<{ uid: string }>
+        const matched = new Set(matches.map(row => row.uid).filter(uid => !best.has(uid)))
+        if (eligible === null) eligible = matched
+        else for (const uid of eligible as Set<string>) if (!matched.has(uid)) eligible.delete(uid)
+        if (!eligible.size) break
+      }
+      const floor = best.size ? [...best.values()].reduce((a, b) => Math.min(a, b)) : 1
+      for (const uid of eligible ?? []) best.set(uid, floor * 0.1)
+    }
+    return [...best].map(([uid, score]) => ({ uid, score })).sort((a, b) => b.score - a.score)
   }
 
   /** Native selected-row excerpts: token and text budgets are independent. */
   matchSnippets(uid: string, expression: string, start: string, end: string, ellipsis: string): string[] | null {
     try {
+      if (this.schemaVersion() >= 5) {
+        const passage = this.db.query(`
+          SELECT substr(snippet(passage_fts, 0, ?, ?, ?, 32), 1, 8193) AS title,
+            substr(snippet(passage_fts, 1, ?, ?, ?, 32), 1, 8193) AS prompt,
+            substr(snippet(passage_fts, 2, ?, ?, ?, 32), 1, 8193) AS reply
+          FROM passage_fts JOIN session_passage p ON p.rowid = passage_fts.rowid
+          WHERE p.uid = ? AND passage_fts MATCH ?
+          ORDER BY bm25(passage_fts, 8.0, 4.0, 1.0) LIMIT 1
+        `).get(start, end, ellipsis, start, end, ellipsis, start, end, ellipsis, uid, expression) as
+          { title: string; prompt: string; reply: string } | null
+        if (passage) return [passage.title, passage.prompt, passage.reply]
+        const units = expression.match(/"[^"]+"\*?/gu) ?? []
+        if (units.length > 1) {
+          for (const unit of units) {
+            const excerpt = this.matchSnippets(uid, unit, start, end, ellipsis)
+            if (excerpt) return excerpt
+          }
+        }
+        return null
+      }
       const row = this.db.query(`
         SELECT substr(snippet(session_fts, 0, ?, ?, ?, 32), 1, 8193) AS title,
           substr(snippet(session_fts, 1, ?, ?, ?, 32), 1, 8193) AS prompt,
@@ -1061,10 +1146,10 @@ export class IndexDb {
       const readText = this.db.query(
         'SELECT rowid, title, prompts, prose FROM session_text WHERE uid = ?',
       )
-      const deleteFts = this.db.query(`
+      const deleteFts = this.schemaVersion() < 5 ? this.db.query(`
         INSERT INTO session_fts(session_fts, rowid, title, prompts, prose)
         VALUES ('delete', ?, ?, ?, ?)
-      `)
+      `) : null
       const deleteText = this.db.query('DELETE FROM session_text WHERE uid = ?')
       const deleteFile = this.db.query('DELETE FROM session_file WHERE uid = ?')
       // `forget` and `prune` open an older index without migrating it, so the
@@ -1080,16 +1165,23 @@ export class IndexDb {
         ? this.db.query('DELETE FROM session_file_event WHERE uid = ?')
         : null
       const deleteRef = this.db.query('DELETE FROM session WHERE uid = ?')
+      // Deleted by UID rather than left to the session trigger alone: passages
+      // written for a UID with no session row would otherwise stay searchable
+      // after the session is forgotten. The passage trigger clears their FTS rows.
+      const deletePassages = storedSchemaVersion(this.db) >= 5
+        ? this.db.query('DELETE FROM session_passage WHERE uid = ?')
+        : null
 
       for (const value of new Set(values)) {
         const old = readText.get(value) as TextRow | null
         if (old) {
-          deleteFts.run(old.rowid, old.title, old.prompts, old.prose)
+          deleteFts?.run(old.rowid, old.title, old.prompts, old.prose)
           deleteText.run(value)
         }
         deleteFile.run(value)
         deleteTurn?.run(value)
         deleteEvent?.run(value)
+        deletePassages?.run(value)
         deleteRef.run(value)
       }
     })(uids)
