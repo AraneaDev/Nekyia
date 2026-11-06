@@ -467,7 +467,7 @@ test('extracts file facets from Claude tool input', async () => {
   expect(doc.files).toContain('/home/dev/work/proj/src/sse.ts')
 })
 
-test('over-cap Claude transcripts keep prompts and facets but drop prose', async () => {
+test('Claude assistant messages exceeding the byte budget keep prompts and facets', async () => {
   const { refs } = await jsonlTranscript.discover(claude, join(fixtures, 'claude'))
   const doc = await jsonlTranscript.hydrate(claude, '', refs[0]!, {
     ...DEFAULT_CONFIG,
@@ -1690,5 +1690,164 @@ test('an empty or unnamed Codex rollout is not turned into a session', async () 
 
     expect(refs).toEqual([])
     expect(diagnostics).toEqual([])
+  })
+})
+
+test('zstd archives hydrate identically and keep the original session identity', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'projects', 'synthetic')
+    mkdirSync(directory, { recursive: true })
+    const path = join(directory, 'synthetic-session.jsonl')
+    writeJsonl(path, [
+      { cwd: '/synthetic', message: { role: 'user', content: 'find the answer' } },
+      { message: { role: 'assistant', content: 'the answer is forty two' } },
+      { toolUseResult: 'PRIVATE_TOOL_RESULT' },
+    ])
+    const plainRef = (await jsonlTranscript.discover(claude, root)).refs[0]!
+    const plain = await jsonlTranscript.hydrate(claude, root, plainRef, DEFAULT_CONFIG)
+    writeFileSync(`${path}.zst`, Bun.zstdCompressSync(await Bun.file(path).bytes()))
+    rmSync(path)
+    const { refs } = await jsonlTranscript.discover(claude, root)
+    expect(refs).toHaveLength(1)
+    expect(refs[0]!.uid).toBe('claude:synthetic-session')
+    expect(refs[0]!.tier).toBe('search')
+    const archive = await jsonlTranscript.hydrate(claude, root, refs[0]!, DEFAULT_CONFIG)
+    expect(archive.prompts).toEqual(plain.prompts)
+    expect(archive.prose).toEqual(['the answer is forty two'])
+    expect(archive.dialogue).toEqual(plain.dialogue)
+    expect(JSON.stringify(archive)).not.toContain('PRIVATE_TOOL_RESULT')
+  })
+})
+
+test('discovery prefers a plain transcript over its archive deterministically', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'projects', 'synthetic')
+    mkdirSync(directory, { recursive: true })
+    const path = join(directory, 'duplicate.jsonl')
+    writeJsonl(path, [{ message: { role: 'user', content: 'plain preferred' } }])
+    writeFileSync(`${path}.zst`, Bun.zstdCompressSync(await Bun.file(path).bytes()))
+    const { refs } = await jsonlTranscript.discover(claude, root)
+    expect(refs).toHaveLength(1)
+    expect(refs[0]!.sourcePaths).toEqual([path])
+    expect(refs[0]!.tier).toBe('resume')
+  })
+})
+
+test('tool-heavy raw files retain short late answers within the assistant byte budget', async () => {
+  await inTempDir(async (root) => {
+    writeJsonl(join(root, 'session.jsonl'), [
+      { session: { id: 'budget' }, role: 'user', text: 'question longer than budget' },
+      { role: 'tool', text: 'PRIVATE'.repeat(1000) },
+      { role: 'assistant', text: 'answer' },
+    ])
+    const ref = (await jsonlTranscript.discover(generic, root)).refs[0]!
+    const doc = await jsonlTranscript.hydrate(generic, root, ref, { ...DEFAULT_CONFIG, maxFileBytes: 6 })
+    expect(doc.prose).toEqual(['answer'])
+    expect(doc.prompts).toEqual(['question longer than budget'])
+    expect(doc.truncated).toBe(false)
+  })
+})
+
+test('assistant budgets count UTF-8 bytes and retain only complete messages', async () => {
+  await inTempDir(async (root) => {
+    writeJsonl(join(root, 'session.jsonl'), [
+      { session: { id: 'budget' }, role: 'user', text: 'keep prompt' },
+      { role: 'assistant', text: 'éé' },
+      { role: 'assistant', text: 'long answer' },
+      { role: 'assistant', text: 'ok' },
+    ])
+    const ref = (await jsonlTranscript.discover(generic, root)).refs[0]!
+    const doc = await jsonlTranscript.hydrate(generic, root, ref, { ...DEFAULT_CONFIG, maxFileBytes: 6 })
+    expect(doc.prose).toEqual(['éé', 'ok'])
+    expect(doc.truncated).toBe(true)
+    expect(doc.ref.turns).toBe(4)
+  })
+})
+
+test('corrupt and truncated archives fail hydration instead of returning partial dialogue', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'projects', 'synthetic')
+    mkdirSync(directory, { recursive: true })
+    const path = join(directory, 'corrupt.jsonl')
+    writeJsonl(path, [{ message: { role: 'user', content: 'keep no partial result' } }])
+    const ref = (await jsonlTranscript.discover(claude, root)).refs[0]!
+    const compressed = Bun.zstdCompressSync(await Bun.file(path).bytes())
+    for (const bytes of [new Uint8Array([1, 2, 3, 4]), compressed.slice(0, -3)]) {
+      writeFileSync(`${path}.zst`, bytes)
+      await expect(jsonlTranscript.hydrate(claude, root, { ...ref, sourcePaths: [`${path}.zst`] }, DEFAULT_CONFIG)).rejects.toThrow()
+    }
+  })
+})
+
+test('bounded transcript streaming rejects decompressed bytes beyond its safety ceiling', async () => {
+  await inTempDir(async (root) => {
+    const { transcriptChunks } = await import('../src/formats/transcript-stream')
+    const path = join(root, 'ceiling.jsonl.zst')
+    writeFileSync(path, Bun.zstdCompressSync('x'.repeat(8192)))
+    const read = async () => {
+      for await (const _chunk of transcriptChunks(path, 1024)) { /* drain */ }
+    }
+    await expect(read()).rejects.toThrow(/decompressed safety limit/)
+  })
+})
+
+test('Codex archive filenames recover UUID identity when metadata exceeds discovery bounds', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'sessions', 'synthetic')
+    mkdirSync(directory, { recursive: true })
+    const path = join(directory, 'rollout-2026-01-01-11111111-2222-3333-4444-555555555555.jsonl.zst')
+    const text = `${JSON.stringify({ type: 'session_meta', payload: { instructions: 'x'.repeat(80 * 1024) } })}\n`
+      + `${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'archived answer' }] } })}\n`
+    writeFileSync(path, Bun.zstdCompressSync(text))
+    const { refs } = await jsonlTranscript.discover(codex, root)
+    expect(refs).toHaveLength(1)
+    expect(refs[0]!.uid).toBe('codex:11111111-2222-3333-4444-555555555555')
+    expect(refs[0]!.tier).toBe('search')
+    expect((await jsonlTranscript.hydrate(codex, root, refs[0]!, DEFAULT_CONFIG)).prose).toEqual(['archived answer'])
+  })
+})
+
+test('discovery reads a bounded decompressed prefix of an archive', async () => {
+  await inTempDir(async (root) => {
+    const { readTranscriptHead } = await import('../src/formats/transcript-stream')
+    const path = join(root, 'head.jsonl.zst')
+    writeFileSync(path, Bun.zstdCompressSync('bounded head\n' + 'tail'.repeat(100_000)))
+    expect(await readTranscriptHead(path, 12)).toBe('bounded head')
+  })
+})
+
+test('unreadable archive heads do not mint fallback sessions from filenames', async () => {
+  await inTempDir(async (root) => {
+    const directory = join(root, 'projects', 'synthetic')
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(join(directory, 'corrupt.jsonl.zst'), new Uint8Array([1, 2, 3]))
+    writeFileSync(join(directory, 'incomplete.jsonl.zst'), Bun.zstdCompressSync('{"unfinished":'))
+    const { refs, diagnostics } = await jsonlTranscript.discover(claude, root)
+    expect(refs).toEqual([])
+    expect(diagnostics.length).toBeGreaterThan(0)
+  })
+})
+
+test('archive decoder failure preserves the last searchable document and fingerprint', async () => {
+  await inTempDir(async (root) => {
+    const { buildAdapter } = await import('../src/core/adapter')
+    const { IndexDb } = await import('../src/core/db')
+    const { hydrateAll } = await import('../src/core/hydrate')
+    const path = join(root, 'session.jsonl')
+    writeJsonl(path, [{ session: { id: 'atomic' }, role: 'user', text: 'previoussearchableanswer' }])
+    const adapter = buildAdapter({ ...generic, roots: [root] })
+    const ref = (await adapter.discover()).refs[0]!
+    const db = IndexDb.open(':memory:')
+    try {
+      await hydrateAll(db, DEFAULT_CONFIG, [adapter], [ref])
+      writeFileSync(`${path}.zst`, new Uint8Array([1, 2, 3]))
+      const changed = { ...ref, fingerprint: 'corrupt-archive', sourcePaths: [`${path}.zst`] }
+      const diagnostics = await hydrateAll(db, DEFAULT_CONFIG, [adapter], [changed])
+      expect(diagnostics).toHaveLength(1)
+      expect(db.getRef(ref.uid)!.fingerprint).toBe(ref.fingerprint)
+      expect(db.ftsSearch('previoussearchableanswer').map((hit) => hit.uid)).toEqual(['generic:atomic'])
+    } finally {
+      db.close()
+    }
   })
 })

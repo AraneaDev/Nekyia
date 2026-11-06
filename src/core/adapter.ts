@@ -19,6 +19,8 @@ import type { Diagnostic, ExecPlan, Origin, SessionDoc, SessionRef, Tier } from 
  */
 export interface PlanTarget {
   nativeId: string
+  /** A session may be searchable even when its client supports native resume. */
+  tier?: Tier
   /** Null for a session that recorded no directory; `plan` then falls back to the manifest's own cwd. */
   cwd: string | null
 }
@@ -342,7 +344,10 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
 
         for (const item of local) {
           const current = selected.get(item.ref.uid)
-          if (!current || (!current.primary && item.primary)) selected.set(item.ref.uid, item)
+          const preferPlain = manifest.format === 'jsonl-transcript'
+            && current?.ref.sourcePaths[0]?.endsWith('.jsonl.zst')
+            && !item.ref.sourcePaths[0]?.endsWith('.jsonl.zst')
+          if (!current || (!current.primary && item.primary) || preferPlain) selected.set(item.ref.uid, item)
         }
       }
 
@@ -394,6 +399,7 @@ export function buildAdapter(manifest: Manifest, origin: Origin = 'manifest'): A
         const source = commandSource(manifest, promptText, launcher)
         if (!source) return null
         const useResume = source.tier === 'resume' && !!source.resume && !promptText
+          && !(manifest.format === 'jsonl-transcript' && ref.tier === 'search')
         const spec = useResume ? source.resume! : source.brief
         if (!spec) return null
         const sessionCwd = ref.cwd

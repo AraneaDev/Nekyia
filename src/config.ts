@@ -9,7 +9,7 @@ export interface Config {
   exclude: string[]
   /** Recency decay half-life in days. */
   halfLifeDays: number
-  /** Maximum file size accepted for indexing, in bytes. */
+  /** Text budget in bytes; JSONL readers apply it to retained assistant UTF-8 text. */
   maxFileBytes: number
   /** Client names hidden from normal results. */
   hiddenClients: string[]

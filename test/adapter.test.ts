@@ -375,3 +375,34 @@ test('canResume looks inside launchers', () => {
   })
   expect(canResume(briefOnly)).toBe(false)
 })
+
+test('archived sources cannot plan native resume but can hand off a brief', async () => {
+  const adapter = buildAdapter(validateManifest({
+    schema: 1, id: 'claude', name: 'Claude', roots: [join(FIX, 'claude')],
+    format: 'jsonl-transcript', tier: 'resume',
+    jsonl: { glob: 'projects/*/*.jsonl', variant: 'claude' },
+    resume: { cmd: 'claude', args: ['--resume', '{id}'] },
+    brief: { cmd: 'claude', args: ['{prompt}'] },
+  }))
+  const ref = (await adapter.discover()).refs[0]!
+  const archived = { ...ref, tier: 'search' as const, sourcePaths: ['/synthetic/session.jsonl.zst'] }
+  expect(adapter.plan(archived)?.kind).not.toBe('resume')
+  expect(adapter.plan(archived, 'earlier context')?.kind).toBe('brief')
+})
+
+test('plain JSONL transcripts win over archived copies in an earlier configured root', async () => {
+  const archivedRoot = makeTemp('nekyia-archive-root-')
+  const plainRoot = makeTemp('nekyia-plain-root-')
+  const text = `${JSON.stringify({ cwd: '/synthetic', message: { role: 'user', content: 'synthetic question' } })}\n`
+  writeFileSync(join(archivedRoot, 'same.jsonl.zst'), Bun.zstdCompressSync(text))
+  writeFileSync(join(plainRoot, 'same.jsonl'), text)
+  const adapter = buildAdapter(validateManifest({
+    schema: 1, id: 'claude', name: 'Claude', roots: [archivedRoot, plainRoot],
+    format: 'jsonl-transcript', tier: 'resume', jsonl: { glob: '*.jsonl', variant: 'claude' },
+    resume: { cmd: 'claude', args: ['--resume', '{id}'] },
+  }))
+  const { refs } = await adapter.discover()
+  expect(refs).toHaveLength(1)
+  expect(refs[0]!.sourcePaths[0]).toBe(join(plainRoot, 'same.jsonl'))
+  expect(adapter.plan(refs[0]!)?.kind).toBe('resume')
+})
