@@ -6,6 +6,7 @@ import { IndexDb } from '../core/db'
 import { checkPlan, runPlan, type RunResult } from '../core/resume'
 import { indexPath, loadConfigChecked, type Config } from '../config'
 import { App, type AppProps } from '../tui/App'
+import { SEARCH_SETTLE_MS } from '../tui/useSessions'
 import { releaseTerminal } from '../tui/clipboard'
 import { boundedDisplayText, boundedErrorMessage as message } from '../tui/text'
 import type { ExecPlan } from '../types'
@@ -235,6 +236,7 @@ export async function runPick(overrides: Partial<PickDependencies> = {}): Promis
         initialState: lastState,
         onStateChange: captureState,
         initialNotice,
+        searchSettleMs: SEARCH_SETTLE_MS,
         /** Captures the chosen execution plan and optional copy task when the user selects a session. */
         onExec: (plan, copy) => {
           if (pending) return
