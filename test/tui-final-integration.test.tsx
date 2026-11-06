@@ -10,6 +10,14 @@ import {clearedFilters, type PickerRestore} from '../src/tui/state'
 import type {ExecPlan,SessionRef} from '../src/types'
 const now=1800000000000
 const tick=()=>new Promise(resolve=>setTimeout(resolve,40))
+/** Retries a block of assertions until it passes, then fails with its real error after the timeout. */
+async function eventually(assertion:()=>void,timeoutMs=3000):Promise<void>{
+ const end=Date.now()+timeoutMs
+ for(;;){
+  try{assertion();return}catch(error){if(Date.now()>end)throw error}
+  await new Promise(resolve=>setTimeout(resolve,10))
+ }
+}
 const native=buildAdapter(validateManifest({schema:1,id:'claude',name:'Claude',roots:['/none'],format:'jsonl-transcript',tier:'resume',jsonl:{glob:'*.jsonl',variant:'claude'},resume:{cmd:'claude',args:['--resume','{id}'],cwd:'{cwd}'},brief:{cmd:'claude',args:['{prompt}'],cwd:'{cwd}'}}))
 function setup(extra:Record<string,unknown>={}){
  const db=IndexDb.open(':memory:')
@@ -74,30 +82,55 @@ test('fixture journey preserves prefix child evidence, literal find, custom filt
  const view=mount(db,{adapters:[native,target],bookmarkStore:store,initialState:{...restore(),reader:null,filters:clearedFilters()},onStateChange:value=>{state=value},onReindex:()=>{refreshed=true},onExec:plan=>{launched=true;emitted=plan}})
  const capture:Record<string,string>={}
  const tabs=async(count:number)=>{for(let index=0;index<count;index++){view.stdin.write('\t');await tick()}}
- await tick();view.stdin.write('\x07');await tick();await tabs(2);view.stdin.write('\x1b[D');await tick();await tabs(1);view.stdin.write(filters.time.sinceText);await tick();await tabs(1);view.stdin.write(filters.time.untilText);await tick();view.stdin.write('\x13');await tick();expect(state?.filters.time).toEqual(filters.time)
- view.stdin.write('ten');await tick();capture.prefix=view.lastFrame()!
- expect(view.lastFrame()).toContain('Matched related session claude:child')
- view.stdin.write('\x0f');await tick();capture.reader=view.lastFrame()!
- expect(view.lastFrame()).toContain('History · claude:child');expect(state?.reader?.anchor.ordinal).toBe(1)
- view.stdin.write('\x06');await tick();view.stdin.write('café');await tick();expect(view.lastFrame()).toContain('hit 1 of 2')
- view.stdin.write('\r');await tick();view.stdin.write('\x1bOR');await tick();expect(state?.reader?.hitIndex).toBe(1)
- view.stdin.write('\x1b');await tick();expect(state?.text).toBe('ten');expect(state?.filters.time).toEqual(filters.time)
- view.stdin.write('\x07');await tick();capture.filters=view.lastFrame()!;view.stdin.write('\x13');await tick();expect(state?.filters.time).toEqual(filters.time)
- view.stdin.write('\x02');await tick();expect(bookmarks).toEqual(['claude:a'])
- view.stdin.write('\x07');await tick();await tabs(6);view.stdin.write('\r');await tick();await tabs(1);view.stdin.write('src/');await tick();await tabs(2);view.stdin.write('\r');await tick();view.stdin.write('\x13');await tick()
- expect(state?.filters.branch).toBe('main');expect(state?.filters.file).toEqual({path:'src/',exact:false});expect(state?.filters.bookmarkedOnly).toBe(true)
- view.stdin.write('\x05');await tick();capture.chain=view.lastFrame()!;expect(view.lastFrame()).toContain('Related sessions (2 visible)');view.stdin.write('Child context');await tick();view.stdin.write('\r');await tick();view.stdin.write('\r');await tick();expect(view.lastFrame()).toContain('History · claude:child');view.stdin.write('\x1b');await tick()
- view.stdin.write('\x14');await tick();expect(view.lastFrame()).toContain('Codex');view.stdin.write('\r');await tick();capture.confirmation=view.lastFrame()!;expect(view.lastFrame()).toContain('Start a new briefed session');view.stdin.write('\x1b');await tick();view.stdin.write('\x1b');await tick();expect(launched).toBe(false)
- view.stdin.write('\x05');await tick();view.stdin.write('Child context');await tick();view.stdin.write('\r');await tick();view.stdin.write('\r');await tick();view.stdin.write('\x06');await tick();for(let index=0;index<3;index++){view.stdin.write('\x7f');await tick()}view.stdin.write('café');await tick();view.stdin.write('\r');await tick();view.stdin.write('\x12');await tick()
- expect(refreshed).toBe(true);expect(state?.reader?.anchor.uid).toBe('claude:child');expect(state?.reader?.findText).toBe('café');expect(state?.text).toBe('ten');expect(state?.filters.time).toEqual(filters.time)
+ // Each checkpoint waits for the state it asserts rather than a fixed delay: a
+ // key's effect reaches onStateChange through several renders, and a slow runner
+ // can take longer than one tick. Waiting there also keeps the next key from
+ // racing the previous one.
+ await tick();view.stdin.write('\x07');await tick();await tabs(2);view.stdin.write('\x1b[D');await tick();await tabs(1);view.stdin.write(filters.time.sinceText);await tick();await tabs(1);view.stdin.write(filters.time.untilText);await tick();view.stdin.write('\x13')
+ await eventually(()=>expect(state?.filters.time).toEqual(filters.time))
+ view.stdin.write('ten')
+ await eventually(()=>expect(view.lastFrame()).toContain('Matched related session claude:child'));capture.prefix=view.lastFrame()!
+ view.stdin.write('\x0f')
+ await eventually(()=>{expect(view.lastFrame()).toContain('History · claude:child');expect(state?.reader?.anchor.ordinal).toBe(1)});capture.reader=view.lastFrame()!
+ view.stdin.write('\x06');await tick();view.stdin.write('café')
+ await eventually(()=>{expect(view.lastFrame()).toContain('hit 1 of 2');expect(state?.reader?.hitIndex).toBe(0)})
+ view.stdin.write('\r');await eventually(()=>expect(view.lastFrame()).not.toContain('Find:'));view.stdin.write('\x1bOR')
+ await eventually(()=>expect(state?.reader?.hitIndex).toBe(1))
+ view.stdin.write('\x1b')
+ await eventually(()=>{expect(state?.reader).toBeNull();expect(state?.text).toBe('ten');expect(state?.filters.time).toEqual(filters.time)})
+ view.stdin.write('\x07');await eventually(()=>expect(view.lastFrame()).toContain('Filters'));capture.filters=view.lastFrame()!;view.stdin.write('\x13')
+ await eventually(()=>{expect(view.lastFrame()).not.toContain('Apply');expect(state?.filters.time).toEqual(filters.time)})
+ view.stdin.write('\x02')
+ await eventually(()=>expect(bookmarks).toEqual(['claude:a']))
+ view.stdin.write('\x07');await eventually(()=>expect(view.lastFrame()).toContain('Filters'));await tabs(6);view.stdin.write('\r');await tick();await tabs(1);view.stdin.write('src/');await tick();await tabs(2);view.stdin.write('\r');await tick();view.stdin.write('\x13')
+ await eventually(()=>{expect(state?.filters.branch).toBe('main');expect(state?.filters.file).toEqual({path:'src/',exact:false});expect(state?.filters.bookmarkedOnly).toBe(true)})
+ view.stdin.write('\x05')
+ await eventually(()=>expect(view.lastFrame()).toContain('Related sessions (2 visible)'));capture.chain=view.lastFrame()!
+ view.stdin.write('Child context');await tick();view.stdin.write('\r');await tick();view.stdin.write('\r')
+ await eventually(()=>expect(view.lastFrame()).toContain('History · claude:child'))
+ view.stdin.write('\x1b');await eventually(()=>expect(state?.reader).toBeNull())
+ view.stdin.write('\x14')
+ await eventually(()=>expect(view.lastFrame()).toContain('Codex'))
+ view.stdin.write('\r')
+ await eventually(()=>expect(view.lastFrame()).toContain('Start a new briefed session'));capture.confirmation=view.lastFrame()!
+ // Escape steps back one level at a time: the confirmation, then the target picker.
+ view.stdin.write('\x1b');await eventually(()=>expect(view.lastFrame()).toContain('Hand off to another client'))
+ view.stdin.write('\x1b');await eventually(()=>expect(view.lastFrame()).not.toContain('Hand off to another client'));expect(launched).toBe(false)
+ view.stdin.write('\x05');await eventually(()=>expect(view.lastFrame()).toContain('Related sessions'));view.stdin.write('Child context');await tick();view.stdin.write('\r');await tick();view.stdin.write('\r')
+ await eventually(()=>expect(view.lastFrame()).toContain('History · claude:child'))
+ view.stdin.write('\x06');await tick();for(let index=0;index<3;index++){view.stdin.write('\x7f');await tick()}view.stdin.write('café')
+ await eventually(()=>expect(state?.reader?.findText).toBe('café'))
+ view.stdin.write('\r');await tick();view.stdin.write('\x12')
+ await eventually(()=>{expect(refreshed).toBe(true);expect(state?.reader?.anchor.uid).toBe('claude:child');expect(state?.reader?.findText).toBe('café');expect(state?.text).toBe('ten');expect(state?.filters.time).toEqual(filters.time)})
  const saved=state!
  view.unmount();db.close()
  const refreshedDb=IndexDb.open(':memory:')
  refreshedDb.upsertRef(ref);refreshedDb.upsertDoc({ref,prompts:['one passing tenant mention '+ 'unrelated '.repeat(50)],prose:['root answer'],files:['src/root.ts'],truncated:false,dialogue:[{role:'user',text:'Root unrelated request'}]})
  refreshedDb.upsertRef(child);refreshedDb.upsertDoc({ref:child,prompts:['tenant tenant tenant retries evidence and café'],prose:[],files:['src/child.ts'],truncated:false,dialogue:[{role:'user',text:'Opening unrelated request'},{role:'assistant',text:'tenant tenant tenant retries evidence and café'},{role:'user',text:'café again'}],fileDetail:'ordered'})
- const restored=mount(refreshedDb,{adapters:[native,target],bookmarkStore:store,initialState:saved,onStateChange:value=>{state=value},onExec:plan=>{emitted=plan}});await tick();capture.refreshed=restored.lastFrame()!
- expect(state?.selectedUid).toBe('claude:a');expect(state?.reader).toEqual(saved.reader);expect(state?.text).toBe('ten');expect(state?.filters).toEqual(saved.filters);expect(restored.lastFrame()).toContain('History · claude:child')
- restored.stdin.write('\x1b');await tick();restored.stdin.write('\r');await tick();expect(emitted).toMatchObject({kind:'resume',cmd:'claude',args:['--resume','a'],cwd:'/proj'})
+ const restored=mount(refreshedDb,{adapters:[native,target],bookmarkStore:store,initialState:saved,onStateChange:value=>{state=value},onExec:plan=>{emitted=plan}})
+ await eventually(()=>{expect(state?.selectedUid).toBe('claude:a');expect(state?.reader).toEqual(saved.reader);expect(state?.text).toBe('ten');expect(state?.filters).toEqual(saved.filters);expect(restored.lastFrame()).toContain('History · claude:child')});capture.refreshed=restored.lastFrame()!
+ restored.stdin.write('\x1b');await eventually(()=>expect(state?.reader).toBeNull());restored.stdin.write('\r')
+ await eventually(()=>expect(emitted).toMatchObject({kind:'resume',cmd:'claude',args:['--resume','a'],cwd:'/proj'}))
  await Bun.write('/tmp/nekyia-tui-ux/final-integration-frames.json',JSON.stringify(capture,null,2))
  restored.unmount();refreshedDb.close()
 })
