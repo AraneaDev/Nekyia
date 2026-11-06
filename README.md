@@ -68,7 +68,7 @@ bun install -g nekyia
 
 <!-- x-release-please-start-version -->
 ```bash
-bun install -g github:AraneaDev/Nekyia#v1.3.1
+bun install -g github:AraneaDev/Nekyia#v1.3.2
 ```
 <!-- x-release-please-end -->
 
@@ -440,8 +440,9 @@ are excluded from search while the original retained history stays intact. Passa
 windows overlap; individual tokens longer than 4096 characters are omitted from search
 and separate windows, so omission cannot manufacture phrase adjacency.
 
-The picker runs disk-backed typing searches, matching excerpts and empty-result probes
-in one read-only worker so broad prefixes cannot block keyboard input. Pending requests
+The picker retains the upstream 120 ms typing pause and short-prefix rules. Settled
+disk-backed searches, matching excerpts and empty-result probes run in one read-only
+worker, so a query that starts after the pause cannot block keyboard input. Pending requests
 coalesce to the latest query, superseded results are discarded, and Enter waits for the
 current result. This adds a worker and a read-only database connection; broad queries
 can still take time to finish even though typing remains responsive.

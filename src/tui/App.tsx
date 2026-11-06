@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Box, Text, useApp, useInput, useStdin } from 'ink'
+import { Box, Text, useApp, useInput, useStdin, type Key } from 'ink'
 import { configDir, saveLauncherChoice, type Config } from '../config'
 import { canBrief, type Adapter } from '../core/adapter'
 import { buildBrief } from '../core/brief'
@@ -427,6 +427,12 @@ export interface AppProps {
   onStateChange?: (state: PickerRestore) => void
   initialNotice?: string
   bookmarkStore?: BookmarkStore
+  /**
+   * How long the search waits for typing to pause, in milliseconds. 0, the
+   * default, searches on every key; the interactive picker passes
+   * `SEARCH_SETTLE_MS` so a large index never stalls the field.
+   */
+  searchSettleMs?: number
 }
 
 /** The picker: search, scoping, client filtering, history inspection, and launch. */
@@ -434,7 +440,7 @@ export function App({
   db, cfg, adapters, cwd, now, onExec, onReindex, clipboard,
   clipboardFactory = createHostClipboard, rows, columns, indexedAt,
   checkHandoffPlan = checkPlan, checkResumePlan = checkPlan, onPath, saveLauncher = saveLauncherChoice,
-  initialState, onStateChange, initialNotice, bookmarkStore: storeIn, clock,
+  initialState, onStateChange, initialNotice, bookmarkStore: storeIn, clock, searchSettleMs = 0,
 }: AppProps) {
   const { exit } = useApp()
   const {stdin}=useStdin()
@@ -464,7 +470,7 @@ export function App({
   )
   /** Which client to ask about, and which of its options is highlighted, while the picker waits on an answer. */
   const [launcherAsk, setLauncherAsk] = useState<{ client: string; uid:string; options: string[]; index: number } | null>(null)
-  const sessions = useSessions(db, cfg, cwd, shown, now, initialState, bookmarkUids, clock)
+  const sessions = useSessions(db, cfg, cwd, shown, now, initialState, bookmarkUids, clock, searchSettleMs)
   const readerAllowed=readerUid===null||sessions.snapshot.some(ref=>ref.uid===readerUid&&!cfg.hiddenClients?.includes(ref.client))
   const readerExtras=useMemo(()=>{
     if(!readerUid||!readerAllowed)return []
@@ -541,7 +547,7 @@ export function App({
   // rather than racing the client for the terminal.
   const pendingCopy = useRef<Promise<void> | null>(null)
   const rich=useMemo(()=>selectedRow?readSessionDetail(db,selectedRow.uid):null,[db,selectedRow?.uid])
-  const expression=compileSearch(sessions.text,'prefix-last')
+  const expression=compileSearch(sessions.queryText,'prefix-last')
   const matchingUid=selectedRow?.matchedUid??selectedRow?.uid
   const matchingDetail=useMemo(()=>!sessions.backgroundSearch&&matchingUid&&expression?readSessionDetail(db,matchingUid):null,[db,matchingUid,expression,sessions.backgroundSearch])
   const synchronousEvidence=useMemo(()=>!sessions.backgroundSearch&&matchingUid&&expression?readMatchEvidence(db,matchingUid,expression,matchingDetail?.turns??[]):null,[db,matchingUid,expression,matchingDetail,sessions.backgroundSearch])
@@ -562,6 +568,9 @@ export function App({
     columns: layout.previewWidth,
     maxLines: summaryRows,
   }), [selectedRow, rich, evidence, layout.previewWidth, summaryRows])
+  const suggestions=useMemo(()=>!sessions.pending&&!sessions.searchError&&!sessions.rows.length
+    ?(sessions.backgroundSearch&&sessions.queryText?sessions.suggestions:emptySuggestions({text:sessions.queryText,filters:sessions.filters},sessions.countMatches)):[],
+    [sessions.pending,sessions.searchError,sessions.rows.length,sessions.backgroundSearch,sessions.queryText,sessions.suggestions,sessions.filters,sessions.countMatches])
   useEffect(()=>{
     onStateChange?.({text:sessions.text,filters:sessions.filters,selectedUid:selectedRow?.uid??null,selectedIndex:sessions.selected,
       listTop:listWindow(sessions.rows,sessions.selected,listHeight,layout.listWidth,layout.mode!=='compact',bookmarkUids)[0],reader:reading?readerState:null,
@@ -902,28 +911,34 @@ export function App({
     else if(id==='bookmark'&&selectedRow)void toggleBookmark(selectedRow.uid)
     else if(id==='manage-bookmarks')setMode('bookmarks')
     else if(id==='filters')setMode('filters')
-    else if(id==='clear-search')sessions.setText('')
+    else if(id==='clear-search')sessions.setText('',true)
     else if(id==='refresh')requestRefresh()
     else if(id==='stats'){
       if(statsAvailable)setStatsVisible(current=>!current)
       else announce('Stats need 140 columns and 18 rows')
     }
   }
-  const pendingSubmission=useRef<{text:string;filters:typeof sessions.filters}|null>(null)
   /** Enter targets the latest query even if its read-only worker is still finishing. */
   function submitSelection():void {
     if(resolved?.kind==='resolved'&&resolved.tier==='search'&&contextReason&&handoffTargets.length)dispatchAction('handoff')
     else activate()
   }
+  const replay=useRef<{input:string;key:Key;text:string;filters:typeof sessions.filters}|null>(null)
   useEffect(()=>{
-    const pending=pendingSubmission.current
-    if(!pending)return
-    if(pending.text!==sessions.text||pending.filters!==sessions.filters||mode||helpOpen||confirm||handoff||launcherAsk){pendingSubmission.current=null;return}
-    if(!sessions.searchPending){pendingSubmission.current=null;if(!sessions.searchError)submitSelection()}
-  },[sessions.searchPending,sessions.searchError,sessions.text,sessions.filters,sessions.rows,mode,helpOpen,confirm,handoff,launcherAsk])
-  useInput((input, key) => {
+    const deferred=replay.current
+    if(!deferred)return
+    if(deferred.text!==sessions.text||deferred.filters!==sessions.filters||mode||helpOpen||launcherAsk||confirm||handoff){replay.current=null;return}
+    if(sessions.pending)return
+    replay.current=null
+    handleInput(deferred.input,deferred.key)
+  })
+  /** Only text edits can proceed without settling the current result. */
+  const editsSearch=(input:string,key:Key)=>key.backspace||key.delete||Boolean(input&&!key.ctrl&&!key.meta&&!key.escape&&!key.return&&!key.tab
+    &&!key.upArrow&&!key.downArrow&&!key.leftArrow&&!key.rightArrow&&!key.pageUp&&!key.pageDown)
+  /** Replay actions only after both the upstream pause and background query have finished. */
+  function handleInput(input:string,key:Key) {
     if (executing.current) return
-    if (key.ctrl && input === 'c') { exit(); return }
+    if (key.ctrl && input === 'c') { replay.current=null; exit(); return }
     if(reading&&!helpOpen&&(key.ctrl&&(input==='d'||input==='u'))){
       if(input==='d')sessions.cycleTimePreset();else sessions.clearTimePreset();setHelpOpen(false);setMode(null);return
     }
@@ -966,7 +981,13 @@ export function App({
       else if (input === 'n') { setHandoffNote(''); setNote('') }
       return
     }
-    if (key.ctrl && input === 'c') { exit(); return }
+    if (key.ctrl && input === 'c') { replay.current=null; exit(); return }
+    // An overlay's Escape/Enter must not replay as a browse action after that overlay closes.
+    if(sessions.pending&&!key.escape&&!(key.ctrl&&input==='c')&&!editsSearch(input,key)){
+      replay.current={input,key,text:sessions.text,filters:sessions.filters}
+      sessions.settle()
+      return
+    }
     if (key.ctrl && (input === 'd' || input === 'u')) {
       if (input === 'd') sessions.cycleTimePreset()
       else sessions.clearTimePreset()
@@ -980,11 +1001,11 @@ export function App({
     if (key.ctrl && input === 'e') {if(selectedRow)setMode('chain');return}
     if (key.ctrl && input === 's') {dispatchAction('stats');return}
     if (input === '\x1bOP' || input === '\x1b[11~' || input === '[11~') {setMode('help');return}
-    if (key.escape) { exit(); return }
+    if (key.escape) { replay.current=null; exit(); return }
     if (key.upArrow) { sessions.move(-1); return }
     if (key.downArrow) { sessions.move(1); return }
     if (key.tab) { sessions.toggleScope(); return }
-    if (key.return) {if(sessions.searchPending)pendingSubmission.current={text:sessions.text,filters:sessions.filters};else submitSelection();return}
+    if (key.return) {submitSelection();return}
     if (key.backspace || key.delete) {
       sessions.setText(deleteLastGrapheme(sessions.text))
       return
@@ -999,7 +1020,8 @@ export function App({
     if (input && !key.ctrl && !key.meta) {
       sessions.setText(boundedDisplayText(`${sessions.text}${input}`, SEARCH_COLUMNS))
     }
-  })
+  }
+  useInput(handleInput)
 
   /** Dismisses the current overlay without resetting committed browse state. */
   const close=()=>{setHelpOpen(false);setMode(null)}
@@ -1067,7 +1089,7 @@ export function App({
   const actionItems=actionsFor({hasSelection:Boolean(selectedRow),canResume:Boolean(selectedRow&&(native||resolved?.kind==='ask')&&!launchReason),resumeReason:launchReason??(!native&&resolved?.kind!=='ask'?'Use Start fresh with context':null),
     canHandoff:Boolean(selectedRow&&(contextReason===null||handoffTargets.length)),handoffReason:contextReason,hasMatch:Boolean(evidence),hasPrompt:Boolean(rich?.latestUser),hasCommand:native&&!launchReason,
     bookmarked:Boolean(selectedRow&&bookmarkUids.has(selectedRow.uid)),hasQuery:Boolean(sessions.text),refreshing:!onReindex,statsVisible,statsAvailable}).map(item=>item.id==='resume'&&resolved?.kind==='ask'?{...item,label:'Choose launcher'}:item)
-  const suggestions=!sessions.searchPending&&!sessions.searchError&&!sessions.rows.length?(sessions.backgroundSearch&&sessions.text?sessions.suggestions:emptySuggestions({text:sessions.text,filters:sessions.filters},sessions.countMatches)):[]
+
   if(mode==='actions'&&suggestions.length)return <Menu title="Actions — widen search" {...helpProps} items={[...suggestions.map((item,index)=>({id:`suggestion:${index}`,label:item.label})),...actionItems]} rows={terminalHeight} columns={terminalWidth} onClose={close} onSelect={id=>{
     if(id.startsWith('suggestion:')){const item=suggestions[Number(id.split(':')[1])];if(item){sessions.setText(item.text);sessions.applyFilters(item.filters);close()}}
     else dispatchAction(id as ActionId)
@@ -1094,7 +1116,7 @@ export function App({
   if(mode==='chain'&&selectedRow){
     const members=chainMembers(sessions.snapshot,selectedRow.uid).filter(ref=>!cfg.hiddenClients?.includes(ref.client))
     const range=sessions.activeTimeRange
-    const matching=new Set(querySnapshot(db,cfg,sessions.snapshot,{text:sessions.text,matchMode:'prefix-last',cwd:sessions.scope??undefined,client:sessions.client,...range,
+    const matching=new Set(querySnapshot(db,cfg,sessions.snapshot,{text:sessions.queryText,matchMode:'prefix-last',cwd:sessions.scope??undefined,client:sessions.client,...range,
       branch:sessions.filters.branch,file:sessions.filters.file?.exact?undefined:sessions.filters.file?.path,exactFile:sessions.filters.file?.exact?resolveFacetPath(sessions.filters.file.path,cwd)??undefined:undefined,
       bookmarkedUids:sessions.filters.bookmarkedOnly?bookmarkUids:undefined,includeMissing:true,collapse:false,now}).map(row=>row.uid))
     return <ChainPicker {...helpProps} items={members.map(ref=>({...ref,matchesFilters:matching.has(ref.uid),parentLabel:ref.parentNativeId?`parent ${ref.parentNativeId}${members.filter(member=>member.nativeId===ref.parentNativeId).length>1?' (ambiguous)':members.some(member=>member.nativeId===ref.parentNativeId)?'':' (unknown)'}`:'root'}))}
@@ -1131,7 +1153,7 @@ export function App({
     ...(badge?[{text:badge,color:'yellow'}]:[]),
     {text:sessions.scope?projectName(sessions.scope):'everywhere',dim:!sessions.scope},
     ...(sessions.client?[{text:sessions.client,color:clientColor(sessions.client)}]:[]),
-    ...(sessions.searchPending?[{text:'Searching…',dim:true}]:[]),
+    ...(sessions.pending?[{text:'Searching…',dim:true}]:[]),
     ...(sessions.searchError?[{text:sessions.searchError,color:'red'}]:[]),
     ...(note?[{text:note,color:'yellow'}]:[]),
     ...(indexAge&&indexedAt!==undefined?[{text:indexAge,color:SEVERITY_COLOR[indexAgeSeverity(now-indexedAt)],dim:indexAgeSeverity(now-indexedAt)==='fresh'}]:[]),
@@ -1144,7 +1166,7 @@ export function App({
   // displaced and Filters still fits beside it at eighty columns.
   const primaryLabel=primary?.label==='Resume session'?'Resume':primary?.label==='Start fresh with context'?'Start fresh':primary?.label
   const keys:[string,string][]=[...(primaryLabel&&selectedRow?[['enter',primaryLabel]] as [string,string][]:[]),['ctrl+k','Actions'],['ctrl+g','Filters'],['F1','Help'],['ctrl+o','History'],...(statsAvailable?[['ctrl+s','Stats']] as [string,string][]:[]),['esc','quit']]
-  const list=<List rows={sessions.rows} selected={sessions.selected} height={listHeight} now={now} columns={layout.listWidth} query={sessions.text} bookmarks={bookmarkUids} wrapSelected={layout.mode!=='compact'}/>
+  const list=<List rows={sessions.rows} selected={sessions.selected} height={listHeight} now={now} columns={layout.listWidth} query={sessions.queryText} bookmarks={bookmarkUids} wrapSelected={layout.mode!=='compact'}/>
   const quick=<Preview lines={detail} maxLines={summaryRows}/>
   const availabilityText = resolved?.kind === 'ask' ? 'Choose launcher'
     : resolved?.kind === 'resolved' && resolved.tier === 'search'
@@ -1161,7 +1183,7 @@ export function App({
       ? <Text wrap="truncate-end"><Text color="cyan" bold>{'▸ '}</Text>{boundedPathTail(sessions.text,Math.max(1,terminalWidth-2))}</Text>
       : <Text wrap="truncate-end"><Text color="cyan" bold>{'▸ '}</Text><Text dimColor>type to search</Text></Text>}
     {!sessions.rows.length?<Box flexDirection="column" flexGrow={1} overflow="hidden">
-      {sessions.searchPending?<Text dimColor>Searching…</Text>:sessions.searchError?<Text color="red">Search unavailable; restart the picker.</Text>:<EmptyState indexedEmpty={sessions.snapshot.length===0} searching={Boolean(sessions.text)} narrowed={sessions.scope!==null} timeFiltered={timeFiltered}/>}
+      {sessions.pending?<Text dimColor>Searching…</Text>:sessions.searchError?<Text color="red">Search unavailable; restart the picker.</Text>:<EmptyState indexedEmpty={sessions.snapshot.length===0} searching={Boolean(sessions.text)} narrowed={sessions.scope!==null} timeFiltered={timeFiltered}/>}
       {suggestions.map((item,index)=><Text key={item.label} wrap="truncate-end">{`${index+1}. ${item.label} (Actions)`}</Text>)}
       <Text dimColor wrap="truncate-end">Ctrl+K Actions · Ctrl+G edit/reset filters · Ctrl+R refresh</Text>
     </Box>:<Box flexDirection="column" flexGrow={1} overflow="hidden">

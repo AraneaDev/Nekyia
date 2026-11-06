@@ -24,6 +24,16 @@ export type Scope = string | null
  * silently counted as exactly this many.
  */
 export const SESSION_DISPLAY_LIMIT = 500
+/**
+ * How long the search waits for typing to pause before it runs, in milliseconds.
+ *
+ * A one- or two-letter prefix expands to nearly every term in a large index, and
+ * ranking that many hits costs a few hundred milliseconds. Run per keystroke,
+ * that work sits between each key and the next frame, so the field itself
+ * stutters. Waiting for a pause keeps the field echoing every key at once and
+ * skips the short, expensive prefixes a typed word passes through on the way.
+ */
+export const SEARCH_SETTLE_MS = 120
 const EMPTY_BOOKMARKS: ReadonlySet<string> = new Set()
 const TIME_PRESETS: readonly TimePreset[] = ['all', 'today', 'yesterday', '7d', '30d']
 
@@ -44,7 +54,10 @@ export interface SessionsState {
   /** True when the search matched more sessions than `rows` can show. */
   overflowed: boolean
   text: string
-  setText: (text: string) => void
+  queryText: string
+  pending: boolean
+  settle: () => void
+  setText: (text: string, immediate?: boolean) => void
   scope: Scope
   setScope: (scope: Scope) => void
   /** Narrows to the selected session's project, or widens back to everything. */
@@ -129,6 +142,7 @@ function initialScope(db: IndexDb, cfg: Config, snapshot: SessionSnapshot, cwd: 
 /** Query state shared by the picker and its keyboard bindings. */
 export function useSessions(
   db: IndexDb, cfg: Config, cwd: string, presentation?: Map<string, Presentation>, now?: number, initial?: PickerRestore, bookmarks: ReadonlySet<string> = EMPTY_BOOKMARKS, clock: () => number = () => now ?? Date.now(),
+  settleMs = 0,
 ): SessionsState {
   // The picker holds one index handle for its whole run, so the session table is
   // read once here and every keystroke reuses those rows and the fork chains
@@ -169,6 +183,21 @@ export function useSessions(
   }, [indexedClients, hiddenClientsKey])
 
   const [text, setTextState] = useState(initial?.text ?? '')
+  // With no pause configured the query follows the field on every key, exactly
+  // as it did before the pause existed, so the state below is only consulted
+  // when one is.
+  const deferring = Number.isFinite(settleMs) && settleMs > 0
+  const [settledText, setSettledText] = useState(text)
+  const queryText = deferring ? settledText : text
+  const typingPending = queryText !== text
+  const textRef = useRef(text)
+  textRef.current = text
+  useEffect(() => {
+    if (!deferring || settledText === text) return
+    const timer = setTimeout(() => { setSettledText(text); setSelectedState(0) }, settleMs)
+    return () => clearTimeout(timer)
+  }, [deferring, settleMs, text, settledText])
+  const settle = useCallback(() => { setSettledText(textRef.current); setSelectedState(0) }, [])
   const [filters, setFilters] = useState<PickerFilters>(() => initial?.filters ?? {
     ...clearedFilters(), scope: initialScope(db, queryConfig, snapshot, cwd),
   })
@@ -198,39 +227,40 @@ export function useSessions(
     return () => { service.close(); if (backgroundClient.current === service) backgroundClient.current = null }
   }, [path, snapshot, backgroundSearch])
   const request = useMemo(() => ({ cfg: queryConfig, opts: {
-    ...options(text, filters), limit: SESSION_DISPLAY_LIMIT + 1,
-  }, suggestions: emptySuggestions({text, filters}, () => 1).map(item => ({item,
+    ...options(queryText, filters), limit: SESSION_DISPLAY_LIMIT + 1,
+  }, suggestions: emptySuggestions({text:queryText, filters}, () => 1).map(item => ({item,
     opts: {...options(item.text,item.filters),limit:1},
-  })) }), [queryConfig, options, text, filters])
+  })) }), [queryConfig, options, queryText, filters])
   const [answer, setAnswer] = useState<{request: typeof request; value: SearchAnswer | null; error: string | null} | null>(null)
   const restoredSelection = useRef(false)
   useEffect(() => {
-    if (!backgroundSearch || !text) return
+    if (!backgroundSearch || !queryText) return
     let current = true
     if (!backgroundClient.current) {
       setAnswer({request,value:null,error:startupFailure.current??'Background search unavailable; restart the picker'})
       return
     }
     backgroundClient.current.request({ kind: 'search', ...request,
-      preferredUid: !restoredSelection.current && text === initial?.text ? initial.selectedUid : null,
+      preferredUid: !restoredSelection.current && queryText === initial?.text ? initial.selectedUid : null,
     }).then(value => {
       if (!current || !value) return
       if (!restoredSelection.current) {
         restoredSelection.current = true
-        setSelectedState(restoreSelection(value.rows.map(row => row.uid), text === initial?.text ? initial.selectedUid : null, text === initial?.text ? initial.selectedIndex : 0))
+        setSelectedState(restoreSelection(value.rows.map(row => row.uid), queryText === initial?.text ? initial.selectedUid : null, queryText === initial?.text ? initial.selectedIndex : 0))
       }
       setAnswer({ request, value, error: null })
     }).catch(error => {
       if (current) setAnswer({ request, value: null, error: error instanceof Error ? error.message : String(error) })
     })
     return () => { current = false }
-  }, [backgroundSearch, text, request])
-  const searchPending = backgroundSearch && Boolean(text) && answer?.request !== request
+  }, [backgroundSearch, queryText, request])
+  const searchPending = backgroundSearch && Boolean(queryText) && answer?.request !== request
+  const pending = typingPending || searchPending
   const searchError = backgroundSearch && answer?.request === request ? answer.error : null
-  const found = useMemo(() => backgroundSearch && text
+  const found = useMemo(() => backgroundSearch && queryText
     ? answer?.request === request ? answer.value?.rows ?? [] : []
-    : querySnapshot(db, queryConfig, snapshot, { ...options(text, filters), limit: SESSION_DISPLAY_LIMIT + 1 }),
-  [db, queryConfig, snapshot, options, text, filters, backgroundSearch, request, answer])
+    : querySnapshot(db, queryConfig, snapshot, { ...options(queryText, filters), limit: SESSION_DISPLAY_LIMIT + 1 }),
+  [db, queryConfig, snapshot, options, queryText, filters, backgroundSearch, request, answer])
   const requestEvidence = useCallback(async (uid: string, expression: string) => {
     const value = await backgroundClient.current?.request({ kind: 'evidence', uid, expression })
     return value?.evidence ?? null
@@ -262,7 +292,12 @@ export function useSessions(
   const update = useCallback((fn: (f: PickerFilters) => PickerFilters) => {
     setFilters(fn); setSelectedState(0)
   }, [])
-  const setText = useCallback((value: string) => { setTextState(value); setSelectedState(0) }, [])
+  const setText = useCallback((value: string, immediate = false) => {
+    setTextState(value); setSelectedState(0)
+    // An emptied field lists everything, which needs no text search and so has
+    // nothing worth waiting to skip.
+    if (immediate || !value) setSettledText(value)
+  }, [])
   const setScope = useCallback((value: Scope) => update(f => ({...f,scope:value})), [update])
   const toggleScope = useCallback(() => update(f => ({...f,scope:f.scope !== null ? null :
     rowsRef.current[selectedRef.current]?.cwd || cwd || null})), [update,cwd])
@@ -285,6 +320,6 @@ export function useSessions(
   const countMatches = useCallback((value:string,f:PickerFilters) => querySnapshot(db,queryConfig,snapshot,{
     ...options(value,f),limit:1,
   }).length,[db,queryConfig,snapshot,options])
-  return {rows,suggestions,backgroundSearch,searchPending,searchError,matchEvidence,matchExpression,requestEvidence,overflowed,text,setText,scope,setScope,toggleScope,client,setClient,clientCycle,cycleClient,
+  return {rows,suggestions,backgroundSearch,searchPending,searchError,matchEvidence,matchExpression,requestEvidence,overflowed,text,queryText,pending,settle,setText,scope,setScope,toggleScope,client,setClient,clientCycle,cycleClient,
     timePreset,activeTimeRange,cycleTimePreset,clearTimePreset,selected,setSelected,move,filters,applyFilters,snapshot,countMatches}
 }

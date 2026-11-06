@@ -42,7 +42,7 @@ test('typing into a disk-backed picker does not execute FTS on the input thread'
 })
 
 
-test('Enter while searching launches the latest matching session after results arrive',async()=>{
+test('Enter flushes the upstream typing pause and waits for the latest background result',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'nekyia-background-enter-')),db=IndexDb.open(join(dir,'index.db'))
  for(const [id,text,time] of [['alpha','alpha work',1],['beta','beta work',2]] as const){
   const ref:SessionRef={uid:'claude:'+id,nativeId:id,client:'claude',cwd:'/project',title:text,gitBranch:null,startedAt:time,endedAt:time,turns:1,parentNativeId:null,tier:'resume',origin:'manifest',sourcePaths:[],fingerprint:id}
@@ -54,7 +54,7 @@ test('Enter while searching launches the latest matching session after results a
  let ready!:()=>void,typed!:()=>void,observed:any
  const initialized=new Promise<void>(done=>{ready=done})
  const changed=new Promise<void>(done=>{typed=done})
- const view=render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[adapter]} cwd="/project" now={1800000000000} rows={30} columns={100}
+ const view=render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[adapter]} cwd="/project" now={1800000000000} searchSettleMs={10000} rows={30} columns={100}
   onStateChange={value=>{observed=value;ready();if(value.text==='alpha')typed()}}
   onExec={plan=>{plans.push(plan);resolve(plan)}} onPath={()=>true} checkResumePlan={()=>({ok:true})}
   bookmarkStore={{load:()=>({state:{version:1,uids:[]},warning:null,writable:false}),set:async()=>{throw Error('unexpected bookmark write')},remove:async()=>{throw Error('unexpected bookmark write')}}}/>)
@@ -66,7 +66,7 @@ test('Enter while searching launches the latest matching session after results a
   await new Promise<void>(resolve=>setImmediate(resolve))
   await changed
   expect(observed.text).toBe('alpha')
-  expect(observed.selectedUid).toBeNull()
+  expect(observed.selectedUid).toBe('claude:beta')
   await new Promise<void>(resolve=>setImmediate(resolve))
   ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true
   act(()=>view.stdin.write('\r'))
@@ -75,4 +75,54 @@ test('Enter while searching launches the latest matching session after results a
   expect(plan).toMatchObject({kind:'resume',cmd:'claude',args:['--resume','alpha']})
   expect(plans).toHaveLength(1)
  }finally{(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;act(()=>view.unmount());delete(globalThis as any).IS_REACT_ACT_ENVIRONMENT;db.close();rmSync(dir,{recursive:true,force:true})}
+})
+
+test('closing Help during a held background search never replays Escape against the picker',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'nekyia-overlay-search-')),db=IndexDb.open(join(dir,'index.db'))
+ const ref:SessionRef={uid:'claude:a',nativeId:'a',client:'claude',cwd:'/project',title:'alpha work',gitBranch:null,startedAt:1,endedAt:2,turns:1,parentNativeId:null,tier:'resume',origin:'manifest',sourcePaths:[],fingerprint:'a'}
+ db.upsertHydrated({ref,prompts:['alpha work'],prose:[],dialogue:[{role:'user',text:'alpha work'}],files:[],truncated:false})
+ const NativeWorker=globalThis.Worker
+ let holding=true,notify!:()=>void
+ const held=new Promise<void>(resolve=>{notify=resolve}),jobs:Array<()=>void>=[]
+ function GatedWorker(...args:ConstructorParameters<typeof Worker>){
+  const worker=new NativeWorker(...args),post=worker.postMessage.bind(worker)
+  worker.postMessage=((message:any,...rest:any[])=>{
+   if(holding&&message.kind==='job'){jobs.push(()=>post(message,...rest));notify()}
+   else post(message,...rest)
+  }) as typeof worker.postMessage
+  return worker
+ }
+ globalThis.Worker=GatedWorker as unknown as typeof Worker
+ let initialize!:()=>void,finish!:()=>void,observe:any
+ const initialized=new Promise<void>(resolve=>{initialize=resolve})
+ const completed=new Promise<void>(resolve=>{finish=resolve})
+ const view=render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[]} cwd="/project" now={1800000000000} searchSettleMs={10000} rows={30} columns={100}
+  onStateChange={value=>{observe=value;initialize();if(!holding&&value.text==='alpha'&&value.selectedUid==='claude:a')finish()}}
+  onExec={()=>{throw Error('unexpected launch')}}
+  bookmarkStore={{load:()=>({state:{version:1,uids:[]},warning:null,writable:false}),set:async()=>{throw Error('unexpected write')},remove:async()=>{throw Error('unexpected write')}}}/>)
+ try{
+  await initialized
+  await new Promise<void>(resolve=>setImmediate(resolve))
+  ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true
+  act(()=>view.stdin.write('alpha'))
+  act(()=>view.stdin.write('\x1bOP'))
+  delete(globalThis as any).IS_REACT_ACT_ENVIRONMENT
+  await held
+  await new Promise<void>(resolve=>setImmediate(resolve))
+  expect(view.lastFrame()).toContain('Help — browse shortcuts')
+  ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true
+  act(()=>view.stdin.write('\x1b[27u'))
+  delete(globalThis as any).IS_REACT_ACT_ENVIRONMENT
+  holding=false;for(const job of jobs.splice(0))job()
+  await completed
+  await new Promise<void>(resolve=>setImmediate(resolve))
+  expect(view.lastFrame()).toContain('alpha')
+  ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true
+  act(()=>view.stdin.write('x'))
+  expect(observe.text).toBe('alphax')
+ }finally{
+  globalThis.Worker=NativeWorker
+  ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;act(()=>view.unmount());delete(globalThis as any).IS_REACT_ACT_ENVIRONMENT
+  db.close();rmSync(dir,{recursive:true,force:true})
+ }
 })

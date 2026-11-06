@@ -586,3 +586,46 @@ test('picker restore follows UID and atomic filters retain query', async () => {
   expect(state!.text).toBe('')
   view.unmount();db.close()
 })
+
+test('with a settle delay the field echoes at once and the search runs when typing pauses', async () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, { uid: 'claude:one', nativeId: 'one', title: 'needle', cwd: '/p' })
+  seed(db, { uid: 'claude:two', nativeId: 'two', title: 'haystack', cwd: '/p' })
+
+  let state: SessionsState | undefined
+  function Harness() {
+    const current = useSessions(db, DEFAULT_CONFIG, '/', undefined, undefined, undefined, undefined, undefined, 40)
+    useEffect(() => { state = current })
+    return null
+  }
+  const view = render(<Harness />)
+  expect(state?.rows).toHaveLength(2)
+
+  withAct(() => state?.setText('needle'))
+  // The field has the text; the rows still answer the previous one.
+  expect(state?.text).toBe('needle')
+  expect(state?.queryText).toBe('')
+  expect(state?.pending).toBe(true)
+  expect(state?.rows).toHaveLength(2)
+
+  await new Promise((resolve) => setTimeout(resolve, 80))
+  expect(state?.pending).toBe(false)
+  expect(state?.rows.map((row) => row.uid)).toEqual(['claude:one'])
+
+  // settle() skips the wait.
+  withAct(() => state?.setText('haystack'))
+  expect(state?.pending).toBe(true)
+  withAct(() => state?.settle())
+  expect(state?.pending).toBe(false)
+  expect(state?.rows.map((row) => row.uid)).toEqual(['claude:two'])
+
+  // Emptying the field, or setting text as a whole, never waits.
+  withAct(() => state?.setText(''))
+  expect(state?.pending).toBe(false)
+  expect(state?.rows).toHaveLength(2)
+  withAct(() => state?.setText('needle', true))
+  expect(state?.pending).toBe(false)
+  expect(state?.rows.map((row) => row.uid)).toEqual(['claude:one'])
+  view.unmount()
+  db.close()
+})

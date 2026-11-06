@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/AraneaDev/Nekyia/compare/v1.3.1...v1.3.2) (2026-11-06)
+
+
+### Fixes
+
+* **tui:** keep the search field responsive on large indexes ([#96](https://github.com/AraneaDev/Nekyia/issues/96)) ([453ffd6](https://github.com/AraneaDev/Nekyia/commit/453ffd6d1f421d7c091fbb115c39474e78333e6f))
+
 ## [1.3.1](https://github.com/AraneaDev/Nekyia/compare/v1.3.0...v1.3.1) (2026-10-11)
 
 ### Fixes
