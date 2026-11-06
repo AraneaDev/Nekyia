@@ -126,3 +126,106 @@ test('closing Help during a held background search never replays Escape against 
   db.close();rmSync(dir,{recursive:true,force:true})
  }
 })
+
+/** Seeds a disk-backed index, which is what turns the background worker on. */
+function diskIndex(prefix:string,sessions:ReadonlyArray<readonly [string,string,number]>){
+ const dir=mkdtempSync(join(tmpdir(),prefix)),db=IndexDb.open(join(dir,'index.db'))
+ for(const [id,text,time] of sessions){
+  const ref:SessionRef={uid:'claude:'+id,nativeId:id,client:'claude',cwd:'/project',title:id,gitBranch:null,startedAt:time,endedAt:time,turns:1,parentNativeId:null,tier:'resume',origin:'manifest',sourcePaths:[],fingerprint:id}
+  db.upsertHydrated({ref,prompts:[text],prose:[],dialogue:[{role:'user',text}],files:[],truncated:false})
+ }
+ return {db,cleanup:()=>{db.close();rmSync(dir,{recursive:true,force:true})}}
+}
+
+/** Replaces Worker so jobs of the chosen kinds wait until released; later jobs then pass straight through. */
+function gateWorkers(holds:(job:{kind:string})=>boolean){
+ const NativeWorker=globalThis.Worker,jobs:Array<()=>void>=[]
+ const waiters:Array<()=>void>=[]
+ let holding=true
+ function GatedWorker(...args:ConstructorParameters<typeof Worker>){
+  const worker=new NativeWorker(...args),post=worker.postMessage.bind(worker)
+  worker.postMessage=((message:any,...rest:any[])=>{
+   if(holding&&message.kind==='job'&&holds(message.job)){jobs.push(()=>post(message,...rest));for(const w of waiters.splice(0))w()}
+   else post(message,...rest)
+  }) as typeof worker.postMessage
+  return worker
+ }
+ globalThis.Worker=GatedWorker as unknown as typeof Worker
+ return {
+  held:()=>jobs.length?Promise.resolve():new Promise<void>(resolve=>waiters.push(resolve)),
+  release:()=>{holding=false;for(const job of jobs.splice(0))job()},
+  restore:()=>{globalThis.Worker=NativeWorker},
+ }
+}
+const bookmarks={load:()=>({state:{version:1 as const,uids:[]},warning:null,writable:false}),set:async()=>{throw Error('unexpected write')},remove:async()=>{throw Error('unexpected write')}}
+const claude=buildAdapter(validateManifest({schema:1,id:'claude',name:'Claude',roots:['/none'],format:'jsonl-transcript',tier:'resume',jsonl:{glob:'*.jsonl',variant:'claude'},resume:{cmd:'claude',args:['--resume','{id}'],cwd:'{cwd}'}}))
+const press=(view:{stdin:{write:(s:string)=>void}},input:string)=>{(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;act(()=>view.stdin.write(input));delete(globalThis as any).IS_REACT_ACT_ENVIRONMENT}
+const turn=()=>new Promise<void>(resolve=>setImmediate(resolve))
+async function until(check:()=>boolean,ms=3000){const end=Date.now()+ms;while(!check()){if(Date.now()>end)throw Error('timed out');await new Promise(r=>setTimeout(r,10))}}
+
+test('a deferred Enter is cancelled when the query changes before its search answers',async()=>{
+ const {db,cleanup}=diskIndex('nekyia-cancel-enter-',[['alpha','alpha work',1],['alphax','alphax work',2]])
+ const gate=gateWorkers(job=>job.kind==='search')
+ const plans:ExecPlan[]=[]
+ let observed:any
+ const view=render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[claude]} cwd="/project" now={1800000000000} searchSettleMs={200} rows={30} columns={100}
+  onStateChange={value=>{observed=value}} onExec={plan=>{plans.push(plan)}} onPath={()=>true} checkResumePlan={()=>({ok:true})} bookmarkStore={bookmarks}/>)
+ try{
+  await until(()=>observed!==undefined);await turn()
+  press(view,'alpha')
+  press(view,'\r')
+  await gate.held()
+  // The Enter above is waiting for this search; editing the query must drop it.
+  press(view,'x')
+  await until(()=>observed?.text==='alphax')
+  gate.release()
+  // Settled on the edited query: only alphax matches it, and nothing is searching.
+  await until(()=>{const frame=view.lastFrame()??'';return !frame.includes('Searching')&&!/alpha\s*$/mu.test(frame)})
+  await new Promise(r=>setTimeout(r,50))
+  expect(plans).toEqual([])
+ }finally{gate.restore();(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;act(()=>view.unmount());delete(globalThis as any).IS_REACT_ACT_ENVIRONMENT;cleanup()}
+})
+
+test('a restored search does not warn that its selection was lost while the worker answers',async()=>{
+ const {db,cleanup}=diskIndex('nekyia-restore-',[['alpha','alpha work',1],['beta','alpha beta',2]])
+ const gate=gateWorkers(job=>job.kind==='search')
+ let observed:any
+ const view=render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[claude]} cwd="/project" now={1800000000000} rows={30} columns={100}
+  initialState={{text:'alpha',filters:{scope:null,client:null,time:{kind:'preset',preset:'all'},sort:'auto',bookmarkedOnly:false},selectedUid:'claude:alpha',selectedIndex:1,listTop:0,reader:null}}
+  onStateChange={value=>{observed=value}} onExec={()=>{}} onPath={()=>true} checkResumePlan={()=>({ok:true})} bookmarkStore={bookmarks}/>)
+ try{
+  await gate.held();await turn()
+  expect(view.lastFrame()).not.toContain('no longer matches')
+  gate.release()
+  await until(()=>observed?.selectedUid==='claude:alpha')
+  await turn()
+  expect(view.lastFrame()).not.toContain('no longer matches')
+ }finally{gate.restore();(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;act(()=>view.unmount());delete(globalThis as any).IS_REACT_ACT_ENVIRONMENT;cleanup()}
+})
+
+test('Ctrl+O before the selected row\'s evidence arrives opens history at the match',async()=>{
+ const filler=Array.from({length:60},(_,i)=>`line ${i} of unrelated work`).join('\n')
+ const {db,cleanup}=diskIndex('nekyia-late-anchor-',[['newer','zephyr mentioned once',3],['older',`${filler}\nzephyr anchored here`,1]])
+ const gate=gateWorkers(job=>job.kind==='evidence')
+ let observed:any
+ const view=render(<App db={db} cfg={DEFAULT_CONFIG} adapters={[claude]} cwd="/project" now={1800000000000} rows={20} columns={100}
+  onStateChange={value=>{observed=value}} onExec={()=>{}} onPath={()=>true} checkResumePlan={()=>({ok:true})} bookmarkStore={bookmarks}/>)
+ try{
+  await until(()=>observed!==undefined);await turn()
+  press(view,'zephyr')
+  await until(()=>observed?.text==='zephyr'&&observed?.selectedUid!=null)
+  await turn()
+  // Move to the row whose evidence the search answer did not carry.
+  const other=observed.selectedUid==='claude:newer'?'claude:older':'claude:newer'
+  press(view,'\u001b[B')
+  await until(()=>observed?.selectedUid===other)
+  await gate.held()
+  press(view,'\u000f')
+  await turn()
+  expect(observed.reader).toBeNull()
+  gate.release()
+  await until(()=>observed?.reader!=null)
+  expect(observed.reader.anchor.uid).toBe(other)
+  expect(observed.reader.anchor.ordinal).not.toBeNull()
+ }finally{gate.restore();(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;act(()=>view.unmount());delete(globalThis as any).IS_REACT_ACT_ENVIRONMENT;cleanup()}
+})

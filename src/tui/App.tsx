@@ -558,12 +558,16 @@ export function App({
     let current=true
     sessions.requestEvidence(matchingUid,expression).then(value=>{
       if(current)setBackgroundEvidence({uid:matchingUid,expression,value})
-    }).catch(()=>{if(current)setNote('Could not read matching passage; restart the picker')})
+    }).catch(()=>{if(current){setBackgroundEvidence({uid:matchingUid,expression,value:null});setNote('Could not read matching passage; restart the picker')}})
     return()=>{current=false}
   },[sessions.backgroundSearch,sessions.searchPending,sessions.requestEvidence,matchingUid,expression,suppliedEvidence])
   const evidence=sessions.backgroundSearch
     ? suppliedEvidence??(backgroundEvidence&&backgroundEvidence.uid===matchingUid&&backgroundEvidence.expression===expression?backgroundEvidence.value:null)
     : synchronousEvidence
+  // Whether the selected row's evidence lookup has answered, a null answer
+  // included. Until it has, the reader cannot know which turn to open at.
+  const evidenceSettled=!sessions.backgroundSearch||!matchingUid||!expression||Boolean(suppliedEvidence)
+    ||(backgroundEvidence?.uid===matchingUid&&backgroundEvidence.expression===expression)
   const detail = useMemo(() => buildSummaryLines(selectedRow, rich, evidence, {
     columns: layout.previewWidth,
     maxLines: summaryRows,
@@ -585,9 +589,15 @@ export function App({
   useEffect(()=>{
     if(mode==='history'&&!readerAllowed){setMode(null);setReaderUid(null);setReaderState(null);announce('Reader session is unavailable under current policy; returned to browse')}
   },[mode,readerAllowed])
+  // Judged against the first settled result, not the first frame: a restored
+  // search runs in the background, so its rows are empty until it answers and
+  // the selection would always look lost.
+  const restoreChecked=useRef(false)
   useEffect(()=>{
+    if(restoreChecked.current||sessions.pending||sessions.searchError)return
+    restoreChecked.current=true
     if(readerAllowed&&initialState?.selectedUid&&!sessions.rows.some(row=>row.uid===initialState.selectedUid)){announce('Selected session no longer matches; nearest result selected')}
-  },[])
+  },[sessions.pending,sessions.searchError,sessions.rows,readerAllowed,initialState])
 
 
   /**
@@ -863,6 +873,25 @@ export function App({
     pendingCopy.current = writeClipboard(command, 'resume command copied')
   }
 
+  // A history request made before the selected row's evidence has answered,
+  // held as the row it was made on, so the reader opens at the match rather
+  // than at the top. Dropped if the cursor has moved on by then.
+  const pendingInspect=useRef<{row:string;match:boolean}|null>(null)
+  useEffect(()=>{
+    const wanted=pendingInspect.current
+    if(!wanted||!evidenceSettled)return
+    pendingInspect.current=null
+    if(selectedRow?.uid!==wanted.row||mode||helpOpen)return
+    if(wanted.match){if(matchingUid)openHistory(matchingUid)}
+    else openHistory(evidence?.uid??wanted.row)
+  })
+  /** Opens history at the match once the selected row's evidence is known. */
+  function inspect(match:boolean):void {
+    if(!selectedRow)return
+    if(!evidenceSettled){pendingInspect.current={row:selectedRow.uid,match};return}
+    if(match){if(matchingUid)openHistory(matchingUid)}
+    else openHistory(evidence?.uid??selectedRow.uid)
+  }
   /** Opens a verified match anchor or literal retained-history fallback. */
   function openHistory(uid:string):void {
     setReaderUid(uid)
@@ -902,8 +931,8 @@ export function App({
         }catch{announce('Could not validate the context launch')}
       }
     }
-    else if(id==='inspect'&&selectedRow)openHistory(evidence?.uid??selectedRow.uid)
-    else if(id==='inspect-match'&&matchingUid)openHistory(matchingUid)
+    else if(id==='inspect')inspect(false)
+    else if(id==='inspect-match')inspect(true)
     else if(id==='details')setMode('details')
     else if(id==='chain')setMode('chain')
     else if(id==='copy-prompt')copyPrompt()
@@ -994,7 +1023,7 @@ export function App({
       setMode(null)
       return
     }
-    if (key.ctrl && input === 'o') {if(selectedRow)openHistory(evidence?.uid??selectedRow.uid);return}
+    if (key.ctrl && input === 'o') {inspect(false);return}
     if (key.ctrl && input === 'k') {setMode('actions');return}
     if (key.ctrl && input === 'g') {setMode('filters');return}
     if (key.ctrl && input === 'b') {if(selectedRow)void toggleBookmark(selectedRow.uid);return}

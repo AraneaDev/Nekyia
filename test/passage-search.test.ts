@@ -79,7 +79,11 @@ test('cross-turn fallback remains searchable with evidence free of injected inst
 
 test('overlapping passage boundaries preserve phrases and do not reward duplicated turns', () => {
   const db = IndexDb.open(':memory:')
-  const text = 'filler '.repeat(580) + 'precise archive migration works'
+  // `archive` ends the first 4096-character passage and `migration` starts past
+  // it, so only the overlap between passages keeps the phrase findable.
+  const text = 'filler '.repeat(584) + 'archive migration works'
+  expect(text.indexOf('archive')).toBeLessThan(4096)
+  expect(text.indexOf('migration')).toBeGreaterThanOrEqual(4096)
   seed(db, 'a', [{ role: 'user', text }])
   seed(db, 'b', Array.from({ length: 80 }, () => ({ role: 'user', text })))
   const hits = db.ftsSearch('"archive migration"')
@@ -128,4 +132,44 @@ test('migration of unordered legacy facets excludes later harness envelopes', ()
     expect(query(db, DEFAULT_CONFIG, { text: 'request' }).map(r => r.uid)).toEqual(['a'])
     expect((db.raw().query('SELECT prompts FROM session_text WHERE uid = ?').get('a') as any).prompts).toContain('harnessneedle')
   } finally { db.close(); rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('the excerpt comes from the better-scoring of two passages that both match', () => {
+  const db = IndexDb.open(':memory:')
+  // Both passages match the whole expression; the prompt column weighs four
+  // times the reply column, so a reversed BM25 order would pick the reply.
+  seed(db, 'a', [{ role: 'user', text: 'needle migration first' },
+    { role: 'assistant', text: 'needle migration second' }])
+  const evidence = readMatchEvidence(db, 'a', '"needle" "migration"', db.retainedTurns('a').turns as any)
+  expect(evidence?.field).toBe('prompt')
+  expect(evidence?.text).toContain('first')
+  db.close()
+})
+
+test('an assistant echo never displaces an identical prompt passage', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, 'a', [{ role: 'assistant', text: 'rotate the signing keys' },
+    { role: 'user', text: 'rotate the signing keys' }])
+  const evidence = readMatchEvidence(db, 'a', '"signing" "keys"', db.retainedTurns('a').turns as any)
+  expect(evidence?.field).toBe('prompt')
+  db.close()
+})
+
+test('instructions after a leading envelope are still kept out of search', () => {
+  const db = IndexDb.open(':memory:')
+  seed(db, 'a', [{ role: 'user', text: '<environment_context>cwd</environment_context>\n'
+    + '# AGENTS.md instructions for /project\n<INSTRUCTIONS>\nagentsneedle\n</INSTRUCTIONS>\nReal request here' }])
+  expect(query(db, DEFAULT_CONFIG, { text: 'agentsneedle' })).toEqual([])
+  expect(query(db, DEFAULT_CONFIG, { text: 'request' }).map(r => r.uid)).toEqual(['a'])
+  db.close()
+})
+
+test('forgetting a UID removes its passages even without a session row', () => {
+  const db = IndexDb.open(':memory:')
+  db.raw().query("INSERT INTO session_passage (uid, title, prompt, reply) VALUES ('ghost', '', 'ghostneedle', '')").run()
+  expect(db.ftsSearch('"ghostneedle"').map(h => h.uid)).toEqual(['ghost'])
+  db.deleteSessions(['ghost'])
+  expect(db.raw().query('SELECT count(*) AS n FROM session_passage WHERE uid = ?').get('ghost')).toEqual({ n: 0 })
+  expect(db.ftsSearch('"ghostneedle"')).toEqual([])
+  db.close()
 })

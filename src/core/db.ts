@@ -1157,6 +1157,12 @@ export class IndexDb {
         ? this.db.query('DELETE FROM session_file_event WHERE uid = ?')
         : null
       const deleteRef = this.db.query('DELETE FROM session WHERE uid = ?')
+      // Deleted by UID rather than left to the session trigger alone: passages
+      // written for a UID with no session row would otherwise stay searchable
+      // after the session is forgotten. The passage trigger clears their FTS rows.
+      const deletePassages = storedSchemaVersion(this.db) >= 5
+        ? this.db.query('DELETE FROM session_passage WHERE uid = ?')
+        : null
 
       for (const value of new Set(values)) {
         const old = readText.get(value) as TextRow | null
@@ -1167,6 +1173,7 @@ export class IndexDb {
         deleteFile.run(value)
         deleteTurn?.run(value)
         deleteEvent?.run(value)
+        deletePassages?.run(value)
         deleteRef.run(value)
       }
     })(uids)

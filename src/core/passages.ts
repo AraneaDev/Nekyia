@@ -9,17 +9,22 @@ const ENVELOPES = ['environment_context', 'skills_instructions', 'apps_instructi
 
 /** Filter recognized harness envelopes for search only; retained history stays verbatim. */
 export function searchableText(text: string): string {
-  let result = text.replace(/^# AGENTS\.md instructions for [^\n]*\r?\n\s*<INSTRUCTIONS>[\s\S]*?<\/INSTRUCTIONS>/u, '')
-  if (/^# AGENTS\.md instructions for [^\n]*$/u.test(result)) return ''
-  if (/^Base directory for this skill:/u.test(result)) return ''
+  // Envelopes and instruction headers can come in either order within one turn,
+  // so both are stripped until neither changes the text, and the whole-turn
+  // header checks run against what is left rather than only the raw start.
+  let result = text
   let previous: string
   do {
     previous = result
+    result = result.replace(/^\s*# AGENTS\.md instructions for [^\n]*\r?\n\s*<INSTRUCTIONS>[\s\S]*?<\/INSTRUCTIONS>\s*/u, '')
     for (const tag of ENVELOPES) {
       result = result.replace(new RegExp(`^\\s*<${tag}>[\\s\\S]*?</${tag}>\\s*`, 'u'), '')
     }
   } while (result !== previous)
-  return result.trim()
+  result = result.trim()
+  if (/^# AGENTS\.md instructions for [^\n]*$/u.test(result)) return ''
+  if (/^Base directory for this skill:/u.test(result)) return ''
+  return result
 }
 
 /** Legacy facets have no message boundaries; standalone harness records split searchable segments. */
@@ -74,7 +79,9 @@ export function writePassages(db: Database, uid: string, title: string, dialogue
     if (turn.role !== 'user' && turn.role !== 'assistant') continue
     for (const text of chunks(searchableText(turn.text))) {
       if (!text.trim()) continue
-      const key = text
+      // Keyed by role too: an assistant echo of a prompt must not displace the
+      // prompt, which is weighted higher and labels the excerpt.
+      const key = `${turn.role}\0${text}`
       if (seen.has(key)) continue
       seen.add(key)
       insert.run(uid, '', turn.role === 'user' ? text : '', turn.role === 'assistant' ? text : '')
