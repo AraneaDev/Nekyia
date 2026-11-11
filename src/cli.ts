@@ -417,7 +417,7 @@ export function versionText(version: string, hyperlink = link): string {
     'In the Odyssey, Odysseus digs the trench and the dead crowd forward;',
     'he holds them back until the one shade he needs may speak.',
     '',
-    `Built by ${hyperlink('Aranea Development', 'https://aranea-development.nl')}`,
+    `Built by ${hyperlink('aranea.dev', 'https://aranea.dev')}`,
     `Source at ${hyperlink('AraneaDev/Nekyia', 'https://github.com/AraneaDev/Nekyia')}`,
   ].join('\n')
 }

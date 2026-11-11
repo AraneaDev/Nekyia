@@ -21,7 +21,7 @@ test('the package carries the metadata npm and trusted publishing need', () => {
     type: 'git',
     url: 'git+https://github.com/AraneaDev/Nekyia.git',
   })
-  expect(pkg.homepage).toBe('https://aranea-development.nl/en/tools/nekyia')
+  expect(pkg.homepage).toBe('https://aranea.dev/en/tools/nekyia')
   expect(pkg.bugs?.url).toBe('https://github.com/AraneaDev/Nekyia/issues')
   expect(pkg.author).toBe('AraneaDev')
   expect(pkg.publishConfig?.access).toBe('public')
