@@ -7,7 +7,7 @@
 Nekyia indexes and searches past CLI agent sessions locally in your terminal using Bun and SQLite FTS5.
 
 [![Release](https://img.shields.io/github/v/release/AraneaDev/Nekyia?label=release)](https://github.com/AraneaDev/Nekyia/releases)
-[![Tool page](https://img.shields.io/badge/tool%20page-aranea.dev-0b7285)](https://aranea.dev/en/tools/nekyia)
+[![Tool page](https://img.shields.io/badge/tool%20page-aranea.dev-0b7285)](https://aranea.dev/tools/nekyia)
 [![CI](https://img.shields.io/github/actions/workflow/status/AraneaDev/Nekyia/ci.yml?label=CI)](https://github.com/AraneaDev/Nekyia/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/AraneaDev/Nekyia?label=license&color=yellow)](./LICENSE)
 [![Language](https://img.shields.io/github/languages/top/AraneaDev/Nekyia)](https://github.com/AraneaDev/Nekyia)
